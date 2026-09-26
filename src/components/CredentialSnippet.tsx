@@ -29,20 +29,20 @@ export const CredentialSnippet: React.FC<CredentialSnippetProps> = ({
   };
 
   return (
-    <div className="flex flex-col space-y-1 text-xs bg-gray-50/80 p-1.5 rounded border border-gray-100">
-      <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+    <div className="flex flex-col space-y-0.5 text-xs py-0.5">
+      <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
         {label}
       </div>
 
       {login && (
-        <div className="flex items-center justify-between space-x-1 group">
-          <span className="truncate max-w-[120px] text-gray-700 font-mono text-[11px]" title={login}>
+        <div className="flex items-center space-x-1.5 group">
+          <span className="truncate max-w-[130px] text-stone-700 font-mono text-[11px]" title={login}>
             {login}
           </span>
           <button
             type="button"
             onClick={() => copyToClipboard(login, 'login')}
-            className="p-0.5 text-gray-400 hover:text-[#C5A059] transition-colors"
+            className="p-0.5 text-stone-400 hover:text-amber-700 transition-colors"
             title={`Copiar Login do ${label}`}
           >
             {copiedField === 'login' ? (
@@ -55,32 +55,30 @@ export const CredentialSnippet: React.FC<CredentialSnippetProps> = ({
       )}
 
       {senha && (
-        <div className="flex items-center justify-between space-x-1 group">
-          <span className="text-gray-700 font-mono text-[11px]">
-            {showPassword ? senha : '••••••••'}
+        <div className="flex items-center space-x-1.5 group">
+          <span className="text-amber-500 font-bold tracking-widest text-xs select-none">
+            {showPassword ? senha : '★★★★★★★★'}
           </span>
-          <div className="flex items-center space-x-1">
-            <button
-              type="button"
-              onClick={() => setShowPassword((prev) => !prev)}
-              className="p-0.5 text-gray-400 hover:text-gray-700 transition-colors"
-              title={showPassword ? 'Ocultar senha' : 'Exibir senha'}
-            >
-              {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-            </button>
-            <button
-              type="button"
-              onClick={() => copyToClipboard(senha, 'senha')}
-              className="p-0.5 text-gray-400 hover:text-[#C5A059] transition-colors"
-              title={`Copiar Senha do ${label}`}
-            >
-              {copiedField === 'senha' ? (
-                <Check className="w-3 h-3 text-emerald-600" />
-              ) : (
-                <Copy className="w-3 h-3" />
-              )}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => copyToClipboard(senha, 'senha')}
+            className="p-0.5 text-stone-400 hover:text-amber-700 transition-colors"
+            title={`Copiar Senha do ${label}`}
+          >
+            {copiedField === 'senha' ? (
+              <Check className="w-3 h-3 text-emerald-600" />
+            ) : (
+              <Copy className="w-3 h-3" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowPassword((prev) => !prev)}
+            className="p-0.5 text-stone-400 hover:text-stone-600 transition-colors"
+            title={showPassword ? 'Ocultar Senha' : 'Ver Senha'}
+          >
+            {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+          </button>
         </div>
       )}
     </div>

@@ -9,7 +9,6 @@ import {
   Shield,
   RefreshCw,
   FolderOpen,
-  AlertCircle,
   AlertTriangle
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -235,7 +234,7 @@ export const Clients: React.FC = () => {
             type="button"
             onClick={fetchClients}
             title="Recarregar clientes"
-            className="p-2.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 transition-colors shadow-xs"
+            className="p-3 rounded-2xl border border-slate-200/80 bg-white/90 hover:bg-white text-stone-600 hover:text-stone-900 transition-all shadow-xs cursor-pointer"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[#C5A059]' : ''}`} />
           </button>
@@ -243,7 +242,7 @@ export const Clients: React.FC = () => {
           <button
             type="button"
             onClick={handleCreate}
-            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-lg bg-[#C5A059] hover:bg-[#9E7B35] text-white text-xs font-semibold shadow-sm transition-all"
+            className="inline-flex items-center space-x-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-[#C5A059] to-[#D4B26F] hover:from-[#b8934c] hover:to-[#c6a25e] text-white text-xs font-semibold shadow-md shadow-[#C5A059]/20 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Novo Cliente</span>
@@ -275,11 +274,11 @@ export const Clients: React.FC = () => {
         </div>
       )}
 
-      {/* Barra de Pesquisa e Filtros */}
-      <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex flex-col md:flex-row gap-3 items-center justify-between">
+      {/* Barra de Pesquisa e Filtros Refinada */}
+      <div className="bg-white/90 backdrop-blur-md p-4 rounded-3xl border border-slate-200/60 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
         <div className="relative flex-1 w-full">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search className="h-4 w-4 text-gray-400" />
+          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+            <Search className="h-4 w-4 text-stone-400" />
           </div>
           <input
             ref={searchInputRef}
@@ -287,21 +286,21 @@ export const Clients: React.FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Pesquisar por Razão Social, CNPJ, CPF, SIEG ou Nº Pasta... (Ctrl + K)"
-            className="block w-full pl-9 pr-24 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] text-gray-900 placeholder-gray-400"
+            className="block w-full pl-10 pr-24 py-2 text-xs border border-transparent hover:border-slate-200 focus:border-[#C5A059] rounded-2xl bg-slate-50/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 text-stone-900 placeholder-stone-400 transition-all"
           />
-          <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center pointer-events-none">
-            <span className="hidden sm:inline-block text-[10px] font-mono font-medium text-gray-400 border border-gray-200 bg-gray-50 px-1.5 py-0.5 rounded">
+          <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+            <span className="hidden sm:inline-block text-[10px] font-mono font-medium text-stone-400 border border-slate-200 bg-white px-2 py-0.5 rounded-lg shadow-2xs">
               Ctrl + K
             </span>
           </div>
         </div>
 
         <div className="flex items-center space-x-2 w-full md:w-auto">
-          <span className="text-xs text-gray-500 shrink-0">Status:</span>
+          <span className="text-xs text-stone-500 font-medium shrink-0">Status:</span>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-xs border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#C5A059]"
+            className="text-xs border border-slate-200/80 rounded-2xl px-3.5 py-2 bg-slate-50/70 hover:bg-white text-stone-800 font-medium focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all cursor-pointer"
           >
             <option value="Todos">Todos</option>
             <option value="Ativo">Ativos</option>
@@ -316,20 +315,20 @@ export const Clients: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabela de Clientes */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
+      {/* Tabela de Clientes Estilo Card Flutuante */}
+      <div className="bg-white/95 backdrop-blur-md rounded-3xl border border-slate-200/70 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-gray-50/80 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                <th className="py-3 px-4">Nº / SIEG</th>
-                <th className="py-3 px-4">Razão Social & Localidade</th>
-                <th className="py-3 px-4">CNPJ & Regime</th>
-                <th className="py-3 px-4">Cód. Acesso</th>
-                <th className="py-3 px-4">Portais Fixos</th>
-                <th className="py-3 px-4">Sistemas Extras</th>
-                <th className="py-3 px-4 text-center">Status</th>
-                <th className="py-3 px-4 text-right">Ações</th>
+              <tr className="bg-slate-50/60 border-b border-slate-200/60 text-[11px] font-bold text-stone-400 uppercase tracking-wider">
+                <th className="py-4 px-5">Nº / SIEG</th>
+                <th className="py-4 px-5">Razão Social & Localidade</th>
+                <th className="py-4 px-5">CNPJ & Regime</th>
+                <th className="py-4 px-5">Cód. Acesso</th>
+                <th className="py-4 px-5">Portais Fixos</th>
+                <th className="py-4 px-5">Sistemas Extras</th>
+                <th className="py-4 px-5 text-center">Status</th>
+                <th className="py-4 px-5 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-xs text-gray-700">
@@ -353,83 +352,76 @@ export const Clients: React.FC = () => {
                 filteredClients.map((c) => (
                   <tr key={c.id} className="hover:bg-amber-50/30 transition-colors">
                     {/* Nº & SIEG */}
-                    <td className="py-3.5 px-4 whitespace-nowrap">
-                      <div className="flex items-center space-x-1.5">
+                    <td className="py-4 px-5 whitespace-nowrap">
+                      <div className="flex items-center space-x-2.5">
                         {isAdmin ? (
                           <button
                             type="button"
                             onClick={() => handleOpenFolder(c)}
                             title={`Abrir pasta do cliente no Google Drive: G:\\Meu Drive\\00. MSCA\\00. CLIENTES\\${c.razao_social}`}
-                            className="p-1 rounded-md text-amber-600 hover:text-amber-700 hover:bg-amber-100/70 transition-colors cursor-pointer group flex items-center"
+                            className="p-2 rounded-2xl bg-amber-500/10 text-[#C5A059] hover:bg-[#C5A059] hover:text-white transition-all cursor-pointer group flex items-center justify-center shadow-2xs"
                           >
-                            <FolderOpen className="w-4 h-4 text-amber-600 group-hover:scale-110 transition-transform" />
+                            <FolderOpen className="w-4 h-4 group-hover:scale-110 transition-transform" />
                           </button>
                         ) : (
-                          <FolderOpen className="w-3.5 h-3.5 text-gray-400" />
+                          <div className="p-2 rounded-2xl bg-slate-100 text-stone-400 flex items-center justify-center">
+                            <FolderOpen className="w-4 h-4" />
+                          </div>
                         )}
-                        <span className="font-semibold text-gray-900">
-                          {c.numero_pasta || '-'}
-                        </span>
-                      </div>
-                      <div className="text-[10px] text-gray-400 mt-1 flex items-center space-x-1">
-                        <span>SIEG:</span>
-                        <span
-                          className={`font-semibold px-1 py-0.2 rounded text-[9px] ${
-                            c.sieg === 'Sim'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-gray-100 text-gray-600 border border-gray-200'
-                          }`}
-                        >
-                          {c.sieg === 'Sim' ? 'Sim' : 'Não'}
-                        </span>
+                        <div>
+                          <div className="text-sm font-bold text-stone-800">
+                            {c.numero_pasta || '-'}
+                          </div>
+                          <div className="text-[10px] text-stone-400 flex items-center space-x-1">
+                            <span>SIEG:</span>
+                            <span
+                              className={`font-semibold px-1 py-0.2 rounded text-[9px] ${
+                                c.sieg === 'Sim'
+                                  ? 'text-emerald-700 font-bold'
+                                  : 'text-stone-400'
+                              }`}
+                            >
+                              {c.sieg === 'Sim' ? 'Sim' : 'Não'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </td>
 
                     {/* Razão Social & Localidade */}
-                    <td className="py-3.5 px-4">
+                    <td className="py-4 px-5">
                       <div className="flex items-center flex-wrap gap-1.5">
-                        <span className="font-semibold text-gray-900 leading-snug">
+                        <span className="font-bold text-stone-900 leading-snug">
                           {c.razao_social}
                         </span>
-
-                        {/* Marcação Exclusiva para Administrador: Inadimplente */}
-                        {isAdmin && overdueClientsMap.has(c.id) && (
-                          <div
-                            title={`Cliente Inadimplente: ${overdueClientsMap.get(c.id)?.count} parcela(s) vencida(s) totalizando ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(overdueClientsMap.get(c.id)?.totalOverdue || 0)}`}
-                            className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold border border-red-300 shadow-xs animate-pulse"
-                          >
-                            <AlertCircle className="w-3 h-3 text-red-600 shrink-0" />
-                            <span>Inadimplente</span>
-                          </div>
-                        )}
 
                         {isAdmin && (
                           <button
                             type="button"
                             onClick={() => handleOpenFolder(c)}
                             title={`Abrir pasta no Windows Explorer`}
-                            className="text-gray-400 hover:text-amber-600 p-0.5 rounded hover:bg-amber-50 transition-colors"
+                            className="text-stone-300 hover:text-amber-600 p-0.5 rounded hover:bg-amber-50 transition-colors"
                           >
                             <FolderOpen className="w-3.5 h-3.5" />
                           </button>
                         )}
                       </div>
-                      <div className="text-[11px] text-gray-500 mt-0.5">
+                      <div className="text-[11px] font-semibold text-stone-400 uppercase tracking-wide mt-0.5">
                         {c.localidade || 'Localidade não informada'}
                       </div>
                     </td>
 
                     {/* CNPJ & Regime */}
-                    <td className="py-3.5 px-4 whitespace-nowrap">
+                    <td className="py-4 px-5 whitespace-nowrap">
                       <div>
                         <CnpjCopyButton cnpj={c.cnpj} />
                       </div>
-                      <div className="text-[10px] text-gray-500 mt-1 flex items-center space-x-1">
-                        <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
+                      <div className="text-[10px] mt-1.5 flex items-center space-x-1">
+                        <span className="px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 font-semibold tracking-wide">
                           {c.regime_tributario || 'Não def.'}
                         </span>
                         {c.fator_r === 'Sim' && (
-                          <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-medium">
+                          <span className="px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 font-semibold">
                             Fator R
                           </span>
                         )}
@@ -437,9 +429,9 @@ export const Clients: React.FC = () => {
                     </td>
 
                     {/* Código de Acesso Simples */}
-                    <td className="py-3.5 px-4 whitespace-nowrap">
+                    <td className="py-4 px-5 whitespace-nowrap">
                       {c.codigo_acesso_simples ? (
-                        <div className="inline-flex items-center space-x-1 font-mono text-xs bg-gray-50 px-2 py-1 rounded border border-gray-200">
+                        <div className="inline-flex items-center space-x-1.5 font-mono text-xs bg-amber-50/50 px-2.5 py-1 rounded-xl border border-amber-200/60 text-stone-800 shadow-xs">
                           <Key className="w-3 h-3 text-[#C5A059]" />
                           <span>{c.codigo_acesso_simples}</span>
                         </div>
@@ -449,7 +441,7 @@ export const Clients: React.FC = () => {
                     </td>
 
                     {/* Portais Fixos (Prefeitura & Posto Fiscal) */}
-                    <td className="py-3.5 px-4">
+                    <td className="py-4 px-5">
                       <div className="space-y-1.5 min-w-[140px]">
                         <CredentialSnippet
                           label="Prefeitura"
@@ -465,9 +457,9 @@ export const Clients: React.FC = () => {
                     </td>
 
                     {/* Sistemas Extras */}
-                    <td className="py-3.5 px-4">
+                    <td className="py-4 px-5">
                       {c.client_credentials && c.client_credentials.length > 0 ? (
-                        <div className="space-y-1 min-w-[130px]">
+                        <div className="space-y-1.5 min-w-[130px]">
                           {c.client_credentials.map((cred) => (
                             <CredentialSnippet
                               key={cred.id}
@@ -483,15 +475,17 @@ export const Clients: React.FC = () => {
                     </td>
 
                     {/* Status */}
-                    <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                    <td className="py-4 px-5 text-center whitespace-nowrap">
                       <div className="flex flex-col items-center space-y-1">
                         <span
-                          className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          className={`inline-block px-3 py-1 rounded-full text-[11px] font-semibold tracking-wide shadow-xs ${
                             c.status === 'Ativo'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
+                              : c.status === 'Inadimplente'
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200/80'
                               : c.status === 'Inativo'
-                              ? 'bg-gray-100 text-gray-600 border border-gray-200'
-                              : 'bg-red-50 text-red-700 border border-red-200'
+                              ? 'bg-slate-100 text-stone-600 border border-slate-200'
+                              : 'bg-amber-50 text-amber-800 border border-amber-200'
                           }`}
                         >
                           {c.status}
@@ -500,7 +494,7 @@ export const Clients: React.FC = () => {
                         {isAdmin && overdueClientsMap.has(c.id) && (
                           <span
                             title="Total vencido em aberto"
-                            className="inline-flex items-center text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.2 rounded border border-red-200"
+                            className="inline-flex items-center text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200"
                           >
                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
                               overdueClientsMap.get(c.id)?.totalOverdue || 0
@@ -511,24 +505,24 @@ export const Clients: React.FC = () => {
                     </td>
 
                     {/* Ações */}
-                    <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end space-x-1">
+                    <td className="py-4 px-5 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end space-x-1.5">
                         <button
                           type="button"
                           onClick={() => handleEdit(c)}
-                          className="p-1.5 text-gray-500 hover:text-[#C5A059] rounded-md hover:bg-amber-50 transition-colors"
+                          className="p-2 text-stone-400 hover:text-amber-700 rounded-xl hover:bg-amber-50 transition-colors cursor-pointer"
                           title="Editar cadastro do cliente"
                         >
-                          <Edit2 className="w-4 h-4" />
+                          <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         {isAdmin && (
                           <button
                             type="button"
                             onClick={() => handleDelete(c.id, c.razao_social)}
-                            className="p-1.5 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50 transition-colors"
+                            className="p-2 text-stone-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-colors cursor-pointer"
                             title="Excluir cliente"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
                       </div>
@@ -541,12 +535,12 @@ export const Clients: React.FC = () => {
         </div>
 
         {/* Rodapé da Tabela */}
-        <div className="p-3 bg-gray-50/70 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
+        <div className="p-3.5 px-6 bg-slate-50/70 border-t border-slate-200/60 flex items-center justify-between text-xs text-stone-500 rounded-b-3xl">
           <div>
-            Total exibido: <span className="font-semibold text-gray-800">{filteredClients.length}</span>{' '}
+            Total exibido: <span className="font-semibold text-stone-800">{filteredClients.length}</span>{' '}
             {filteredClients.length === 1 ? 'cliente' : 'clientes'}
           </div>
-          <div className="flex items-center space-x-1 text-[11px] text-gray-400">
+          <div className="flex items-center space-x-1.5 text-[11px] text-stone-400 font-medium">
             <Shield className="w-3.5 h-3.5 text-[#C5A059]" />
             <span>Dados protegidos por RLS</span>
           </div>

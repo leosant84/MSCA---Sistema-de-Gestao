@@ -62,13 +62,13 @@ export const CnpjCopyButton: React.FC<CnpjCopyButtonProps> = ({ cnpj, className 
         onClick={(e) => handleCopy('masked', e)}
         onDoubleClick={(e) => handleCopy('raw', e)}
         title="Clique simples: Copiar com máscara | Duplo clique: Copiar sem máscara"
-        className="inline-flex items-center space-x-1 font-mono text-xs text-gray-800 hover:text-[#C5A059] font-medium bg-gray-50 hover:bg-amber-50 px-2 py-1 rounded border border-gray-200 hover:border-[#C5A059] transition-all"
+        className="inline-flex items-center space-x-1.5 font-mono text-xs text-stone-800 hover:text-amber-900 font-semibold bg-amber-50/70 hover:bg-amber-100/80 px-2.5 py-1 rounded-xl border border-amber-200/60 hover:border-amber-300 transition-all shadow-xs"
       >
         <span>{maskedCnpj}</span>
         {copiedFormat ? (
           <Check className="w-3.5 h-3.5 text-emerald-600 animate-pulse ml-1" />
         ) : (
-          <Copy className="w-3.5 h-3.5 text-gray-400 group-hover:text-[#C5A059] ml-1" />
+          <Copy className="w-3.5 h-3.5 text-amber-700/60 group-hover:text-amber-800 ml-1 transition-colors" />
         )}
       </button>
 

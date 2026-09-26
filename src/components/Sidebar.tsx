@@ -13,10 +13,10 @@ export const Sidebar: React.FC = () => {
   };
 
   return (
-    <aside className="w-56 bg-stone-100/90 text-stone-800 flex flex-col justify-between shrink-0 h-screen sticky top-0 shadow-sm border-r border-amber-200/50 backdrop-blur-sm">
+    <aside className="w-60 bg-white/70 backdrop-blur-md text-stone-800 flex flex-col justify-between shrink-0 h-screen sticky top-0 border-r border-slate-200/60 shadow-sm z-20">
       <div>
-        {/* Logotipo e Cabeçalho Corporativo */}
-        <div className="p-3.5 border-b border-amber-200/40 bg-white/60">
+        {/* Logotipo e Cabeçalho Corporativo com efeito refinado */}
+        <div className="p-4 border-b border-slate-100/80 bg-white/40">
           <div className="w-full flex items-center justify-center">
             <img
               src="/logo-msca.png"
@@ -27,18 +27,18 @@ export const Sidebar: React.FC = () => {
         </div>
 
         {/* Menu de Navegação */}
-        <nav className="p-3 space-y-1">
-          <div className="text-[10px] font-bold text-amber-900/60 uppercase tracking-wider px-3 py-1 mb-1">
+        <nav className="p-3.5 space-y-1.5">
+          <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider px-3 py-1 mb-1">
             Módulos Principais
           </div>
 
           <NavLink
             to="/clientes"
             className={({ isActive }) =>
-              `flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+              `flex items-center space-x-3 px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition-all ${
                 isActive
-                  ? 'bg-[#C5A059] text-white shadow-sm shadow-[#C5A059]/30'
-                  : 'text-stone-600 hover:bg-amber-100/60 hover:text-amber-950'
+                  ? 'bg-gradient-to-r from-[#C5A059] to-[#D4B26F] text-white shadow-md shadow-[#C5A059]/25 scale-[1.02]'
+                  : 'text-stone-600 hover:bg-slate-100/80 hover:text-stone-900'
               }`
             }
           >
@@ -52,16 +52,16 @@ export const Sidebar: React.FC = () => {
               <NavLink
                 to="/financeiro"
                 className={({ isActive }) =>
-                  `flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                  `flex items-center space-x-3 px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition-all ${
                     isActive
-                      ? 'bg-[#C5A059] text-white shadow-sm shadow-[#C5A059]/30'
-                      : 'text-stone-600 hover:bg-amber-100/60 hover:text-amber-950'
+                      ? 'bg-gradient-to-r from-[#C5A059] to-[#D4B26F] text-white shadow-md shadow-[#C5A059]/25 scale-[1.02]'
+                      : 'text-stone-600 hover:bg-slate-100/80 hover:text-stone-900'
                   }`
                 }
               >
                 <DollarSign className="w-4 h-4 shrink-0" />
                 <span>Financeiro</span>
-                <span className="ml-auto text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                <span className="ml-auto text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100/90 text-emerald-800 border border-emerald-200/80">
                   Admin
                 </span>
               </NavLink>
@@ -69,16 +69,16 @@ export const Sidebar: React.FC = () => {
               <NavLink
                 to="/auditoria"
                 className={({ isActive }) =>
-                  `flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                  `flex items-center space-x-3 px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition-all ${
                     isActive
-                      ? 'bg-[#C5A059] text-white shadow-sm shadow-[#C5A059]/30'
-                      : 'text-stone-600 hover:bg-amber-100/60 hover:text-amber-950'
+                      ? 'bg-gradient-to-r from-[#C5A059] to-[#D4B26F] text-white shadow-md shadow-[#C5A059]/25 scale-[1.02]'
+                      : 'text-stone-600 hover:bg-slate-100/80 hover:text-stone-900'
                   }`
                 }
               >
                 <ShieldAlert className="w-4 h-4 shrink-0" />
                 <span>Auditoria</span>
-                <span className="ml-auto text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                <span className="ml-auto text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-100/90 text-amber-800 border border-amber-200/80">
                   Logs
                 </span>
               </NavLink>
@@ -89,10 +89,10 @@ export const Sidebar: React.FC = () => {
           <NavLink
             to="/configuracoes"
             className={({ isActive }) =>
-              `flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+              `flex items-center space-x-3 px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition-all ${
                 isActive
-                  ? 'bg-[#C5A059] text-white shadow-sm shadow-[#C5A059]/30'
-                  : 'text-stone-600 hover:bg-amber-100/60 hover:text-amber-950'
+                  ? 'bg-gradient-to-r from-[#C5A059] to-[#D4B26F] text-white shadow-md shadow-[#C5A059]/25 scale-[1.02]'
+                  : 'text-stone-600 hover:bg-slate-100/80 hover:text-stone-900'
               }`
             }
           >
@@ -103,9 +103,9 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Rodapé: Informações do Usuário e Logout */}
-      <div className="p-3 border-t border-amber-200/40 bg-white/40">
-        <div className="px-3 py-2 rounded-xl bg-amber-50/80 border border-amber-200/60 mb-2">
-          <div className="flex items-center space-x-2">
+      <div className="p-3.5 border-t border-slate-100/80 bg-white/40">
+        <div className="px-3.5 py-2.5 rounded-2xl bg-white/90 border border-slate-200/60 shadow-xs mb-2.5">
+          <div className="flex items-center space-x-2.5">
             {isAdmin ? (
               <ShieldCheck className="w-4 h-4 text-[#C5A059] shrink-0" />
             ) : (
@@ -115,7 +115,7 @@ export const Sidebar: React.FC = () => {
               <div className="text-xs font-bold text-stone-800 truncate">
                 {profile?.full_name || profile?.email || 'Usuário'}
               </div>
-              <div className="text-[9px] text-amber-800/80 uppercase font-semibold tracking-wider">
+              <div className="text-[10px] text-amber-800 uppercase font-semibold tracking-wider">
                 {role || 'Colaborador'}
               </div>
             </div>
@@ -125,7 +125,7 @@ export const Sidebar: React.FC = () => {
         <button
           type="button"
           onClick={handleLogout}
-          className="w-full flex items-center justify-center space-x-2 px-3 py-2 rounded-xl text-xs font-medium text-stone-500 hover:text-red-700 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all cursor-pointer"
+          className="w-full flex items-center justify-center space-x-2 px-3 py-2 rounded-xl text-xs font-medium text-stone-500 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 transition-all cursor-pointer"
         >
           <LogOut className="w-3.5 h-3.5" />
           <span>Sair do Sistema</span>
