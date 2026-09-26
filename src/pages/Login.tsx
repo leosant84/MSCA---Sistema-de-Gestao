@@ -69,7 +69,7 @@ export const Login: React.FC = () => {
             <img
               src="/logo-msca.png"
               alt="MS Contadores Associados"
-              className="h-28 sm:h-36 lg:h-44 w-auto object-contain drop-shadow-sm"
+              className="h-28 sm:h-36 lg:h-44 w-auto object-contain drop-shadow-sm mix-blend-multiply"
             />
           </div>
 
