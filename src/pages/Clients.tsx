@@ -53,7 +53,26 @@ export const Clients: React.FC = () => {
         name: client.razao_social,
         folder: client.numero_pasta || '',
       });
-      const res = await fetch(`/api/open-folder?${queryParams.toString()}`);
+
+      let res: Response | null = null;
+
+      // 1. Tenta comunicar prioritariamente com a ponte local na porta 39871
+      try {
+        res = await fetch(`http://127.0.0.1:39871/api/open-folder?${queryParams.toString()}`);
+      } catch {
+        // 2. Se falhar, tenta rota relativa local (útil para desenvolvimento local vite)
+        try {
+          res = await fetch(`/api/open-folder?${queryParams.toString()}`);
+        } catch {
+          res = null;
+        }
+      }
+
+      if (!res) {
+        toast('O serviço local de pastas não está ativo. Inicie o "iniciar_servico_pastas.bat" no computador.', 'error');
+        return;
+      }
+
       const data = await res.json();
       if (!res.ok || !data.success) {
         toast(data.message || 'Não foi possível abrir a pasta no Google Drive.', 'error');
@@ -65,7 +84,7 @@ export const Clients: React.FC = () => {
         }
       }
     } catch {
-      toast('Erro de comunicação com o serviço local para abrir pasta.', 'error');
+      toast('O serviço local de pastas não está ativo. Inicie o "iniciar_servico_pastas.bat" no computador.', 'error');
     }
   };
 
