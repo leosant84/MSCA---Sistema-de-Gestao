@@ -1,0 +1,636 @@
+import React, { useState } from 'react';
+import { X, Plus, Trash2, Shield, Globe, Building } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { useToast } from '../contexts/ToastContext';
+import type { Client } from '../types';
+
+interface ClientModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+  clientToEdit?: Client | null;
+}
+
+interface TempCredential {
+  id?: string;
+  sistema_nome: string;
+  login: string;
+  senha: string;
+}
+
+export const ClientModal: React.FC<ClientModalProps> = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  clientToEdit,
+}) => {
+  const { toast } = useToast();
+  const [submitting, setSubmitting] = useState(false);
+
+  // Campos principais de cliente
+  const [formData, setFormData] = useState({
+    razao_social: clientToEdit?.razao_social || '',
+    cnpj: clientToEdit?.cnpj || '',
+    cpf: clientToEdit?.cpf || '',
+    status: clientToEdit?.status || 'Ativo',
+    numero_pasta: clientToEdit?.numero_pasta || '',
+    sieg: clientToEdit?.sieg || 'Não',
+    nire: clientToEdit?.nire || '',
+    regime_tributario: clientToEdit?.regime_tributario || 'Simples Nacional',
+    puro_ou_hibrido: clientToEdit?.puro_ou_hibrido || 'Puro',
+    fator_r: clientToEdit?.fator_r || 'Não',
+    codigo_acesso_simples: clientToEdit?.codigo_acesso_simples || '',
+    inicio_atividades: clientToEdit?.inicio_atividades || '',
+    localidade: clientToEdit?.localidade || '',
+    login_prefeitura: clientToEdit?.login_prefeitura || '',
+    senha_prefeitura: clientToEdit?.senha_prefeitura || '',
+    login_posto_fiscal: clientToEdit?.login_posto_fiscal || '',
+    senha_posto_fiscal: clientToEdit?.senha_posto_fiscal || '',
+  });
+
+  // Flag para controlar se o Posto Fiscal foi adicionado/habilitado
+  const [hasPostoFiscal, setHasPostoFiscal] = useState<boolean>(() => {
+    return Boolean(clientToEdit?.login_posto_fiscal || clientToEdit?.senha_posto_fiscal);
+  });
+
+  // Credenciais dinâmicas extras
+  const [extraCredentials, setExtraCredentials] = useState<TempCredential[]>(() => {
+    if (clientToEdit?.client_credentials && clientToEdit.client_credentials.length > 0) {
+      return clientToEdit.client_credentials.map((c) => ({
+        id: c.id,
+        sistema_nome: c.sistema_nome,
+        login: c.login || '',
+        senha: c.senha || '',
+      }));
+    }
+    return [];
+  });
+
+  if (!isOpen) return null;
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleAddCredential = () => {
+    setExtraCredentials((prev) => [
+      ...prev,
+      { sistema_nome: '', login: '', senha: '' },
+    ]);
+  };
+
+  const handleRemoveCredential = (index: number) => {
+    setExtraCredentials((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleCredentialChange = (
+    index: number,
+    field: 'sistema_nome' | 'login' | 'senha',
+    val: string
+  ) => {
+    setExtraCredentials((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: val };
+      return updated;
+    });
+  };
+
+  const handleTogglePostoFiscal = () => {
+    if (hasPostoFiscal) {
+      // Se estiver desativando, limpa os campos
+      setFormData((prev) => ({
+        ...prev,
+        login_posto_fiscal: '',
+        senha_posto_fiscal: '',
+      }));
+      setHasPostoFiscal(false);
+    } else {
+      setHasPostoFiscal(true);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!formData.razao_social.trim()) {
+      toast('A Razão Social é obrigatória.', 'error');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const cleanCnpj = formData.cnpj ? formData.cnpj.replace(/\D/g, '') : null;
+      const cleanCpf = formData.cpf ? formData.cpf.replace(/\D/g, '') : null;
+
+      const payload = {
+        razao_social: formData.razao_social.trim(),
+        cnpj: cleanCnpj,
+        cpf: cleanCpf,
+        status: formData.status,
+        numero_pasta: formData.numero_pasta.trim() || null,
+        sieg: formData.sieg || 'Não',
+        nire: formData.nire.trim() || null,
+        regime_tributario: formData.regime_tributario || null,
+        puro_ou_hibrido: formData.puro_ou_hibrido || null,
+        fator_r: formData.fator_r || null,
+        codigo_acesso_simples: formData.codigo_acesso_simples.trim() || null,
+        inicio_atividades: formData.inicio_atividades || null,
+        localidade: formData.localidade.trim() || null,
+        login_prefeitura: formData.login_prefeitura.trim() || null,
+        senha_prefeitura: formData.senha_prefeitura.trim() || null,
+        login_posto_fiscal: hasPostoFiscal ? (formData.login_posto_fiscal.trim() || null) : null,
+        senha_posto_fiscal: hasPostoFiscal ? (formData.senha_posto_fiscal.trim() || null) : null,
+      };
+
+      let clientId = clientToEdit?.id;
+
+      if (clientToEdit) {
+        // Atualização
+        const { error } = await supabase
+          .from('clients')
+          .update(payload)
+          .eq('id', clientToEdit.id);
+
+        if (error) throw error;
+      } else {
+        // Inserção
+        const { data, error } = await supabase
+          .from('clients')
+          .insert([payload])
+          .select('id')
+          .single();
+
+        if (error) throw error;
+        clientId = data.id;
+      }
+
+      // Sincronização de credenciais adicionais
+      if (clientId) {
+        // Deleta antigas para regravar limpo ou sincronizar
+        await supabase.from('client_credentials').delete().eq('client_id', clientId);
+
+        const validCredentials = extraCredentials
+          .filter((c) => c.sistema_nome.trim().length > 0)
+          .map((c) => ({
+            client_id: clientId,
+            sistema_nome: c.sistema_nome.trim(),
+            login: c.login.trim() || null,
+            senha: c.senha.trim() || null,
+          }));
+
+        if (validCredentials.length > 0) {
+          const { error: credError } = await supabase
+            .from('client_credentials')
+            .insert(validCredentials);
+          if (credError) throw credError;
+        }
+      }
+
+      toast(
+        clientToEdit ? 'Cliente atualizado com sucesso!' : 'Cliente cadastrado com sucesso!',
+        'success'
+      );
+      onSuccess();
+      onClose();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao salvar dados do cliente.';
+      toast(msg, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
+        {/* Cabeçalho do Modal */}
+        <div className="p-5 border-b border-gray-200 flex items-center justify-between bg-[#1E2022] text-white">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-lg bg-[#C5A059] flex items-center justify-center text-white">
+              <Building className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold">
+                {clientToEdit ? 'Editar Cliente' : 'Novo Cliente'}
+              </h2>
+              <p className="text-xs text-[#C5A059]">
+                Preencha os dados cadastrais, acesso à Prefeitura e sistemas opcionais
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-400 hover:text-white p-1 rounded-md transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Formulário com Scroll Interno */}
+        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto flex-1 space-y-6">
+          {/* Seção 1: Identificação Cadastral */}
+          <div>
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center space-x-1.5">
+              <span>1. Identificação Operacional</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Razão Social *
+                </label>
+                <input
+                  type="text"
+                  name="razao_social"
+                  required
+                  value={formData.razao_social}
+                  onChange={handleInputChange}
+                  placeholder="Nome empresarial completo"
+                  className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Status
+                </label>
+                <select
+                  name="status"
+                  value={formData.status}
+                  onChange={handleInputChange}
+                  className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                >
+                  <option value="Ativo">Ativo</option>
+                  <option value="Inativo">Inativo</option>
+                  <option value="Bloqueado">Bloqueado</option>
+                  <option value="Suspenso">Suspenso</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  CNPJ (Apenas números)
+                </label>
+                <input
+                  type="text"
+                  name="cnpj"
+                  maxLength={14}
+                  value={formData.cnpj}
+                  onChange={handleInputChange}
+                  placeholder="00000000000000"
+                  className="w-full text-xs font-mono px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  CPF
+                </label>
+                <input
+                  type="text"
+                  name="cpf"
+                  maxLength={11}
+                  value={formData.cpf}
+                  onChange={handleInputChange}
+                  placeholder="00000000000"
+                  className="w-full text-xs font-mono px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Nº
+                </label>
+                <input
+                  type="text"
+                  name="numero_pasta"
+                  value={formData.numero_pasta}
+                  onChange={handleInputChange}
+                  placeholder="Ex: 042"
+                  className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  SIEG
+                </label>
+                <select
+                  name="sieg"
+                  value={formData.sieg}
+                  onChange={handleInputChange}
+                  className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                >
+                  <option value="Não">Não</option>
+                  <option value="Sim">Sim</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  NIRE
+                </label>
+                <input
+                  type="text"
+                  name="nire"
+                  value={formData.nire}
+                  onChange={handleInputChange}
+                  placeholder="Número de Registro"
+                  className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Localidade (Cidade/UF)
+                </label>
+                <input
+                  type="text"
+                  name="localidade"
+                  value={formData.localidade}
+                  onChange={handleInputChange}
+                  placeholder="Ex: São Paulo/SP"
+                  className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Início das Atividades
+                </label>
+                <input
+                  type="date"
+                  name="inicio_atividades"
+                  value={formData.inicio_atividades}
+                  onChange={handleInputChange}
+                  className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Regime Tributário
+                </label>
+                <select
+                  name="regime_tributario"
+                  value={formData.regime_tributario}
+                  onChange={handleInputChange}
+                  className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                >
+                  <option value="Simples Nacional">Simples Nacional</option>
+                  <option value="Lucro Presumido">Lucro Presumido</option>
+                  <option value="Lucro Real">Lucro Real</option>
+                  <option value="MEI">MEI</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Puro ou Híbrido
+                </label>
+                <select
+                  name="puro_ou_hibrido"
+                  value={formData.puro_ou_hibrido}
+                  onChange={handleInputChange}
+                  className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                >
+                  <option value="Puro">Puro</option>
+                  <option value="Híbrido">Híbrido</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Fator R
+                </label>
+                <select
+                  name="fator_r"
+                  value={formData.fator_r}
+                  onChange={handleInputChange}
+                  className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                >
+                  <option value="Não">Não</option>
+                  <option value="Sim">Sim</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Código de Acesso Simples
+                </label>
+                <input
+                  type="text"
+                  name="codigo_acesso_simples"
+                  value={formData.codigo_acesso_simples}
+                  onChange={handleInputChange}
+                  placeholder="Ex: 12345678"
+                  className="w-full text-xs font-mono px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Seção 2: Portal Fixo Principal (Prefeitura) */}
+          <div className="pt-4 border-t border-gray-200">
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center space-x-1.5">
+              <Shield className="w-3.5 h-3.5 text-[#C5A059]" />
+              <span>2. Acesso Fixo Principal (Prefeitura)</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50/70 p-4 rounded-xl border border-gray-200">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Prefeitura - Login
+                </label>
+                <input
+                  type="text"
+                  name="login_prefeitura"
+                  value={formData.login_prefeitura}
+                  onChange={handleInputChange}
+                  placeholder="Login ou Inscrição Municipal"
+                  className="w-full text-xs px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Prefeitura - Senha
+                </label>
+                <input
+                  type="text"
+                  name="senha_prefeitura"
+                  value={formData.senha_prefeitura}
+                  onChange={handleInputChange}
+                  placeholder="Senha da Prefeitura"
+                  className="w-full text-xs px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Seção 3: Posto Fiscal (Opcional) */}
+          <div className="pt-4 border-t border-gray-200">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center space-x-1.5">
+                <Shield className="w-3.5 h-3.5 text-blue-600" />
+                <span>3. Posto Fiscal (Opcional)</span>
+              </h3>
+              {!hasPostoFiscal && (
+                <button
+                  type="button"
+                  onClick={handleTogglePostoFiscal}
+                  className="inline-flex items-center space-x-1 px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Adicionar Posto Fiscal</span>
+                </button>
+              )}
+            </div>
+
+            {hasPostoFiscal ? (
+              <div className="bg-blue-50/40 p-4 rounded-xl border border-blue-200 relative">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-semibold text-blue-900">
+                    Credenciais do Posto Fiscal
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleTogglePostoFiscal}
+                    className="inline-flex items-center space-x-1 text-xs text-red-600 hover:text-red-700 font-medium"
+                    title="Remover Posto Fiscal"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remover</span>
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Posto Fiscal - Login
+                    </label>
+                    <input
+                      type="text"
+                      name="login_posto_fiscal"
+                      value={formData.login_posto_fiscal}
+                      onChange={handleInputChange}
+                      placeholder="Usuário / Certificado"
+                      className="w-full text-xs px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Posto Fiscal - Senha
+                    </label>
+                    <input
+                      type="text"
+                      name="senha_posto_fiscal"
+                      value={formData.senha_posto_fiscal}
+                      onChange={handleInputChange}
+                      placeholder="Senha do Posto Fiscal"
+                      className="w-full text-xs px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-3 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-xs text-gray-400">
+                Posto Fiscal não habilitado para este cliente. Clique em "Adicionar Posto Fiscal" caso necessário.
+              </div>
+            )}
+          </div>
+
+          {/* Seção 4: Sistemas Externos Adicionais */}
+          <div className="pt-4 border-t border-gray-200">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center space-x-1.5">
+                <Globe className="w-3.5 h-3.5 text-[#C5A059]" />
+                <span>4. Sistemas Externos Adicionais</span>
+              </h3>
+              <button
+                type="button"
+                onClick={handleAddCredential}
+                className="inline-flex items-center space-x-1 px-2.5 py-1 text-xs font-medium text-[#C5A059] bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Adicionar Sistema</span>
+              </button>
+            </div>
+
+            {extraCredentials.length === 0 ? (
+              <div className="text-center py-4 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-xs text-gray-400">
+                Nenhum sistema externo adicional vinculado. Clique no botão acima para adicionar.
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {extraCredentials.map((cred, idx) => (
+                  <div
+                    key={idx}
+                    className="grid grid-cols-1 md:grid-cols-10 gap-2 items-center bg-gray-50 p-2.5 rounded-lg border border-gray-200"
+                  >
+                    <div className="md:col-span-3">
+                      <input
+                        type="text"
+                        placeholder="Nome do Sistema (Ex: ERP, e-CAC)"
+                        value={cred.sistema_nome}
+                        onChange={(e) => handleCredentialChange(idx, 'sistema_nome', e.target.value)}
+                        className="w-full text-xs px-2.5 py-1.5 bg-white border border-gray-300 rounded-md focus:ring-1 focus:ring-[#C5A059]"
+                      />
+                    </div>
+                    <div className="md:col-span-3">
+                      <input
+                        type="text"
+                        placeholder="Login / Usuário"
+                        value={cred.login}
+                        onChange={(e) => handleCredentialChange(idx, 'login', e.target.value)}
+                        className="w-full text-xs px-2.5 py-1.5 bg-white border border-gray-300 rounded-md focus:ring-1 focus:ring-[#C5A059]"
+                      />
+                    </div>
+                    <div className="md:col-span-3">
+                      <input
+                        type="text"
+                        placeholder="Senha de Acesso"
+                        value={cred.senha}
+                        onChange={(e) => handleCredentialChange(idx, 'senha', e.target.value)}
+                        className="w-full text-xs px-2.5 py-1.5 bg-white border border-gray-300 rounded-md focus:ring-1 focus:ring-[#C5A059]"
+                      />
+                    </div>
+                    <div className="md:col-span-1 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCredential(idx)}
+                        className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors"
+                        title="Remover este sistema"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Rodapé e Ações do Formulário */}
+          <div className="pt-4 border-t border-gray-200 flex items-center justify-end space-x-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-5 py-2 text-xs font-semibold text-white bg-[#C5A059] hover:bg-[#9E7B35] rounded-lg shadow-sm transition-all disabled:opacity-50"
+            >
+              {submitting ? 'Salvando...' : clientToEdit ? 'Atualizar Cliente' : 'Cadastrar Cliente'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
