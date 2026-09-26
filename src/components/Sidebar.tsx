@@ -61,7 +61,7 @@ export const Sidebar: React.FC = () => {
               >
                 <DollarSign className="w-4 h-4 shrink-0" />
                 <span>Financeiro</span>
-                <span className="ml-auto text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100/90 text-emerald-800 border border-emerald-200/80">
+                <span className="ml-auto text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-stone-500 border border-slate-200">
                   Admin
                 </span>
               </NavLink>
@@ -78,7 +78,7 @@ export const Sidebar: React.FC = () => {
               >
                 <ShieldAlert className="w-4 h-4 shrink-0" />
                 <span>Auditoria</span>
-                <span className="ml-auto text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-100/90 text-amber-800 border border-amber-200/80">
+                <span className="ml-auto text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-stone-500 border border-slate-200">
                   Logs
                 </span>
               </NavLink>

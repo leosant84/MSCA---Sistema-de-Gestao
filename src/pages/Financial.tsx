@@ -19,8 +19,11 @@ import {
   TrendingUp,
   PieChart,
   Users,
-  AlertTriangle
+  AlertTriangle,
+  CalendarDays,
+  ArrowDownLeft
 } from 'lucide-react';
+import { getEntryDueDate } from '../utils/competencia';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { FinancialEntryModal } from '../components/FinancialEntryModal';
@@ -306,6 +309,100 @@ export const Financial: React.FC = () => {
     };
   }, [entries, expenses, filteredEntries, filteredExpenses]);
 
+  // Agenda de Próximos Compromissos Financeiros (A Pagar e A Receber)
+  const agendaCommitments = useMemo(() => {
+    interface AgendaItem {
+      id: string;
+      tipo: 'RECEBER' | 'PAGAR';
+      titulo: string;
+      detalhe: string;
+      dataObj: Date;
+      dataFormatted: string;
+      valor: number;
+      status: string;
+      isOverdue: boolean;
+      diasDiferenca: number;
+    }
+
+    const items: AgendaItem[] = [];
+    const now = new Date();
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // 1. Recebíveis pendentes
+    entries
+      .filter((e) => e.status === 'À RECEBER')
+      .forEach((e) => {
+        const dueDate = getEntryDueDate(e.competencia, e.observacao);
+        const diffDays = Math.ceil((dueDate.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
+        const dayStr = String(dueDate.getDate()).padStart(2, '0');
+        const monthStr = String(dueDate.getMonth() + 1).padStart(2, '0');
+        const yearStr = dueDate.getFullYear();
+
+        items.push({
+          id: `entry-${e.id}`,
+          tipo: 'RECEBER',
+          titulo: e.client?.razao_social || e.cliente_nome_avulso || 'Recebimento de Cliente',
+          detalhe: `${e.conta_contabil} • Comp: ${e.competencia}`,
+          dataObj: dueDate,
+          dataFormatted: `${dayStr}/${monthStr}/${yearStr}`,
+          valor: Number(e.valor || 0),
+          status: e.status,
+          isOverdue: dueDate.getTime() < todayMidnight.getTime(),
+          diasDiferenca: diffDays,
+        });
+      });
+
+    // 2. Pagamentos a pagar (saídas)
+    expenses
+      .filter((ex) => ex.status === 'A pagar')
+      .forEach((ex) => {
+        let dueDate = new Date();
+        if (ex.data_pagamento_previsao) {
+          const [y, m, d] = ex.data_pagamento_previsao.split('-').map(Number);
+          if (y && m && d) {
+            dueDate = new Date(y, m - 1, d, 23, 59, 59);
+          }
+        }
+        const diffDays = Math.ceil((dueDate.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
+        const dayStr = String(dueDate.getDate()).padStart(2, '0');
+        const monthStr = String(dueDate.getMonth() + 1).padStart(2, '0');
+        const yearStr = dueDate.getFullYear();
+
+        items.push({
+          id: `expense-${ex.id}`,
+          tipo: 'PAGAR',
+          titulo: ex.descricao_pagamento,
+          detalhe: `${ex.conta_contabil} • Banco: ${ex.banco}`,
+          dataObj: dueDate,
+          dataFormatted: `${dayStr}/${monthStr}/${yearStr}`,
+          valor: Number(ex.valor || 0),
+          status: ex.status,
+          isOverdue: dueDate.getTime() < todayMidnight.getTime(),
+          diasDiferenca: diffDays,
+        });
+      });
+
+    // Ordena do mais próximo / atrasado para frente
+    items.sort((a, b) => a.dataObj.getTime() - b.dataObj.getTime());
+
+    // Totais da agenda
+    const totalReceberAgenda = items
+      .filter((i) => i.tipo === 'RECEBER')
+      .reduce((acc, curr) => acc + curr.valor, 0);
+
+    const totalPagarAgenda = items
+      .filter((i) => i.tipo === 'PAGAR')
+      .reduce((acc, curr) => acc + curr.valor, 0);
+
+    return {
+      items: items.slice(0, 10), // Próximos 10 compromissos
+      totalCount: items.length,
+      totalReceberAgenda,
+      totalPagarAgenda,
+      saldoPrevisto: totalReceberAgenda - totalPagarAgenda,
+    };
+  }, [entries, expenses]);
+
   // Lista de competências disponíveis para escolha
   const availableCompetencias = useMemo(() => {
     const comps = new Set<string>();
@@ -572,110 +669,7 @@ export const Financial: React.FC = () => {
 
       {/* DASHBOARD ANALÍTICO (Abaixo dos Cards) */}
       <div className="space-y-4">
-        {/* Linha 1 do Dashboard: Inadimplência e Recebíveis em Atraso (Layout idêntico à imagem de referência) */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          
-          {/* Card: Índice de Inadimplência */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between relative overflow-hidden">
-            {/* Detalhe de fundo com marca d'água de gráfico */}
-            <div className="absolute right-0 bottom-0 opacity-5 pointer-events-none pr-4 pb-2">
-              <TrendingUp className="w-32 h-32 text-gray-900" />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-700">Índice de Inadimplência</span>
-                <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                  Carteira Geral
-                </span>
-              </div>
-
-              <div className="mt-3 flex items-baseline space-x-3">
-                <span className="text-3xl sm:text-4xl font-extrabold text-rose-600 tracking-tight">
-                  {analyticsData.taxaInadimplencia.toFixed(1).replace('.', ',')}%
-                </span>
-                <div className="flex items-center space-x-1 text-xs font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100">
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                  <span>Em aberto</span>
-                </div>
-              </div>
-
-              <p className="text-[11px] text-gray-400 mt-1">
-                Percentual do volume total a receber não liquidado
-              </p>
-            </div>
-
-            {/* Rodapé do Card Inadimplência com ícone de alerta destacado */}
-            <div className="mt-5 pt-3.5 border-t border-gray-100 flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-md shadow-rose-200 shrink-0">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-gray-800">
-                  Recebíveis em Aberto
-                </div>
-                <div className="text-[11px] text-gray-500">
-                  {analyticsData.totalTitulosAtraso} título(s) pendente(s) de liquidação
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Card: Recebíveis em Atraso com Gráfico de Aging (Faixas de Dias) */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-700">Recebíveis em Atraso</span>
-                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-                  Total Pendente
-                </span>
-              </div>
-
-              <div className="mt-2">
-                <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
-                  {formatCurrency(analyticsData.valorEmAtraso)}
-                </div>
-                <div className="text-xs text-gray-500 mt-0.5">
-                  {analyticsData.totalTitulosAtraso} títulos vencidos ou a vencer
-                </div>
-              </div>
-            </div>
-
-            {/* Gráfico de Barras Vermelhas (Aging de Dias como na imagem) */}
-            <div className="mt-5">
-              <div className="h-24 flex items-end justify-between gap-3 px-2 pt-2 border-b border-gray-100">
-                {analyticsData.faixasAging.map((faixa, idx) => {
-                  const alturaPercent = Math.max(
-                    15,
-                    Math.round((faixa.valor / analyticsData.maxAgingValor) * 100)
-                  );
-                  return (
-                    <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
-                      <div className="text-[9px] font-bold text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity mb-1">
-                        {formatCurrency(faixa.valor)}
-                      </div>
-                      <div
-                        style={{ height: `${alturaPercent}%` }}
-                        className="w-full max-w-[42px] bg-gradient-to-t from-rose-600 to-rose-500 rounded-t-md shadow-xs transition-all duration-500 group-hover:from-rose-700 group-hover:to-rose-600"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Rótulos das Faixas de Dias */}
-              <div className="flex justify-between text-[10px] text-gray-400 font-medium mt-1.5 px-2">
-                <span>1-30 dias</span>
-                <span>31-60 dias</span>
-                <span>61-90 dias</span>
-                <span>Mais de 90 dias</span>
-              </div>
-            </div>
-          </div>
-
-        </div>
-
-        {/* Linha 2 do Dashboard: 3 Colunas Analíticas */}
+        {/* Linha 1 do Dashboard: 3 Colunas Analíticas (Evolução, Distribuição e Clientes) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           
           {/* Bloco 1: Evolução Receita vs Despesa */}
@@ -692,7 +686,7 @@ export const Financial: React.FC = () => {
               </div>
             </div>
 
-            {/* Mini Gráfico de Barras Duplas (Receitas em Verde, Despesas em Cinza/Vermelho) */}
+            {/* Mini Gráfico de Barras Duplas (Receitas em Verde, Despesas em Dourado/Âmbar) */}
             <div className="my-4 space-y-3">
               {analyticsData.evolucaoList.length === 0 ? (
                 <div className="py-8 text-center text-xs text-gray-400">
@@ -846,6 +840,220 @@ export const Financial: React.FC = () => {
           </div>
 
         </div>
+
+        {/* Linha 2 do Dashboard: Inadimplência e Recebíveis em Atraso (Posicionado abaixo dos 3 blocos) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          
+          {/* Card: Índice de Inadimplência */}
+          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between relative overflow-hidden">
+            {/* Detalhe de fundo com marca d'água de gráfico */}
+            <div className="absolute right-0 bottom-0 opacity-5 pointer-events-none pr-4 pb-2">
+              <TrendingUp className="w-32 h-32 text-gray-900" />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-700">Índice de Inadimplência</span>
+                <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                  Carteira Geral
+                </span>
+              </div>
+
+              <div className="mt-3 flex items-baseline space-x-3">
+                <span className="text-3xl sm:text-4xl font-extrabold text-rose-600 tracking-tight">
+                  {analyticsData.taxaInadimplencia.toFixed(1).replace('.', ',')}%
+                </span>
+                <div className="flex items-center space-x-1 text-xs font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100">
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                  <span>Em aberto</span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-gray-400 mt-1">
+                Percentual do volume total a receber não liquidado
+              </p>
+            </div>
+
+            {/* Rodapé do Card Inadimplência com ícone de alerta destacado */}
+            <div className="mt-5 pt-3.5 border-t border-gray-100 flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-md shadow-rose-200 shrink-0">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-gray-800">
+                  Recebíveis em Aberto
+                </div>
+                <div className="text-[11px] text-gray-500">
+                  {analyticsData.totalTitulosAtraso} título(s) pendente(s) de liquidação
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card: Recebíveis em Atraso com Gráfico de Aging (Faixas de Dias) */}
+          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-700">Recebíveis em Atraso</span>
+                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                  Total Pendente
+                </span>
+              </div>
+
+              <div className="mt-2">
+                <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
+                  {formatCurrency(analyticsData.valorEmAtraso)}
+                </div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {analyticsData.totalTitulosAtraso} títulos vencidos ou a vencer
+                </div>
+              </div>
+            </div>
+
+            {/* Gráfico de Barras Vermelhas (Aging de Dias como na imagem) */}
+            <div className="mt-5">
+              <div className="h-24 flex items-end justify-between gap-3 px-2 pt-2 border-b border-gray-100">
+                {analyticsData.faixasAging.map((faixa, idx) => {
+                  const alturaPercent = Math.max(
+                    15,
+                    Math.round((faixa.valor / analyticsData.maxAgingValor) * 100)
+                  );
+                  return (
+                    <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
+                      <div className="text-[9px] font-bold text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity mb-1">
+                        {formatCurrency(faixa.valor)}
+                      </div>
+                      <div
+                        style={{ height: `${alturaPercent}%` }}
+                        className="w-full max-w-[42px] bg-gradient-to-t from-rose-600 to-rose-500 rounded-t-md shadow-xs transition-all duration-500 group-hover:from-rose-700 group-hover:to-rose-600"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Rótulos das Faixas de Dias */}
+              <div className="flex justify-between text-[10px] text-gray-400 font-medium mt-1.5 px-2">
+                <span>1-30 dias</span>
+                <span>31-60 dias</span>
+                <span>61-90 dias</span>
+                <span>Mais de 90 dias</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Linha 3 do Dashboard: Agenda Financeira (Próximos compromissos a pagar e a receber) */}
+        <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-gray-100 gap-3">
+            <div className="flex items-center space-x-2.5">
+              <div className="p-2 rounded-xl bg-amber-50 text-[#C5A059] border border-amber-200/60">
+                <CalendarDays className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 flex items-center space-x-2">
+                  <span>Agenda Financeira</span>
+                  <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                    {agendaCommitments.totalCount} compromisso(s)
+                  </span>
+                </h3>
+                <p className="text-[11px] text-gray-400">
+                  Próximos compromissos cronológicos a pagar e a receber
+                </p>
+              </div>
+            </div>
+
+            {/* Balanço Rápido da Agenda */}
+            <div className="flex items-center space-x-4 text-xs">
+              <div className="flex items-center space-x-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span className="text-gray-500">A Receber:</span>
+                <span className="font-bold text-emerald-700">
+                  {formatCurrency(agendaCommitments.totalReceberAgenda)}
+                </span>
+              </div>
+              <div className="flex items-center space-x-1.5">
+                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                <span className="text-gray-500">A Pagar:</span>
+                <span className="font-bold text-rose-700">
+                  {formatCurrency(agendaCommitments.totalPagarAgenda)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Lista de Itens da Agenda */}
+          <div className="mt-3.5 divide-y divide-gray-100">
+            {agendaCommitments.items.length === 0 ? (
+              <div className="py-8 text-center text-xs text-gray-400">
+                Nenhum compromisso financeiro pendente na agenda.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                {agendaCommitments.items.map((item) => {
+                  const isReceber = item.tipo === 'RECEBER';
+                  return (
+                    <div
+                      key={item.id}
+                      className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+                        item.isOverdue
+                          ? 'bg-rose-50/40 border-rose-200/80 hover:bg-rose-50/70'
+                          : isReceber
+                          ? 'bg-emerald-50/30 border-emerald-100 hover:bg-emerald-50/60'
+                          : 'bg-slate-50/50 border-slate-200/70 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3 truncate">
+                        <div
+                          className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                            isReceber
+                              ? 'bg-emerald-100/80 text-emerald-700'
+                              : 'bg-rose-100/80 text-rose-700'
+                          }`}
+                        >
+                          {isReceber ? (
+                            <ArrowDownLeft className="w-4 h-4" />
+                          ) : (
+                            <ArrowUpRight className="w-4 h-4" />
+                          )}
+                        </div>
+                        <div className="truncate">
+                          <div className="flex items-center space-x-1.5">
+                            <span className="text-xs font-bold text-gray-900 truncate" title={item.titulo}>
+                              {item.titulo}
+                            </span>
+                            {item.isOverdue && (
+                              <span className="text-[9px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded-md shrink-0">
+                                Vencido
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-gray-500 truncate mt-0.5">
+                            {item.detalhe}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0 ml-3">
+                        <div
+                          className={`text-xs font-bold font-mono ${
+                            isReceber ? 'text-emerald-700' : 'text-rose-700'
+                          }`}
+                        >
+                          {isReceber ? '+' : '-'} {formatCurrency(item.valor)}
+                        </div>
+                        <div className="text-[10px] font-medium text-gray-400 mt-0.5">
+                          Venc: <strong className="text-gray-700">{item.dataFormatted}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Barra de Filtros e Controles */}
@@ -976,10 +1184,10 @@ export const Financial: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setEntryViewFilter('TODOS')}
-                className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
                   entryViewFilter === 'TODOS'
-                    ? 'bg-[#1E2022] text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? 'bg-stone-800 text-white shadow-xs'
+                    : 'bg-slate-100 text-stone-600 hover:bg-slate-200/80 border border-slate-200/60'
                 }`}
               >
                 Todos ({entries.length})
@@ -987,15 +1195,15 @@ export const Financial: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setEntryViewFilter('À RECEBER')}
-                className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
+                className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all ${
                   entryViewFilter === 'À RECEBER'
-                    ? 'bg-rose-600 text-white shadow-xs'
-                    : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+                    ? 'bg-stone-800 text-white shadow-xs'
+                    : 'bg-slate-100 text-stone-600 hover:bg-slate-200/80 border border-slate-200/60'
                 }`}
               >
                 <span>À RECEBER</span>
                 <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                  entryViewFilter === 'À RECEBER' ? 'bg-white text-rose-700' : 'bg-rose-200 text-rose-800'
+                  entryViewFilter === 'À RECEBER' ? 'bg-white/20 text-white' : 'bg-slate-200 text-stone-700'
                 }`}>
                   {pendingCount}
                 </span>
@@ -1003,10 +1211,10 @@ export const Financial: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setEntryViewFilter('RECEBIDO')}
-                className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
                   entryViewFilter === 'RECEBIDO'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                    ? 'bg-stone-800 text-white shadow-xs'
+                    : 'bg-slate-100 text-stone-600 hover:bg-slate-200/80 border border-slate-200/60'
                 }`}
               >
                 RECEBIDO
@@ -1014,10 +1222,10 @@ export const Financial: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setEntryViewFilter('PERMUTA')}
-                className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
                   entryViewFilter === 'PERMUTA'
-                    ? 'bg-gray-700 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
+                    ? 'bg-stone-800 text-white shadow-xs'
+                    : 'bg-slate-100 text-stone-600 hover:bg-slate-200/80 border border-slate-200/60'
                 }`}
               >
                 PERMUTA
@@ -1025,10 +1233,10 @@ export const Financial: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setEntryViewFilter('INDICAÇÃO')}
-                className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
                   entryViewFilter === 'INDICAÇÃO'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200'
+                    ? 'bg-stone-800 text-white shadow-xs'
+                    : 'bg-slate-100 text-stone-600 hover:bg-slate-200/80 border border-slate-200/60'
                 }`}
               >
                 INDICAÇÃO
@@ -1036,10 +1244,10 @@ export const Financial: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setEntryViewFilter('PREJUÍZO')}
-                className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
                   entryViewFilter === 'PREJUÍZO'
-                    ? 'bg-red-800 text-white'
-                    : 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
+                    ? 'bg-stone-800 text-white shadow-xs'
+                    : 'bg-slate-100 text-stone-600 hover:bg-slate-200/80 border border-slate-200/60'
                 }`}
               >
                 PREJUÍZO
@@ -1047,10 +1255,10 @@ export const Financial: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setEntryViewFilter('ISENTO')}
-                className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
                   entryViewFilter === 'ISENTO'
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
+                    ? 'bg-stone-800 text-white shadow-xs'
+                    : 'bg-slate-100 text-stone-600 hover:bg-slate-200/80 border border-slate-200/60'
                 }`}
               >
                 ISENTO
@@ -1058,10 +1266,10 @@ export const Financial: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setEntryViewFilter('PARCELADO')}
-                className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
                   entryViewFilter === 'PARCELADO'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                    ? 'bg-stone-800 text-white shadow-xs'
+                    : 'bg-slate-100 text-stone-600 hover:bg-slate-200/80 border border-slate-200/60'
                 }`}
               >
                 PARCELADO
@@ -1069,10 +1277,10 @@ export const Financial: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setEntryViewFilter('PROTESTADO')}
-                className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
                   entryViewFilter === 'PROTESTADO'
-                    ? 'bg-zinc-800 text-white'
-                    : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border border-zinc-300'
+                    ? 'bg-stone-800 text-white shadow-xs'
+                    : 'bg-slate-100 text-stone-600 hover:bg-slate-200/80 border border-slate-200/60'
                 }`}
               >
                 PROTESTADO
