@@ -221,7 +221,7 @@ export const AuditLogs: React.FC = () => {
   }, [logs]);
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="space-y-6">
       {/* Cabeçalho da Página */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
