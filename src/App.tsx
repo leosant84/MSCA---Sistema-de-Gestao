@@ -7,6 +7,7 @@ import { Login } from './pages/Login';
 import { Clients } from './pages/Clients';
 import { Financial } from './pages/Financial';
 import { AuditLogs } from './pages/AuditLogs';
+import { Settings } from './pages/Settings';
 
 export function App() {
   return (
@@ -48,6 +49,9 @@ export function App() {
                   </ProtectedRoute>
                 }
               />
+
+              {/* Rota de Configurações e Troca de Senha (todos os autenticados) */}
+              <Route path="configuracoes" element={<Settings />} />
             </Route>
 
             {/* Redirecionamento Padrão */}

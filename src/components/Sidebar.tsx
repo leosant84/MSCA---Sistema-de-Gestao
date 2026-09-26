@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Users, DollarSign, LogOut, ShieldCheck, UserCheck, ShieldAlert } from 'lucide-react';
+import { Users, DollarSign, LogOut, ShieldCheck, UserCheck, ShieldAlert, Settings as SettingsIcon } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export const Sidebar: React.FC = () => {
@@ -84,6 +84,21 @@ export const Sidebar: React.FC = () => {
               </NavLink>
             </>
           )}
+
+          {/* Configurações de Senha e Perfil acessível a todos os usuários autenticados */}
+          <NavLink
+            to="/configuracoes"
+            className={({ isActive }) =>
+              `flex items-center space-x-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                isActive
+                  ? 'bg-[#C5A059] text-white shadow-md'
+                  : 'text-gray-300 hover:bg-[#2B2D2F] hover:text-white'
+              }`
+            }
+          >
+            <SettingsIcon className="w-4 h-4" />
+            <span>Configurações</span>
+          </NavLink>
         </nav>
       </div>
 

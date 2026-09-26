@@ -145,6 +145,13 @@ export const AuditLogs: React.FC = () => {
             <span>LANÇAMENTO EM LOTE</span>
           </span>
         );
+      case 'PASSWORD_CHANGE':
+        return (
+          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-300">
+            <Lock className="w-3 h-3" />
+            <span>ALTERAÇÃO DE SENHA</span>
+          </span>
+        );
       default:
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-700 border border-gray-200">
@@ -189,6 +196,13 @@ export const AuditLogs: React.FC = () => {
           <span className="inline-flex items-center space-x-1 text-amber-800 font-semibold">
             <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
             <span>Segurança</span>
+          </span>
+        );
+      case 'USER':
+        return (
+          <span className="inline-flex items-center space-x-1 text-indigo-700 font-semibold">
+            <Lock className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Conta de Usuário</span>
           </span>
         );
       default:
@@ -290,6 +304,7 @@ export const AuditLogs: React.FC = () => {
                 <option value="BATCH_INSERT">Lançamento em Lote</option>
                 <option value="UPDATE">Edição</option>
                 <option value="DELETE">Exclusão</option>
+                <option value="PASSWORD_CHANGE">Alteração de Senha</option>
                 <option value="ACCESS_DENIED">Acesso Bloqueado</option>
               </select>
             </div>
@@ -307,6 +322,7 @@ export const AuditLogs: React.FC = () => {
                 <option value="CREDENTIAL">Credenciais / Senhas</option>
                 <option value="FINANCIAL_ENTRY">Entradas Financeiras</option>
                 <option value="FINANCIAL_EXPENSE">Saídas / Pagamentos</option>
+                <option value="USER">Conta de Usuário</option>
                 <option value="SECURITY">Segurança</option>
               </select>
             </div>

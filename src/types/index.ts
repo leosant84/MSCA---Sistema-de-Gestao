@@ -91,13 +91,14 @@ export interface FinancialExpense {
   created_at?: string;
 }
 
-export type AuditAction = 'INSERT' | 'UPDATE' | 'DELETE' | 'ACCESS_DENIED' | 'BATCH_INSERT';
+export type AuditAction = 'INSERT' | 'UPDATE' | 'DELETE' | 'ACCESS_DENIED' | 'BATCH_INSERT' | 'PASSWORD_CHANGE';
 export type AuditEntity =
   | 'CLIENT'
   | 'CREDENTIAL'
   | 'FINANCIAL_ENTRY'
   | 'FINANCIAL_EXPENSE'
-  | 'SECURITY';
+  | 'SECURITY'
+  | 'USER';
 
 export interface AuditFieldChange {
   old?: unknown;
