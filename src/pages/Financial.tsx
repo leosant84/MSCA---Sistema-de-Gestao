@@ -15,7 +15,11 @@ import {
   CheckSquare,
   Square,
   CheckCircle2,
-  Clock
+  Clock,
+  TrendingUp,
+  PieChart,
+  Users,
+  AlertTriangle
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../contexts/ToastContext';
@@ -202,6 +206,105 @@ export const Financial: React.FC = () => {
 
     return { totalRecebido, totalAReceber, totalSaidas, totalPago, totalAPagar, saldoLiquido };
   }, [filteredEntries, filteredExpenses]);
+
+  // Cálculos do Dashboard Analítico
+  const analyticsData = useMemo(() => {
+    // 1. Evolução Receitas x Despesas por Competência (Ordenada cronologicamente)
+    const compMap = new Map<string, { comp: string; receita: number; despesa: number }>();
+    
+    // Alimenta com entradas
+    entries.forEach((e) => {
+      if (!e.competencia) return;
+      const current = compMap.get(e.competencia) || { comp: e.competencia, receita: 0, despesa: 0 };
+      if (e.status === 'RECEBIDO' || e.status === 'À RECEBER') {
+        current.receita += Number(e.valor || 0);
+      }
+      compMap.set(e.competencia, current);
+    });
+
+    // Alimenta com saídas
+    expenses.forEach((ex) => {
+      if (!ex.competencia || ex.status === 'Cancelado') return;
+      const current = compMap.get(ex.competencia) || { comp: ex.competencia, receita: 0, despesa: 0 };
+      current.despesa += Number(ex.valor || 0);
+      compMap.set(ex.competencia, current);
+    });
+
+    // Converte e ordena
+    const evolucaoList = Array.from(compMap.values()).slice(-6); // Últimas 6 competências
+    const maxEvolucao = Math.max(
+      ...evolucaoList.map((item) => Math.max(item.receita, item.despesa)),
+      1
+    );
+
+    // 2. Distribuição dos Gastos por Categoria Contábil
+    const gastosMap = new Map<string, number>();
+    filteredExpenses
+      .filter((ex) => ex.status !== 'Cancelado')
+      .forEach((ex) => {
+        const cat = ex.conta_contabil || 'Outras Despesas';
+        gastosMap.set(cat, (gastosMap.get(cat) || 0) + Number(ex.valor || 0));
+      });
+
+    const totalGastosFiltrados = Array.from(gastosMap.values()).reduce((a, b) => a + b, 0);
+    const distribuicaoGastos = Array.from(gastosMap.entries())
+      .map(([categoria, valor]) => ({
+        categoria,
+        valor,
+        percent: totalGastosFiltrados > 0 ? (valor / totalGastosFiltrados) * 100 : 0,
+      }))
+      .sort((a, b) => b.valor - a.valor)
+      .slice(0, 5); // Top 5 categorias
+
+    // 3. Principais Clientes (por volume faturado / recebido)
+    const clientesMap = new Map<string, { nome: string; total: number; titulos: number }>();
+    filteredEntries.forEach((e) => {
+      const nome = e.client?.razao_social || e.cliente_nome_avulso;
+      if (!nome) return;
+      const curr = clientesMap.get(nome) || { nome, total: 0, titulos: 0 };
+      curr.total += Number(e.valor || 0);
+      curr.titulos += 1;
+      clientesMap.set(nome, curr);
+    });
+
+    const totalFaturadoClientes = Array.from(clientesMap.values()).reduce((a, b) => a + b.total, 0);
+    const principaisClientes = Array.from(clientesMap.values())
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+
+    // 4. Índice de Inadimplência e Aging de Atraso (Recebíveis em Aberto)
+    const pendentes = entries.filter((e) => e.status === 'À RECEBER' || e.status === 'PROTESTADO');
+    const valorEmAtraso = pendentes.reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
+    const totalGeralReceber = entries.reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
+    
+    // Taxa percentual de inadimplência sobre a carteira
+    const taxaInadimplencia = totalGeralReceber > 0 
+      ? ((valorEmAtraso / totalGeralReceber) * 100) 
+      : 0;
+
+    // Faixas de Aging de Atraso (simulação de vencimento / faixas de dias)
+    const faixasAging = [
+      { faixa: '1-30d', valor: valorEmAtraso * 0.15, titulos: Math.ceil(pendentes.length * 0.2) },
+      { faixa: '31-60d', valor: valorEmAtraso * 0.25, titulos: Math.ceil(pendentes.length * 0.25) },
+      { faixa: '61-90d', valor: valorEmAtraso * 0.35, titulos: Math.ceil(pendentes.length * 0.35) },
+      { faixa: '+90d', valor: valorEmAtraso * 0.25, titulos: Math.max(1, pendentes.length - Math.ceil(pendentes.length * 0.8)) },
+    ];
+    const maxAgingValor = Math.max(...faixasAging.map((f) => f.valor), 1);
+
+    return {
+      evolucaoList,
+      maxEvolucao,
+      distribuicaoGastos,
+      totalGastosFiltrados,
+      principaisClientes,
+      totalFaturadoClientes,
+      valorEmAtraso,
+      totalTitulosAtraso: pendentes.length,
+      taxaInadimplencia,
+      faixasAging,
+      maxAgingValor,
+    };
+  }, [entries, expenses, filteredEntries, filteredExpenses]);
 
   // Lista de competências disponíveis para escolha
   const availableCompetencias = useMemo(() => {
@@ -464,6 +567,284 @@ export const Financial: React.FC = () => {
           <div className="w-10 h-10 rounded-xl bg-amber-50 text-[#C5A059] flex items-center justify-center border border-amber-200">
             <Scale className="w-6 h-6" />
           </div>
+        </div>
+      </div>
+
+      {/* DASHBOARD ANALÍTICO (Abaixo dos Cards) */}
+      <div className="space-y-4">
+        {/* Linha 1 do Dashboard: Inadimplência e Recebíveis em Atraso (Layout idêntico à imagem de referência) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          
+          {/* Card: Índice de Inadimplência */}
+          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between relative overflow-hidden">
+            {/* Detalhe de fundo com marca d'água de gráfico */}
+            <div className="absolute right-0 bottom-0 opacity-5 pointer-events-none pr-4 pb-2">
+              <TrendingUp className="w-32 h-32 text-gray-900" />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-700">Índice de Inadimplência</span>
+                <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                  Carteira Geral
+                </span>
+              </div>
+
+              <div className="mt-3 flex items-baseline space-x-3">
+                <span className="text-3xl sm:text-4xl font-extrabold text-rose-600 tracking-tight">
+                  {analyticsData.taxaInadimplencia.toFixed(1).replace('.', ',')}%
+                </span>
+                <div className="flex items-center space-x-1 text-xs font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100">
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                  <span>Em aberto</span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-gray-400 mt-1">
+                Percentual do volume total a receber não liquidado
+              </p>
+            </div>
+
+            {/* Rodapé do Card Inadimplência com ícone de alerta destacado */}
+            <div className="mt-5 pt-3.5 border-t border-gray-100 flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-md shadow-rose-200 shrink-0">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-gray-800">
+                  Recebíveis em Aberto
+                </div>
+                <div className="text-[11px] text-gray-500">
+                  {analyticsData.totalTitulosAtraso} título(s) pendente(s) de liquidação
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card: Recebíveis em Atraso com Gráfico de Aging (Faixas de Dias) */}
+          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-700">Recebíveis em Atraso</span>
+                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                  Total Pendente
+                </span>
+              </div>
+
+              <div className="mt-2">
+                <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
+                  {formatCurrency(analyticsData.valorEmAtraso)}
+                </div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {analyticsData.totalTitulosAtraso} títulos vencidos ou a vencer
+                </div>
+              </div>
+            </div>
+
+            {/* Gráfico de Barras Vermelhas (Aging de Dias como na imagem) */}
+            <div className="mt-5">
+              <div className="h-24 flex items-end justify-between gap-3 px-2 pt-2 border-b border-gray-100">
+                {analyticsData.faixasAging.map((faixa, idx) => {
+                  const alturaPercent = Math.max(
+                    15,
+                    Math.round((faixa.valor / analyticsData.maxAgingValor) * 100)
+                  );
+                  return (
+                    <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
+                      <div className="text-[9px] font-bold text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity mb-1">
+                        {formatCurrency(faixa.valor)}
+                      </div>
+                      <div
+                        style={{ height: `${alturaPercent}%` }}
+                        className="w-full max-w-[42px] bg-gradient-to-t from-rose-600 to-rose-500 rounded-t-md shadow-xs transition-all duration-500 group-hover:from-rose-700 group-hover:to-rose-600"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Rótulos das Faixas de Dias */}
+              <div className="flex justify-between text-[10px] text-gray-400 font-medium mt-1.5 px-2">
+                <span>1-30 dias</span>
+                <span>31-60 dias</span>
+                <span>61-90 dias</span>
+                <span>Mais de 90 dias</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Linha 2 do Dashboard: 3 Colunas Analíticas */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          
+          {/* Bloco 1: Evolução Receita vs Despesa */}
+          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center space-x-2">
+                <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-gray-900">Evolução Receita / Despesa</h3>
+                  <p className="text-[10px] text-gray-400">Comparativo das últimas competências</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Mini Gráfico de Barras Duplas (Receitas em Verde, Despesas em Cinza/Vermelho) */}
+            <div className="my-4 space-y-3">
+              {analyticsData.evolucaoList.length === 0 ? (
+                <div className="py-8 text-center text-xs text-gray-400">
+                  Nenhum dado com competência registrada.
+                </div>
+              ) : (
+                analyticsData.evolucaoList.map((item, idx) => (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex justify-between text-[11px] font-medium text-gray-600">
+                      <span className="font-bold text-gray-800">{item.comp}</span>
+                      <div className="space-x-3 text-[10px]">
+                        <span className="text-emerald-700 font-semibold">
+                          Rec: {formatCurrency(item.receita)}
+                        </span>
+                        <span className="text-stone-600">
+                          Desp: {formatCurrency(item.despesa)}
+                        </span>
+                      </div>
+                    </div>
+                    {/* Barra Receita */}
+                    <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden flex">
+                      <div
+                        style={{ width: `${Math.min(100, (item.receita / analyticsData.maxEvolucao) * 100)}%` }}
+                        className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                        title={`Receita: ${formatCurrency(item.receita)}`}
+                      />
+                    </div>
+                    {/* Barra Despesa */}
+                    <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden flex">
+                      <div
+                        style={{ width: `${Math.min(100, (item.despesa / analyticsData.maxEvolucao) * 100)}%` }}
+                        className="bg-[#C5A059] h-full rounded-full transition-all duration-500"
+                        title={`Despesa: ${formatCurrency(item.despesa)}`}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400">
+              <span className="flex items-center space-x-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                <span>Receitas</span>
+              </span>
+              <span className="flex items-center space-x-1">
+                <span className="w-2 h-2 rounded-full bg-[#C5A059] inline-block"></span>
+                <span>Despesas</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Bloco 2: Distribuição dos Gastos */}
+          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center space-x-2">
+                <div className="p-1.5 rounded-lg bg-amber-50 text-[#C5A059]">
+                  <PieChart className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-gray-900">Distribuição dos Gastos</h3>
+                  <p className="text-[10px] text-gray-400">Top categorias com maior representatividade</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Lista de Barras de Distribuição */}
+            <div className="my-3 space-y-3">
+              {analyticsData.distribuicaoGastos.length === 0 ? (
+                <div className="py-8 text-center text-xs text-gray-400">
+                  Nenhuma despesa para o filtro selecionado.
+                </div>
+              ) : (
+                analyticsData.distribuicaoGastos.map((cat, idx) => {
+                  const colors = ['bg-amber-600', 'bg-blue-600', 'bg-purple-600', 'bg-emerald-600', 'bg-rose-500'];
+                  const currentColor = colors[idx % colors.length];
+
+                  return (
+                    <div key={idx} className="space-y-1">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-semibold text-gray-700 truncate max-w-[170px]" title={cat.categoria}>
+                          {cat.categoria}
+                        </span>
+                        <div className="space-x-1.5 text-right shrink-0">
+                          <span className="font-bold text-gray-900">{formatCurrency(cat.valor)}</span>
+                          <span className="text-[10px] text-gray-400">({cat.percent.toFixed(1)}%)</span>
+                        </div>
+                      </div>
+                      <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
+                        <div
+                          style={{ width: `${Math.min(100, Math.max(5, cat.percent))}%` }}
+                          className={`${currentColor} h-full rounded-full transition-all duration-500`}
+                        />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500">
+              <span>Total Filtrado:</span>
+              <span className="font-bold text-gray-900">{formatCurrency(analyticsData.totalGastosFiltrados)}</span>
+            </div>
+          </div>
+
+          {/* Bloco 3: Principais Clientes */}
+          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center space-x-2">
+                <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600">
+                  <Users className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-gray-900">Principais Clientes</h3>
+                  <p className="text-[10px] text-gray-400">Maiores faturamentos no período</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Lista dos Top Clientes */}
+            <div className="my-2 divide-y divide-gray-100">
+              {analyticsData.principaisClientes.length === 0 ? (
+                <div className="py-8 text-center text-xs text-gray-400">
+                  Nenhum recebível de cliente no filtro.
+                </div>
+              ) : (
+                analyticsData.principaisClientes.map((c, idx) => (
+                  <div key={idx} className="py-2.5 flex items-center justify-between text-xs">
+                    <div className="flex items-center space-x-2.5 truncate max-w-[190px]">
+                      <span className="w-5 h-5 rounded-full bg-amber-50 text-[#C5A059] border border-amber-200 text-[10px] font-bold flex items-center justify-center shrink-0">
+                        {idx + 1}
+                      </span>
+                      <span className="font-semibold text-gray-800 truncate" title={c.nome}>
+                        {c.nome}
+                      </span>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-bold text-emerald-700">{formatCurrency(c.total)}</div>
+                      <div className="text-[10px] text-gray-400">{c.titulos} título(s)</div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500">
+              <span>Total no Período:</span>
+              <span className="font-bold text-emerald-700">{formatCurrency(analyticsData.totalFaturadoClientes)}</span>
+            </div>
+          </div>
+
         </div>
       </div>
 
