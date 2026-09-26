@@ -91,7 +91,7 @@ export interface FinancialExpense {
   created_at?: string;
 }
 
-export type AuditAction = 'INSERT' | 'UPDATE' | 'DELETE' | 'ACCESS_DENIED';
+export type AuditAction = 'INSERT' | 'UPDATE' | 'DELETE' | 'ACCESS_DENIED' | 'BATCH_INSERT';
 export type AuditEntity =
   | 'CLIENT'
   | 'CREDENTIAL'

@@ -13,7 +13,8 @@ import {
   AlertTriangle,
   X,
   Calendar,
-  Building
+  Building,
+  Layers
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../contexts/ToastContext';
@@ -135,6 +136,13 @@ export const AuditLogs: React.FC = () => {
           <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
             <AlertTriangle className="w-3 h-3" />
             <span>ACESSO BLOQUEADO</span>
+          </span>
+        );
+      case 'BATCH_INSERT':
+        return (
+          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+            <Layers className="w-3 h-3" />
+            <span>LANÇAMENTO EM LOTE</span>
           </span>
         );
       default:
@@ -279,6 +287,7 @@ export const AuditLogs: React.FC = () => {
               >
                 <option value="TODOS">Todas as ações</option>
                 <option value="INSERT">Inserção</option>
+                <option value="BATCH_INSERT">Lançamento em Lote</option>
                 <option value="UPDATE">Edição</option>
                 <option value="DELETE">Exclusão</option>
                 <option value="ACCESS_DENIED">Acesso Bloqueado</option>
