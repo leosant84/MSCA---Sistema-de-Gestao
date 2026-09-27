@@ -364,16 +364,18 @@ export const Financial: React.FC = () => {
       .sort((a, b) => b.valor - a.valor)
       .slice(0, 5); // Top 5 categorias
 
-    // 3. Principais Clientes (por volume faturado / recebido)
+    // 3. Principais Clientes: Considera exclusivamente os valores RECEBIDOS de TODO o histórico (entries)
     const clientesMap = new Map<string, { nome: string; total: number; titulos: number }>();
-    filteredEntries.forEach((e) => {
-      const nome = e.client?.razao_social || e.cliente_nome_avulso;
-      if (!nome) return;
-      const curr = clientesMap.get(nome) || { nome, total: 0, titulos: 0 };
-      curr.total += Number(e.valor || 0);
-      curr.titulos += 1;
-      clientesMap.set(nome, curr);
-    });
+    entries
+      .filter((e) => e.status === 'RECEBIDO')
+      .forEach((e) => {
+        const nome = e.client?.razao_social || e.cliente_nome_avulso;
+        if (!nome) return;
+        const curr = clientesMap.get(nome) || { nome, total: 0, titulos: 0 };
+        curr.total += Number(e.valor || 0);
+        curr.titulos += 1;
+        clientesMap.set(nome, curr);
+      });
 
     const totalFaturadoClientes = Array.from(clientesMap.values()).reduce((a, b) => a + b.total, 0);
     const principaisClientes = Array.from(clientesMap.values())
@@ -1011,7 +1013,7 @@ export const Financial: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-xs font-bold text-gray-900">Principais Clientes</h3>
-                  <p className="text-[10px] text-gray-400">Maiores volumes faturados / recebidos</p>
+                  <p className="text-[10px] text-gray-400">Total recebido no histórico completo</p>
                 </div>
               </div>
               <span className="text-[11px] font-bold text-emerald-700">
@@ -1023,7 +1025,7 @@ export const Financial: React.FC = () => {
             <div className="my-4 space-y-3.5">
               {analyticsData.principaisClientes.length === 0 ? (
                 <div className="py-8 text-center text-xs text-gray-400">
-                  Nenhum recebível de cliente no filtro.
+                  Nenhum recebível liquidado no histórico.
                 </div>
               ) : (
                 analyticsData.principaisClientes.map((c, idx) => {
@@ -1042,7 +1044,7 @@ export const Financial: React.FC = () => {
                         </div>
                         <div className="text-right shrink-0 space-x-2">
                           <span className="font-bold text-gray-900">{formatCurrency(c.total)}</span>
-                          <span className="text-[10px] text-gray-400 font-medium">({c.titulos} tit.)</span>
+                          <span className="text-[10px] text-gray-400 font-medium">({c.titulos} rec.)</span>
                         </div>
                       </div>
                       {/* Barra Horizontal */}
@@ -1061,7 +1063,7 @@ export const Financial: React.FC = () => {
 
             <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
               <span>Top 5 Maiores Clientes</span>
-              <span className="text-gray-500 font-medium">Ordenado por volume total</span>
+              <span className="text-gray-500 font-medium">Todo histórico recebido</span>
             </div>
           </div>
 
