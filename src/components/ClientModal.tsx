@@ -45,7 +45,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     razao_social: clientToEdit?.razao_social || '',
     cnpj: clientToEdit?.cnpj || '',
     cpf: clientToEdit?.cpf || '',
-    status: clientToEdit?.status || 'Ativo',
+    status: (clientToEdit?.status || 'ATIVO').toUpperCase(),
     numero_pasta: clientToEdit?.numero_pasta || '',
     sieg: clientToEdit?.sieg || 'Não',
     nire: clientToEdit?.nire || '',
@@ -318,12 +318,13 @@ export const ClientModal: React.FC<ClientModalProps> = ({
                   name="status"
                   value={formData.status}
                   onChange={handleInputChange}
-                  className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                  className="w-full text-xs font-semibold px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
                 >
-                  <option value="Ativo">Ativo</option>
-                  <option value="Inativo">Inativo</option>
-                  <option value="Bloqueado">Bloqueado</option>
-                  <option value="Suspenso">Suspenso</option>
+                  <option value="ATIVO">ATIVO</option>
+                  <option value="TRANSFERIDO">TRANSFERIDO</option>
+                  <option value="INADIMPLENTE">INADIMPLENTE</option>
+                  <option value="BAIXADA">BAIXADA</option>
+                  <option value="INATIVA">INATIVA</option>
                 </select>
               </div>
 

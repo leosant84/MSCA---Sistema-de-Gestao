@@ -32,7 +32,7 @@ export const Clients: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('Ativo');
+  const [statusFilter, setStatusFilter] = useState<string>('ATIVO');
 
   useEffect(() => {
     if (location.state?.accessDenied) {
@@ -166,14 +166,24 @@ export const Clients: React.FC = () => {
     const cleanNumbersQuery = searchQuery.replace(/\D/g, '');
 
     return clients.filter((c) => {
-      // Filtro especial de Inadimplência
-      if (statusFilter === 'Inadimplente') {
-        if (!overdueClientsMap.has(c.id)) return false;
-      } else if (statusFilter !== 'Todos') {
-        const clientStatusNorm = (c.status || '').trim().toLowerCase();
-        const filterStatusNorm = statusFilter.trim().toLowerCase();
-        if (clientStatusNorm !== filterStatusNorm) {
-          return false;
+      // Filtro de Status
+      if (statusFilter !== 'Todos') {
+        const clientStatusNorm = (c.status || '').trim().toUpperCase();
+        const filterStatusNorm = statusFilter.trim().toUpperCase();
+
+        if (filterStatusNorm === 'INADIMPLENTE') {
+          // Cliente marcado no cadastro como INADIMPLENTE OU que possua pendências em atraso no financeiro
+          const hasOverdue = overdueClientsMap.has(c.id);
+          const isMarkedInadimplente = clientStatusNorm === 'INADIMPLENTE';
+          if (!hasOverdue && !isMarkedInadimplente) return false;
+        } else if (filterStatusNorm === 'INATIVA' || filterStatusNorm === 'INATIVO') {
+          if (clientStatusNorm !== 'INATIVA' && clientStatusNorm !== 'INATIVO') {
+            return false;
+          }
+        } else {
+          if (clientStatusNorm !== filterStatusNorm) {
+            return false;
+          }
         }
       }
 
@@ -292,10 +302,10 @@ export const Clients: React.FC = () => {
           </div>
           <button
             type="button"
-            onClick={() => setStatusFilter(statusFilter === 'Inadimplente' ? 'Todos' : 'Inadimplente')}
-            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold transition-colors shrink-0 shadow-xs"
+            onClick={() => setStatusFilter(statusFilter === 'INADIMPLENTE' ? 'Todos' : 'INADIMPLENTE')}
+            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold transition-colors shrink-0 shadow-xs cursor-pointer"
           >
-            {statusFilter === 'Inadimplente' ? 'Ver Todos os Clientes' : 'Filtrar Inadimplentes'}
+            {statusFilter === 'INADIMPLENTE' ? 'Ver Todos os Clientes' : 'Filtrar Inadimplentes'}
           </button>
         </div>
       )}
@@ -326,17 +336,16 @@ export const Clients: React.FC = () => {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-xs border border-slate-200/80 rounded-2xl px-3.5 py-2 bg-slate-50/70 hover:bg-white text-stone-800 font-medium focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all cursor-pointer"
+            className="text-xs border border-slate-200/80 rounded-2xl px-3.5 py-2 bg-slate-50/70 hover:bg-white text-stone-800 font-semibold focus:outline-none focus:ring-2 focus:ring-[#C5A059]/20 transition-all cursor-pointer"
           >
-            <option value="Todos">Todos</option>
-            <option value="Ativo">Ativos</option>
-            {isAdmin && overdueClientsMap.size > 0 && (
-              <option value="Inadimplente">
-                ⚠️ Inadimplentes ({overdueClientsMap.size})
-              </option>
-            )}
-            <option value="Inativo">Inativos</option>
-            <option value="Bloqueado">Bloqueados</option>
+            <option value="Todos">TODOS</option>
+            <option value="ATIVO">ATIVO</option>
+            <option value="TRANSFERIDO">TRANSFERIDO</option>
+            <option value="INADIMPLENTE">
+              INADIMPLENTE{isAdmin && overdueClientsMap.size > 0 ? ` (${overdueClientsMap.size})` : ''}
+            </option>
+            <option value="BAIXADA">BAIXADA</option>
+            <option value="INATIVA">INATIVA</option>
           </select>
         </div>
       </div>
@@ -505,13 +514,15 @@ export const Clients: React.FC = () => {
                       <div className="flex flex-col items-center space-y-1">
                         <span
                           className={`inline-block px-3 py-1 rounded-full text-[11px] font-semibold tracking-wide shadow-xs ${
-                            c.status === 'Ativo'
+                            (c.status || '').toUpperCase() === 'ATIVO'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
-                              : c.status === 'Inadimplente'
+                              : (c.status || '').toUpperCase() === 'INADIMPLENTE'
                               ? 'bg-rose-50 text-rose-700 border border-rose-200/80'
-                              : c.status === 'Inativo'
-                              ? 'bg-slate-100 text-stone-600 border border-slate-200'
-                              : 'bg-amber-50 text-amber-800 border border-amber-200'
+                              : (c.status || '').toUpperCase() === 'TRANSFERIDO'
+                              ? 'bg-blue-50 text-blue-700 border border-blue-200/80'
+                              : (c.status || '').toUpperCase() === 'BAIXADA'
+                              ? 'bg-orange-50 text-orange-700 border border-orange-200/80'
+                              : 'bg-slate-100 text-stone-600 border border-slate-200'
                           }`}
                         >
                           {c.status}
