@@ -274,29 +274,72 @@ export const Financial: React.FC = () => {
 
   // Cálculos do Dashboard Analítico
   const analyticsData = useMemo(() => {
-    // 1. Evolução Receitas x Despesas por Competência (Ordenada cronologicamente)
-    const compMap = new Map<string, { comp: string; receita: number; despesa: number }>();
+    // 1. Evolução Receitas x Despesas por Competência (Últimos 6 meses cronológicos)
+    // Coleta todas as competências no formato MM/AAAA ou YYYY-MM
+    const compMap = new Map<string, { comp: string; receita: number; despesa: number; sortKey: number }>();
     
+    // Função auxiliar para normalizar competência para chave numérica de ordenação (YYYYMM)
+    const getCompSortKey = (comp: string): number => {
+      if (!comp) return 0;
+      if (comp.includes('/')) {
+        const parts = comp.split('/');
+        if (parts.length === 2) {
+          const m = parseInt(parts[0], 10) || 0;
+          const y = parseInt(parts[1], 10) || 0;
+          return y * 100 + m;
+        }
+      } else if (comp.includes('-')) {
+        const parts = comp.split('-');
+        if (parts.length >= 2) {
+          const y = parseInt(parts[0], 10) || 0;
+          const m = parseInt(parts[1], 10) || 0;
+          return y * 100 + m;
+        }
+      }
+      return 0;
+    };
+
     // Alimenta com entradas
     entries.forEach((e) => {
       if (!e.competencia) return;
-      const current = compMap.get(e.competencia) || { comp: e.competencia, receita: 0, despesa: 0 };
+      const compStr = e.competencia.trim();
+      const current = compMap.get(compStr) || { comp: compStr, receita: 0, despesa: 0, sortKey: getCompSortKey(compStr) };
       if (e.status === 'RECEBIDO' || e.status === 'À RECEBER') {
         current.receita += Number(e.valor || 0);
       }
-      compMap.set(e.competencia, current);
+      compMap.set(compStr, current);
     });
 
     // Alimenta com saídas
     expenses.forEach((ex) => {
       if (!ex.competencia || ex.status === 'Cancelado') return;
-      const current = compMap.get(ex.competencia) || { comp: ex.competencia, receita: 0, despesa: 0 };
+      const compStr = ex.competencia.trim();
+      const current = compMap.get(compStr) || { comp: compStr, receita: 0, despesa: 0, sortKey: getCompSortKey(compStr) };
       current.despesa += Number(ex.valor || 0);
-      compMap.set(ex.competencia, current);
+      compMap.set(compStr, current);
     });
 
-    // Converte e ordena
-    const evolucaoList = Array.from(compMap.values()).slice(-6); // Últimas 6 competências
+    // Se houver poucas competências, podemos gerar os últimos 6 meses até o mês atual
+    const today = new Date();
+    const last6MonthsKeys: string[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const y = d.getFullYear();
+      last6MonthsKeys.push(`${m}/${y}`);
+    }
+
+    // Ordena as competências registradas
+    const allSorted = Array.from(compMap.values()).sort((a, b) => a.sortKey - b.sortKey);
+    let evolucaoList: { comp: string; receita: number; despesa: number }[] = [];
+
+    if (allSorted.length > 0) {
+      evolucaoList = allSorted.slice(-6);
+    } else {
+      // Cria vazios com os últimos 6 meses para visualização agradável
+      evolucaoList = last6MonthsKeys.map((k) => ({ comp: k, receita: 0, despesa: 0 }));
+    }
+
     const maxEvolucao = Math.max(
       ...evolucaoList.map((item) => Math.max(item.receita, item.despesa)),
       1
@@ -337,7 +380,10 @@ export const Financial: React.FC = () => {
       .sort((a, b) => b.total - a.total)
       .slice(0, 5);
 
-    // 4. Índice de Inadimplência e Aging de Atraso (Recebíveis em Aberto)
+    const maxClienteTotal = Math.max(...principaisClientes.map((c) => c.total), 1);
+
+    // 4. Inadimplência e Top 5 Clientes Mais Inadimplentes
+    // Considera títulos vencidos ou pendentes com status À RECEBER ou PROTESTADO
     const pendentes = entries.filter((e) => e.status === 'À RECEBER' || e.status === 'PROTESTADO');
     const valorEmAtraso = pendentes.reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
     const totalGeralReceber = entries.reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
@@ -347,14 +393,21 @@ export const Financial: React.FC = () => {
       ? ((valorEmAtraso / totalGeralReceber) * 100) 
       : 0;
 
-    // Faixas de Aging de Atraso (simulação de vencimento / faixas de dias)
-    const faixasAging = [
-      { faixa: '1-30d', valor: valorEmAtraso * 0.15, titulos: Math.ceil(pendentes.length * 0.2) },
-      { faixa: '31-60d', valor: valorEmAtraso * 0.25, titulos: Math.ceil(pendentes.length * 0.25) },
-      { faixa: '61-90d', valor: valorEmAtraso * 0.35, titulos: Math.ceil(pendentes.length * 0.35) },
-      { faixa: '+90d', valor: valorEmAtraso * 0.25, titulos: Math.max(1, pendentes.length - Math.ceil(pendentes.length * 0.8)) },
-    ];
-    const maxAgingValor = Math.max(...faixasAging.map((f) => f.valor), 1);
+    // Top 5 clientes mais inadimplentes
+    const inadimplentesMap = new Map<string, { nome: string; total: number; titulos: number }>();
+    pendentes.forEach((e) => {
+      const nome = e.client?.razao_social || e.cliente_nome_avulso || 'Cliente Não Identificado';
+      const curr = inadimplentesMap.get(nome) || { nome, total: 0, titulos: 0 };
+      curr.total += Number(e.valor || 0);
+      curr.titulos += 1;
+      inadimplentesMap.set(nome, curr);
+    });
+
+    const topInadimplentes = Array.from(inadimplentesMap.values())
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+
+    const maxInadimplenteTotal = Math.max(...topInadimplentes.map((c) => c.total), 1);
 
     return {
       evolucaoList,
@@ -363,11 +416,12 @@ export const Financial: React.FC = () => {
       totalGastosFiltrados,
       principaisClientes,
       totalFaturadoClientes,
+      maxClienteTotal,
       valorEmAtraso,
       totalTitulosAtraso: pendentes.length,
       taxaInadimplencia,
-      faixasAging,
-      maxAgingValor,
+      topInadimplentes,
+      maxInadimplenteTotal,
     };
   }, [entries, expenses, filteredEntries, filteredExpenses]);
 
@@ -759,10 +813,10 @@ export const Financial: React.FC = () => {
 
       {/* DASHBOARD ANALÍTICO (Abaixo dos Cards) */}
       <div className="space-y-4">
-        {/* Linha 1 do Dashboard: 3 Colunas Analíticas (Evolução, Distribuição e Clientes) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Linha 1 do Dashboard: 2 Colunas (Evolução 6 meses e Distribuição de Gastos em Pizza/Rosca) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           
-          {/* Bloco 1: Evolução Receita vs Despesa */}
+          {/* Bloco 1: Evolução Receita vs Despesa (Gráfico de Colunas Verticais dos Últimos 6 Meses) */}
           <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <div className="flex items-center space-x-2">
@@ -770,66 +824,78 @@ export const Financial: React.FC = () => {
                   <TrendingUp className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold text-gray-900">Evolução Receita / Despesa</h3>
-                  <p className="text-[10px] text-gray-400">Comparativo das últimas competências</p>
+                  <h3 className="text-xs font-bold text-gray-900">Evolução Receita x Despesa</h3>
+                  <p className="text-[10px] text-gray-400">Comparativo dos últimos 6 meses</p>
                 </div>
+              </div>
+              <div className="flex items-center space-x-3 text-[10px]">
+                <span className="flex items-center space-x-1">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500 inline-block"></span>
+                  <span className="text-gray-600 font-medium">Receita</span>
+                </span>
+                <span className="flex items-center space-x-1">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-[#C5A059] inline-block"></span>
+                  <span className="text-gray-600 font-medium">Despesa</span>
+                </span>
               </div>
             </div>
 
-            {/* Mini Gráfico de Barras Duplas (Receitas em Verde, Despesas em Dourado/Âmbar) */}
-            <div className="my-4 space-y-3">
+            {/* Gráfico de Colunas Verticais */}
+            <div className="my-4">
               {analyticsData.evolucaoList.length === 0 ? (
-                <div className="py-8 text-center text-xs text-gray-400">
+                <div className="py-12 text-center text-xs text-gray-400">
                   Nenhum dado com competência registrada.
                 </div>
               ) : (
-                analyticsData.evolucaoList.map((item, idx) => (
-                  <div key={idx} className="space-y-1">
-                    <div className="flex justify-between text-[11px] font-medium text-gray-600">
-                      <span className="font-bold text-gray-800">{item.comp}</span>
-                      <div className="space-x-3 text-[10px]">
-                        <span className="text-emerald-700 font-semibold">
-                          Rec: {formatCurrency(item.receita)}
-                        </span>
-                        <span className="text-stone-600">
-                          Desp: {formatCurrency(item.despesa)}
+                <div className="h-48 flex items-end justify-between gap-2 sm:gap-4 pt-6 px-1 border-b border-gray-100">
+                  {analyticsData.evolucaoList.map((item, idx) => {
+                    const hReceita = Math.max(item.receita > 0 ? 8 : 0, Math.round((item.receita / analyticsData.maxEvolucao) * 100));
+                    const hDespesa = Math.max(item.despesa > 0 ? 8 : 0, Math.round((item.despesa / analyticsData.maxEvolucao) * 100));
+
+                    return (
+                      <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
+                        {/* Tooltip com valores ao passar o mouse */}
+                        <div className="text-[9px] font-semibold text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity mb-1 text-center whitespace-nowrap pointer-events-none">
+                          <span className="text-emerald-700 block">{formatCurrency(item.receita)}</span>
+                          <span className="text-[#C5A059] block">{formatCurrency(item.despesa)}</span>
+                        </div>
+
+                        {/* Par de colunas lado a lado */}
+                        <div className="w-full flex items-end justify-center gap-1 sm:gap-1.5 h-36">
+                          {/* Coluna Receita */}
+                          <div
+                            style={{ height: `${hReceita}%` }}
+                            className="w-full max-w-[18px] bg-emerald-500 rounded-t-sm transition-all duration-500 hover:bg-emerald-600 cursor-pointer shadow-xs"
+                            title={`Receita (${item.comp}): ${formatCurrency(item.receita)}`}
+                          />
+                          {/* Coluna Despesa */}
+                          <div
+                            style={{ height: `${hDespesa}%` }}
+                            className="w-full max-w-[18px] bg-[#C5A059] rounded-t-sm transition-all duration-500 hover:bg-[#b08e4c] cursor-pointer shadow-xs"
+                            title={`Despesa (${item.comp}): ${formatCurrency(item.despesa)}`}
+                          />
+                        </div>
+
+                        {/* Legenda do Mês/Competência */}
+                        <span className="text-[10px] text-gray-500 font-semibold mt-2 truncate w-full text-center">
+                          {item.comp}
                         </span>
                       </div>
-                    </div>
-                    {/* Barra Receita */}
-                    <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden flex">
-                      <div
-                        style={{ width: `${Math.min(100, (item.receita / analyticsData.maxEvolucao) * 100)}%` }}
-                        className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-                        title={`Receita: ${formatCurrency(item.receita)}`}
-                      />
-                    </div>
-                    {/* Barra Despesa */}
-                    <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden flex">
-                      <div
-                        style={{ width: `${Math.min(100, (item.despesa / analyticsData.maxEvolucao) * 100)}%` }}
-                        className="bg-[#C5A059] h-full rounded-full transition-all duration-500"
-                        title={`Despesa: ${formatCurrency(item.despesa)}`}
-                      />
-                    </div>
-                  </div>
-                ))
+                    );
+                  })}
+                </div>
               )}
             </div>
 
-            <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400">
-              <span className="flex items-center space-x-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                <span>Receitas</span>
-              </span>
-              <span className="flex items-center space-x-1">
-                <span className="w-2 h-2 rounded-full bg-[#C5A059] inline-block"></span>
-                <span>Despesas</span>
+            <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
+              <span>Período: Últimos 6 meses</span>
+              <span className="font-medium text-gray-600">
+                Pico: {formatCurrency(analyticsData.maxEvolucao)}
               </span>
             </div>
           </div>
 
-          {/* Bloco 2: Distribuição dos Gastos */}
+          {/* Bloco 2: Distribuição dos Gastos (Gráfico de Rosca/Pizza por Categorias) */}
           <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <div className="flex items-center space-x-2">
@@ -837,53 +903,106 @@ export const Financial: React.FC = () => {
                   <PieChart className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold text-gray-900">Distribuição dos Gastos</h3>
-                  <p className="text-[10px] text-gray-400">Top categorias com maior representatividade</p>
+                  <h3 className="text-xs font-bold text-gray-900">Distribuição de Gastos</h3>
+                  <p className="text-[10px] text-gray-400">Por categorias contábeis</p>
                 </div>
               </div>
+              <span className="text-[11px] font-bold text-gray-800">
+                {formatCurrency(analyticsData.totalGastosFiltrados)}
+              </span>
             </div>
 
-            {/* Lista de Barras de Distribuição */}
-            <div className="my-3 space-y-3">
-              {analyticsData.distribuicaoGastos.length === 0 ? (
-                <div className="py-8 text-center text-xs text-gray-400">
-                  Nenhuma despesa para o filtro selecionado.
-                </div>
-              ) : (
-                analyticsData.distribuicaoGastos.map((cat, idx) => {
-                  const colors = ['bg-amber-600', 'bg-blue-600', 'bg-purple-600', 'bg-emerald-600', 'bg-rose-500'];
-                  const currentColor = colors[idx % colors.length];
+            {/* Gráfico Donut / Rosca em SVG + Lista de Legenda */}
+            {analyticsData.distribuicaoGastos.length === 0 ? (
+              <div className="py-12 text-center text-xs text-gray-400">
+                Nenhuma despesa para o filtro selecionado.
+              </div>
+            ) : (
+              <div className="my-4 flex flex-col sm:flex-row items-center justify-center gap-6">
+                {/* SVG Donut Chart */}
+                <div className="relative w-36 h-36 shrink-0 flex items-center justify-center">
+                  <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="38"
+                      className="text-gray-100"
+                      strokeWidth="16"
+                      stroke="currentColor"
+                      fill="transparent"
+                    />
+                    {(() => {
+                      const colors = ['#C5A059', '#3B82F6', '#8B5CF6', '#10B981', '#F43F5E'];
+                      const circumference = 2 * Math.PI * 38; // ~238.76
+                      let accumulatedOffset = 0;
 
-                  return (
-                    <div key={idx} className="space-y-1">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-semibold text-gray-700 truncate max-w-[170px]" title={cat.categoria}>
-                          {cat.categoria}
-                        </span>
-                        <div className="space-x-1.5 text-right shrink-0">
+                      return analyticsData.distribuicaoGastos.map((cat, idx) => {
+                        const sliceLength = (cat.percent / 100) * circumference;
+                        const strokeDasharray = `${sliceLength} ${circumference - sliceLength}`;
+                        const strokeDashoffset = -accumulatedOffset;
+                        accumulatedOffset += sliceLength;
+
+                        return (
+                          <circle
+                            key={idx}
+                            cx="50"
+                            cy="50"
+                            r="38"
+                            stroke={colors[idx % colors.length]}
+                            strokeWidth="16"
+                            strokeDasharray={strokeDasharray}
+                            strokeDashoffset={strokeDashoffset}
+                            fill="transparent"
+                            className="transition-all duration-700 hover:opacity-85 cursor-pointer"
+                          />
+                        );
+                      });
+                    })()}
+                  </svg>
+                  {/* Centro do Donut */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
+                    <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Gastos</span>
+                    <span className="text-xs font-black text-gray-800">100%</span>
+                  </div>
+                </div>
+
+                {/* Legenda com Cores e Valores */}
+                <div className="flex-1 w-full space-y-2">
+                  {analyticsData.distribuicaoGastos.map((cat, idx) => {
+                    const bgColors = ['bg-[#C5A059]', 'bg-blue-500', 'bg-purple-500', 'bg-emerald-500', 'bg-rose-500'];
+                    const dotColor = bgColors[idx % bgColors.length];
+
+                    return (
+                      <div key={idx} className="flex items-center justify-between text-xs group">
+                        <div className="flex items-center space-x-2 truncate max-w-[180px]">
+                          <span className={`w-2.5 h-2.5 rounded-full ${dotColor} shrink-0`} />
+                          <span className="text-gray-700 font-medium truncate" title={cat.categoria}>
+                            {cat.categoria}
+                          </span>
+                        </div>
+                        <div className="text-right shrink-0 space-x-1.5">
                           <span className="font-bold text-gray-900">{formatCurrency(cat.valor)}</span>
-                          <span className="text-[10px] text-gray-400">({cat.percent.toFixed(1)}%)</span>
+                          <span className="text-[10px] text-gray-400 font-semibold">({cat.percent.toFixed(1)}%)</span>
                         </div>
                       </div>
-                      <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
-                        <div
-                          style={{ width: `${Math.min(100, Math.max(5, cat.percent))}%` }}
-                          className={`${currentColor} h-full rounded-full transition-all duration-500`}
-                        />
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
-            <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500">
-              <span>Total Filtrado:</span>
-              <span className="font-bold text-gray-900">{formatCurrency(analyticsData.totalGastosFiltrados)}</span>
+            <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
+              <span>Top {analyticsData.distribuicaoGastos.length} categorias</span>
+              <span className="text-gray-500">Classificação contábil</span>
             </div>
           </div>
 
-          {/* Bloco 3: Principais Clientes */}
+        </div>
+
+        {/* Linha 2 do Dashboard: 2 Colunas (Principais Clientes em Barras Horizontais e Top 5 Inadimplentes) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          
+          {/* Bloco 3: Principais Clientes (Gráfico de Barras Horizontais) */}
           <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <div className="flex items-center space-x-2">
@@ -892,143 +1011,137 @@ export const Financial: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-xs font-bold text-gray-900">Principais Clientes</h3>
-                  <p className="text-[10px] text-gray-400">Maiores faturamentos no período</p>
+                  <p className="text-[10px] text-gray-400">Maiores volumes faturados / recebidos</p>
                 </div>
               </div>
+              <span className="text-[11px] font-bold text-emerald-700">
+                {formatCurrency(analyticsData.totalFaturadoClientes)}
+              </span>
             </div>
 
-            {/* Lista dos Top Clientes */}
-            <div className="my-2 divide-y divide-gray-100">
+            {/* Gráfico de Barras Horizontais */}
+            <div className="my-4 space-y-3.5">
               {analyticsData.principaisClientes.length === 0 ? (
                 <div className="py-8 text-center text-xs text-gray-400">
                   Nenhum recebível de cliente no filtro.
                 </div>
               ) : (
-                analyticsData.principaisClientes.map((c, idx) => (
-                  <div key={idx} className="py-2.5 flex items-center justify-between text-xs">
-                    <div className="flex items-center space-x-2.5 truncate max-w-[190px]">
-                      <span className="w-5 h-5 rounded-full bg-amber-50 text-[#C5A059] border border-amber-200 text-[10px] font-bold flex items-center justify-center shrink-0">
-                        {idx + 1}
-                      </span>
-                      <span className="font-semibold text-gray-800 truncate" title={c.nome}>
-                        {c.nome}
-                      </span>
+                analyticsData.principaisClientes.map((c, idx) => {
+                  const barWidth = Math.max(8, Math.round((c.total / analyticsData.maxClienteTotal) * 100));
+
+                  return (
+                    <div key={idx} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center space-x-2 truncate max-w-[220px]">
+                          <span className="w-4 h-4 rounded-full bg-blue-50 text-blue-600 border border-blue-200 text-[9px] font-bold flex items-center justify-center shrink-0">
+                            {idx + 1}
+                          </span>
+                          <span className="font-semibold text-gray-800 truncate" title={c.nome}>
+                            {c.nome}
+                          </span>
+                        </div>
+                        <div className="text-right shrink-0 space-x-2">
+                          <span className="font-bold text-gray-900">{formatCurrency(c.total)}</span>
+                          <span className="text-[10px] text-gray-400 font-medium">({c.titulos} tit.)</span>
+                        </div>
+                      </div>
+                      {/* Barra Horizontal */}
+                      <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden flex">
+                        <div
+                          style={{ width: `${barWidth}%` }}
+                          className="bg-gradient-to-r from-blue-500 to-indigo-600 h-full rounded-full transition-all duration-500 shadow-xs"
+                          title={`${c.nome}: ${formatCurrency(c.total)}`}
+                        />
+                      </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className="font-bold text-emerald-700">{formatCurrency(c.total)}</div>
-                      <div className="text-[10px] text-gray-400">{c.titulos} título(s)</div>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
-            <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500">
-              <span>Total no Período:</span>
-              <span className="font-bold text-emerald-700">{formatCurrency(analyticsData.totalFaturadoClientes)}</span>
+            <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
+              <span>Top 5 Maiores Clientes</span>
+              <span className="text-gray-500 font-medium">Ordenado por volume total</span>
             </div>
           </div>
 
-        </div>
-
-        {/* Linha 2 do Dashboard: Inadimplência e Recebíveis em Atraso (Posicionado abaixo dos 3 blocos) */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          
-          {/* Card: Índice de Inadimplência */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between relative overflow-hidden">
-            {/* Detalhe de fundo com marca d'água de gráfico */}
-            <div className="absolute right-0 bottom-0 opacity-5 pointer-events-none pr-4 pb-2">
-              <TrendingUp className="w-32 h-32 text-gray-900" />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-700">Índice de Inadimplência</span>
-                <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                  Carteira Geral
-                </span>
-              </div>
-
-              <div className="mt-3 flex items-baseline space-x-3">
-                <span className="text-3xl sm:text-4xl font-extrabold text-rose-600 tracking-tight">
-                  {analyticsData.taxaInadimplencia.toFixed(1).replace('.', ',')}%
-                </span>
-                <div className="flex items-center space-x-1 text-xs font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100">
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                  <span>Em aberto</span>
-                </div>
-              </div>
-
-              <p className="text-[11px] text-gray-400 mt-1">
-                Percentual do volume total a receber não liquidado
-              </p>
-            </div>
-
-            {/* Rodapé do Card Inadimplência com ícone de alerta destacado */}
-            <div className="mt-5 pt-3.5 border-t border-gray-100 flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-md shadow-rose-200 shrink-0">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-gray-800">
-                  Recebíveis em Aberto
-                </div>
-                <div className="text-[11px] text-gray-500">
-                  {analyticsData.totalTitulosAtraso} título(s) pendente(s) de liquidação
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Card: Recebíveis em Atraso com Gráfico de Aging (Faixas de Dias) */}
+          {/* Bloco 4: Inadimplência - Top 5 Clientes Mais Inadimplentes com Total e % Discretos */}
           <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-700">Recebíveis em Atraso</span>
-                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-                  Total Pendente
-                </span>
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center space-x-2">
+                <div className="p-1.5 rounded-lg bg-rose-50 text-rose-600">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-gray-900">Inadimplência</h3>
+                  <p className="text-[10px] text-gray-400">Top 5 clientes com títulos em aberto</p>
+                </div>
               </div>
 
-              <div className="mt-2">
-                <div className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
-                  {formatCurrency(analyticsData.valorEmAtraso)}
+              {/* Informações discretas de Total e % de Inadimplência no Cabeçalho */}
+              <div className="flex items-center space-x-2">
+                <div className="text-right">
+                  <div className="text-xs font-black text-rose-600">
+                    {formatCurrency(analyticsData.valorEmAtraso)}
+                  </div>
+                  <div className="text-[10px] text-gray-400">
+                    {analyticsData.totalTitulosAtraso} título(s) pendente(s)
+                  </div>
                 </div>
-                <div className="text-xs text-gray-500 mt-0.5">
-                  {analyticsData.totalTitulosAtraso} títulos vencidos ou a vencer
-                </div>
+                <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200 shrink-0">
+                  {analyticsData.taxaInadimplencia.toFixed(1).replace('.', ',')}% índice
+                </span>
               </div>
             </div>
 
-            {/* Gráfico de Barras Vermelhas (Aging de Dias como na imagem) */}
-            <div className="mt-5">
-              <div className="h-24 flex items-end justify-between gap-3 px-2 pt-2 border-b border-gray-100">
-                {analyticsData.faixasAging.map((faixa, idx) => {
-                  const alturaPercent = Math.max(
-                    15,
-                    Math.round((faixa.valor / analyticsData.maxAgingValor) * 100)
-                  );
+            {/* Lista dos Top 5 Clientes Mais Inadimplentes com Barras Horizontais */}
+            <div className="my-4 space-y-3.5">
+              {analyticsData.topInadimplentes.length === 0 ? (
+                <div className="py-8 text-center text-xs text-emerald-600 font-medium flex flex-col items-center justify-center space-y-1">
+                  <span>Nenhum cliente inadimplente no momento!</span>
+                  <span className="text-[10px] text-gray-400 font-normal">Todos os títulos estão liquidados.</span>
+                </div>
+              ) : (
+                analyticsData.topInadimplentes.map((c, idx) => {
+                  const barWidth = Math.max(8, Math.round((c.total / analyticsData.maxInadimplenteTotal) * 100));
+
                   return (
-                    <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
-                      <div className="text-[9px] font-bold text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity mb-1">
-                        {formatCurrency(faixa.valor)}
+                    <div key={idx} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center space-x-2 truncate max-w-[220px]">
+                          <span className="w-4 h-4 rounded-full bg-rose-50 text-rose-600 border border-rose-200 text-[9px] font-bold flex items-center justify-center shrink-0">
+                            {idx + 1}
+                          </span>
+                          <span className="font-semibold text-gray-800 truncate" title={c.nome}>
+                            {c.nome}
+                          </span>
+                        </div>
+                        <div className="text-right shrink-0 space-x-2">
+                          <span className="font-bold text-rose-600">{formatCurrency(c.total)}</span>
+                          <span className="text-[10px] text-gray-400 font-medium">({c.titulos} pend.)</span>
+                        </div>
                       </div>
-                      <div
-                        style={{ height: `${alturaPercent}%` }}
-                        className="w-full max-w-[42px] bg-gradient-to-t from-rose-600 to-rose-500 rounded-t-md shadow-xs transition-all duration-500 group-hover:from-rose-700 group-hover:to-rose-600"
-                      />
+                      {/* Barra Horizontal Vermelha */}
+                      <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden flex">
+                        <div
+                          style={{ width: `${barWidth}%` }}
+                          className="bg-gradient-to-r from-rose-500 to-rose-600 h-full rounded-full transition-all duration-500 shadow-xs"
+                          title={`${c.nome}: ${formatCurrency(c.total)}`}
+                        />
+                      </div>
                     </div>
                   );
-                })}
-              </div>
+                })
+              )}
+            </div>
 
-              {/* Rótulos das Faixas de Dias */}
-              <div className="flex justify-between text-[10px] text-gray-400 font-medium mt-1.5 px-2">
-                <span>1-30 dias</span>
-                <span>31-60 dias</span>
-                <span>61-90 dias</span>
-                <span>Mais de 90 dias</span>
-              </div>
+            <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
+              <span className="flex items-center space-x-1 text-gray-500">
+                <span>Top 5 mais inadimplentes</span>
+              </span>
+              <span className="text-[10px] text-gray-400">
+                Índice sobre carteira geral
+              </span>
             </div>
           </div>
 
