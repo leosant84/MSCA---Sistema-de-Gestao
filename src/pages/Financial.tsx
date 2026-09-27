@@ -274,71 +274,62 @@ export const Financial: React.FC = () => {
 
   // Cálculos do Dashboard Analítico
   const analyticsData = useMemo(() => {
-    // 1. Evolução Receitas x Despesas por Competência (Últimos 6 meses cronológicos)
-    // Coleta todas as competências no formato MM/AAAA ou YYYY-MM
-    const compMap = new Map<string, { comp: string; receita: number; despesa: number; sortKey: number }>();
+    // 1. Evolução Receitas x Despesas: Últimos 6 meses a partir do mês anterior ao corrente, em ordem crescente
+    // Exemplo: se hoje é set/26 (mês 8), os 6 meses anteriores são mar/26, abr/26, mai/26, jun/26, jul/26, ago/26
+    const today = new Date();
+    const last6MonthsSlots: { key: string; label: string; month: number; year: number }[] = [];
     
-    // Função auxiliar para normalizar competência para chave numérica de ordenação (YYYYMM)
-    const getCompSortKey = (comp: string): number => {
-      if (!comp) return 0;
-      if (comp.includes('/')) {
-        const parts = comp.split('/');
-        if (parts.length === 2) {
-          const m = parseInt(parts[0], 10) || 0;
-          const y = parseInt(parts[1], 10) || 0;
-          return y * 100 + m;
-        }
-      } else if (comp.includes('-')) {
-        const parts = comp.split('-');
-        if (parts.length >= 2) {
-          const y = parseInt(parts[0], 10) || 0;
-          const m = parseInt(parts[1], 10) || 0;
-          return y * 100 + m;
-        }
-      }
-      return 0;
-    };
+    // Gera de 6 meses atrás até 1 mês atrás (i = 6 down to 1), garantindo ordem cronológica crescente
+    for (let i = 6; i >= 1; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const m = d.getMonth();
+      const y = d.getFullYear();
+      last6MonthsSlots.push({
+        key: `${y}-${String(m + 1).padStart(2, '0')}`,
+        label: formatCompetencia(m, y, true), // Ex: 'mar/26', 'abr/26', etc.
+        month: m,
+        year: y,
+      });
+    }
+
+    const evolucaoMap = new Map<string, { comp: string; receita: number; despesa: number }>();
+    last6MonthsSlots.forEach((slot) => {
+      evolucaoMap.set(`${slot.year}-${slot.month}`, {
+        comp: slot.label,
+        receita: 0,
+        despesa: 0,
+      });
+    });
 
     // Alimenta com entradas
     entries.forEach((e) => {
       if (!e.competencia) return;
-      const compStr = e.competencia.trim();
-      const current = compMap.get(compStr) || { comp: compStr, receita: 0, despesa: 0, sortKey: getCompSortKey(compStr) };
-      if (e.status === 'RECEBIDO' || e.status === 'À RECEBER') {
-        current.receita += Number(e.valor || 0);
+      const { month, year } = parseCompetencia(e.competencia);
+      const slotKey = `${year}-${month}`;
+      const current = evolucaoMap.get(slotKey);
+      if (current) {
+        if (e.status === 'RECEBIDO' || e.status === 'À RECEBER') {
+          current.receita += Number(e.valor || 0);
+        }
       }
-      compMap.set(compStr, current);
     });
 
     // Alimenta com saídas
     expenses.forEach((ex) => {
       if (!ex.competencia || ex.status === 'Cancelado') return;
-      const compStr = ex.competencia.trim();
-      const current = compMap.get(compStr) || { comp: compStr, receita: 0, despesa: 0, sortKey: getCompSortKey(compStr) };
-      current.despesa += Number(ex.valor || 0);
-      compMap.set(compStr, current);
+      const { month, year } = parseCompetencia(ex.competencia);
+      const slotKey = `${year}-${month}`;
+      const current = evolucaoMap.get(slotKey);
+      if (current) {
+        current.despesa += Number(ex.valor || 0);
+      }
     });
 
-    // Se houver poucas competências, podemos gerar os últimos 6 meses até o mês atual
-    const today = new Date();
-    const last6MonthsKeys: string[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const y = d.getFullYear();
-      last6MonthsKeys.push(`${m}/${y}`);
-    }
-
-    // Ordena as competências registradas
-    const allSorted = Array.from(compMap.values()).sort((a, b) => a.sortKey - b.sortKey);
-    let evolucaoList: { comp: string; receita: number; despesa: number }[] = [];
-
-    if (allSorted.length > 0) {
-      evolucaoList = allSorted.slice(-6);
-    } else {
-      // Cria vazios com os últimos 6 meses para visualização agradável
-      evolucaoList = last6MonthsKeys.map((k) => ({ comp: k, receita: 0, despesa: 0 }));
-    }
+    // Lista final estritamente na ordem cronológica crescente dos últimos 6 meses (do mês -6 até o mês -1)
+    const evolucaoList = last6MonthsSlots.map((slot) => {
+      const data = evolucaoMap.get(`${slot.year}-${slot.month}`);
+      return data || { comp: slot.label, receita: 0, despesa: 0 };
+    });
 
     const maxEvolucao = Math.max(
       ...evolucaoList.map((item) => Math.max(item.receita, item.despesa)),
