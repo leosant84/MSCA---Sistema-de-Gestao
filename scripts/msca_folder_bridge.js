@@ -1,7 +1,7 @@
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
+import { spawn, exec } from 'child_process';
 
 const PORT = 39871;
 const BASE_DIR = 'G:\\Meu Drive\\00. MSCA\\00. CLIENTES';
@@ -90,21 +90,14 @@ const server = http.createServer((req, res) => {
     const finalFolderToOpen = targetDir || activeBaseDir;
 
     try {
-      // Abre a pasta no Windows Explorer garantindo que ela receba foco em primeiro plano
-      const escapedFolder = finalFolderToOpen.replace(/'/g, "''");
-      const psScript = `
-        Start-Process "explorer.exe" -ArgumentList '"${escapedFolder}"';
-        Start-Sleep -Milliseconds 400;
-        $wshell = New-Object -ComObject WScript.Shell;
-        $wshell.AppActivate("Explorador de Arquivos");
-      `;
-
-      const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true
+      // Abre a pasta no Windows Explorer utilizando o comando start nativo do Windows
+      const command = `start "" "${finalFolderToOpen}"`;
+      exec(command, { shell: 'cmd.exe' }, (error) => {
+        if (error) {
+          console.error('[BRIDGE] Fallback explorer.exe devido a:', error);
+          spawn('explorer.exe', [finalFolderToOpen], { detached: true, stdio: 'ignore' }).unref();
+        }
       });
-      child.unref();
 
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/json');
