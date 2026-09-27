@@ -28,24 +28,28 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/open-folder') {
     const clientName = url.searchParams.get('name') || '';
     const customFolder = url.searchParams.get('folder') || '';
+    const rawBasePath = url.searchParams.get('basePath') || '';
 
-    if (!fs.existsSync(BASE_DIR)) {
+    // Normaliza caminho se recebido do frontend ou usa padrão
+    const activeBaseDir = rawBasePath ? path.normalize(rawBasePath.trim().replace(/^["']|["']$/g, '')) : BASE_DIR;
+
+    if (!fs.existsSync(activeBaseDir)) {
       res.statusCode = 404;
       res.setHeader('Content-Type', 'application/json');
       return res.end(JSON.stringify({
         success: false,
-        message: 'O Google Drive (unidade G:\\) não está montado ou acessível nesta máquina.'
+        message: `O diretório configurado não foi encontrado ou não está acessível nesta máquina: "${activeBaseDir}". Verifique o caminho nas Configurações do sistema.`
       }));
     }
 
     let targetDir = '';
 
     // 1. Se informou nome de pasta exata ou número
-    if (customFolder && fs.existsSync(path.join(BASE_DIR, customFolder))) {
-      targetDir = path.join(BASE_DIR, customFolder);
+    if (customFolder && fs.existsSync(path.join(activeBaseDir, customFolder))) {
+      targetDir = path.join(activeBaseDir, customFolder);
     } else {
       try {
-        const allDirs = fs.readdirSync(BASE_DIR, { withFileTypes: true })
+        const allDirs = fs.readdirSync(activeBaseDir, { withFileTypes: true })
           .filter(d => d.isDirectory())
           .map(d => d.name);
 
@@ -76,14 +80,14 @@ const server = http.createServer((req, res) => {
         }
 
         if (match) {
-          targetDir = path.join(BASE_DIR, match);
+          targetDir = path.join(activeBaseDir, match);
         }
       } catch (err) {
         console.error('[BRIDGE] Erro ao ler diretório de clientes:', err);
       }
     }
 
-    const finalFolderToOpen = targetDir || BASE_DIR;
+    const finalFolderToOpen = targetDir || activeBaseDir;
 
     try {
       const child = spawn('explorer.exe', [finalFolderToOpen], {

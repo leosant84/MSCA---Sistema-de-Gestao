@@ -1,9 +1,29 @@
 import React, { useState } from 'react';
-import { KeyRound, Eye, EyeOff, CheckCircle2, Shield, Lock, UserCheck, AlertCircle } from 'lucide-react';
+import {
+  KeyRound,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  Shield,
+  Lock,
+  UserCheck,
+  AlertCircle,
+  FolderOpen,
+  HardDrive,
+  RefreshCw,
+  ExternalLink
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabase';
 import { logAuditEvent } from '../services/auditService';
+import {
+  getDriveBasePath,
+  setDriveBasePath,
+  resetDriveBasePath,
+  DEFAULT_DRIVE_FOLDER_PATH,
+  normalizeWindowsPath
+} from '../utils/driveConfig';
 
 export const Settings: React.FC = () => {
   const { user, profile, role } = useAuth();
@@ -20,6 +40,96 @@ export const Settings: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Estado do Caminho Local do Google Drive
+  const [drivePath, setDrivePath] = useState<string>(() => getDriveBasePath());
+  const [drivePathSaved, setDrivePathSaved] = useState<boolean>(false);
+  const [testingDrive, setTestingDrive] = useState<boolean>(false);
+  const [driveStatus, setDriveStatus] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleSaveDrivePath = () => {
+    if (!drivePath.trim()) {
+      toast('Por favor, informe um caminho válido.', 'error');
+      return;
+    }
+    const saved = setDriveBasePath(drivePath);
+    setDrivePath(saved);
+    setDrivePathSaved(true);
+    setDriveStatus({
+      success: true,
+      message: `Caminho salvo: ${saved}`
+    });
+    toast('Caminho base do Google Drive configurado com sucesso!', 'success');
+  };
+
+  const handleResetDrivePath = () => {
+    const defaultPath = resetDriveBasePath();
+    setDrivePath(defaultPath);
+    setDrivePathSaved(true);
+    setDriveStatus({
+      success: true,
+      message: `Caminho restaurado para o padrão: ${defaultPath}`
+    });
+    toast('Caminho restaurado para o padrão do sistema.', 'info');
+  };
+
+  const handleTestDrivePath = async () => {
+    setTestingDrive(true);
+    setDriveStatus(null);
+    try {
+      const normalized = normalizeWindowsPath(drivePath);
+      // Salva preventivamente
+      setDriveBasePath(normalized);
+      setDrivePath(normalized);
+
+      const queryParams = new URLSearchParams({
+        basePath: normalized,
+      });
+
+      let res: Response | null = null;
+      try {
+        res = await fetch(`http://127.0.0.1:39871/api/open-folder?${queryParams.toString()}`);
+      } catch {
+        try {
+          res = await fetch(`/api/open-folder?${queryParams.toString()}`);
+        } catch {
+          res = null;
+        }
+      }
+
+      if (!res) {
+        setDriveStatus({
+          success: false,
+          message: 'O serviço local de pastas não está ativo no computador. Inicie o "iniciar_servico_pastas.bat".'
+        });
+        toast('Serviço local de pastas não está rodando.', 'error');
+        return;
+      }
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setDriveStatus({
+          success: false,
+          message: data.message || 'Diretório não acessível nesta máquina.'
+        });
+        toast(data.message || 'Diretório inacessível.', 'error');
+      } else {
+        setDriveStatus({
+          success: true,
+          message: `Pasta aberta no Explorer com sucesso: "${data.folderOpened || normalized}"`
+        });
+        toast('Pasta aberta no Windows Explorer com sucesso!', 'success');
+      }
+    } catch {
+      setDriveStatus({
+        success: false,
+        message: 'Falha de comunicação com o serviço local de pastas.'
+      });
+      toast('Falha ao comunicar com o serviço de pastas.', 'error');
+    } finally {
+      setTestingDrive(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -273,6 +383,115 @@ export const Settings: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+
+          {/* Configuração de Caminho Local do Google Drive */}
+          <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center space-x-2 border-b border-gray-100 pb-4 mb-4">
+              <FolderOpen className="w-5 h-5 text-[#C5A059]" />
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">
+                  Caminho Local do Google Drive (Pastas de Clientes)
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Configure o diretório base das pastas dos clientes sincronizadas nesta máquina Windows
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
+                  Caminho Base das Pastas *
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                    <HardDrive className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    value={drivePath}
+                    onChange={(e) => {
+                      setDrivePath(e.target.value);
+                      setDrivePathSaved(false);
+                      setTestingDrive(false);
+                      setDriveStatus(null);
+                    }}
+                    placeholder="Ex: G:\Meu Drive\00. MSCA\00. CLIENTES"
+                    className="w-full pl-10 pr-3.5 py-2.5 text-sm font-mono rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#C5A059] focus:border-transparent transition-all"
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-gray-400 mt-1.5">
+                  <span>Padrão do sistema: <code className="text-stone-600 bg-slate-100 px-1.5 py-0.5 rounded font-mono">{DEFAULT_DRIVE_FOLDER_PATH}</code></span>
+                  {drivePath && drivePath.includes('/') && (
+                    <span className="text-amber-600 font-medium">As barras serão convertidas para o padrão Windows (\)</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Mensagem de Feedback de salvamento ou teste */}
+              {drivePathSaved && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Caminho base salvo com sucesso neste computador. As pastas serão abertas usando este diretório.</span>
+                </div>
+              )}
+
+              {driveStatus && (
+                <div
+                  className={`p-3 rounded-lg text-xs flex items-center space-x-2 ${
+                    driveStatus.success
+                      ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                      : 'bg-rose-50 border border-rose-200 text-rose-800'
+                  }`}
+                >
+                  {driveStatus.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  )}
+                  <span>{driveStatus.message}</span>
+                </div>
+              )}
+
+              <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={handleResetDrivePath}
+                  className="inline-flex items-center space-x-1.5 px-3 py-2 text-xs font-semibold text-stone-600 hover:text-stone-900 bg-slate-100 hover:bg-slate-200/80 rounded-lg transition-colors cursor-pointer"
+                  title="Restaurar caminho padrão da unidade G:\"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Restaurar Padrão</span>
+                </button>
+
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={handleTestDrivePath}
+                    disabled={testingDrive || !drivePath.trim()}
+                    className="inline-flex items-center space-x-1.5 px-4 py-2 border border-slate-300 text-stone-700 hover:bg-slate-50 font-medium text-xs rounded-lg transition-all shadow-2xs disabled:opacity-50 cursor-pointer"
+                    title="Testar se o serviço de pastas local consegue acessar esta pasta no Windows"
+                  >
+                    {testingDrive ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#C5A059]" />
+                    ) : (
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    )}
+                    <span>Testar e Abrir no Explorer</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveDrivePath}
+                    className="inline-flex items-center space-x-1.5 px-5 py-2 bg-[#C5A059] hover:bg-[#b08e4b] text-white font-medium text-xs rounded-lg transition-all shadow hover:shadow-md cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Salvar Caminho</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

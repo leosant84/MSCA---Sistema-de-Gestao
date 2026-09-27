@@ -19,6 +19,7 @@ import { CnpjCopyButton } from '../components/CnpjCopyButton';
 import { CredentialSnippet } from '../components/CredentialSnippet';
 import { ClientModal } from '../components/ClientModal';
 import { isEntryOverdue } from '../utils/competencia';
+import { getDriveBasePath } from '../utils/driveConfig';
 import type { Client, FinancialEntry } from '../types';
 
 export const Clients: React.FC = () => {
@@ -29,7 +30,7 @@ export const Clients: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('Todos');
+  const [statusFilter, setStatusFilter] = useState<string>('Ativo');
 
   useEffect(() => {
     if (location.state?.accessDenied) {
@@ -48,9 +49,11 @@ export const Clients: React.FC = () => {
 
   const handleOpenFolder = async (client: Client) => {
     try {
+      const basePath = getDriveBasePath();
       const queryParams = new URLSearchParams({
         name: client.razao_social,
         folder: client.numero_pasta || '',
+        basePath: basePath,
       });
 
       let res: Response | null = null;
@@ -164,8 +167,12 @@ export const Clients: React.FC = () => {
       // Filtro especial de Inadimplência
       if (statusFilter === 'Inadimplente') {
         if (!overdueClientsMap.has(c.id)) return false;
-      } else if (statusFilter !== 'Todos' && c.status !== statusFilter) {
-        return false;
+      } else if (statusFilter !== 'Todos') {
+        const clientStatusNorm = (c.status || '').trim().toLowerCase();
+        const filterStatusNorm = statusFilter.trim().toLowerCase();
+        if (clientStatusNorm !== filterStatusNorm) {
+          return false;
+        }
       }
 
       if (!q) return true;
