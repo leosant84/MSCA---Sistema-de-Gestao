@@ -90,9 +90,19 @@ const server = http.createServer((req, res) => {
     const finalFolderToOpen = targetDir || activeBaseDir;
 
     try {
-      const child = spawn('explorer.exe', [finalFolderToOpen], {
+      // Abre a pasta no Windows Explorer garantindo que ela receba foco em primeiro plano
+      const escapedFolder = finalFolderToOpen.replace(/'/g, "''");
+      const psScript = `
+        Start-Process "explorer.exe" -ArgumentList '"${escapedFolder}"';
+        Start-Sleep -Milliseconds 400;
+        $wshell = New-Object -ComObject WScript.Shell;
+        $wshell.AppActivate("Explorador de Arquivos");
+      `;
+
+      const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
         detached: true,
-        stdio: 'ignore'
+        stdio: 'ignore',
+        windowsHide: true
       });
       child.unref();
 
