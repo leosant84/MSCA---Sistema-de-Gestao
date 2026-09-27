@@ -24,7 +24,7 @@ import {
   ArrowDownLeft,
   FileSpreadsheet
 } from 'lucide-react';
-import { getEntryDueDate } from '../utils/competencia';
+import { getEntryDueDate, parseCompetencia, formatCompetencia } from '../utils/competencia';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { FinancialEntryModal } from '../components/FinancialEntryModal';
@@ -185,7 +185,67 @@ export const Financial: React.FC = () => {
     });
   }, [expenses, selectedCompetencia, bancoFilter, statusFilter]);
 
-  // Totais Calculados para a visualização atual
+  // Totais Calculados para os Cards de Resumo (Considera apenas o Mês Corrente)
+  const currentMonthTotals = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    // Filtra lançamentos de entrada pertencentes ao mês corrente
+    const currentMonthEntries = entries.filter((e) => {
+      if (!e.competencia) return false;
+      const { month, year } = parseCompetencia(e.competencia);
+      return month === currentMonth && year === currentYear;
+    });
+
+    // Filtra lançamentos de despesa pertencentes ao mês corrente
+    const currentMonthExpenses = expenses.filter((e) => {
+      if (!e.competencia) return false;
+      const { month, year } = parseCompetencia(e.competencia);
+      return month === currentMonth && year === currentYear;
+    });
+
+    const totalRecebido = currentMonthEntries
+      .filter((e) => e.status === 'RECEBIDO')
+      .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
+
+    const totalAReceber = currentMonthEntries
+      .filter((e) => e.status === 'À RECEBER')
+      .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
+
+    const aReceberCount = currentMonthEntries
+      .filter((e) => e.status === 'À RECEBER').length;
+
+    const totalPago = currentMonthExpenses
+      .filter((e) => e.status === 'Pago' || e.status === 'Descontado')
+      .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
+
+    const pagoCount = currentMonthExpenses
+      .filter((e) => e.status === 'Pago' || e.status === 'Descontado').length;
+
+    const totalAPagar = currentMonthExpenses
+      .filter((e) => e.status === 'A pagar')
+      .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
+
+    const aPagarCount = currentMonthExpenses
+      .filter((e) => e.status === 'A pagar').length;
+
+    const saldoLiquido = totalRecebido - totalPago;
+
+    return {
+      totalRecebido,
+      totalAReceber,
+      aReceberCount,
+      totalPago,
+      pagoCount,
+      totalAPagar,
+      aPagarCount,
+      saldoLiquido,
+      monthLabel: formatCompetencia(currentMonth, currentYear, true),
+    };
+  }, [entries, expenses]);
+
+  // Totais Calculados para a visualização atual (filtros ativos da tabela)
   const totals = useMemo(() => {
     const totalRecebido = filteredEntries
       .filter((e) => e.status === 'RECEBIDO')
@@ -595,81 +655,104 @@ export const Financial: React.FC = () => {
         </div>
       </div>
 
-      {/* Cards de Resumo */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {/* Total Recebido (Liquidado) */}
+      {/* Cards de Resumo - Apenas Mês Corrente */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+        {/* 1. Recebido */}
         <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-              Total Recebido
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center space-x-1">
+              <span>Recebido</span>
+              <span className="text-[9px] font-normal text-emerald-600 lowercase bg-emerald-50 px-1 rounded">({currentMonthTotals.monthLabel})</span>
             </span>
-            <div className="text-xl font-extrabold text-emerald-600 mt-0.5">
-              {formatCurrency(totals.totalRecebido)}
+            <div className="text-lg font-extrabold text-emerald-600 mt-1">
+              {formatCurrency(currentMonthTotals.totalRecebido)}
             </div>
             <div className="text-[10px] text-gray-400">
               Valores liquidados
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
-            <ArrowUpRight className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shrink-0">
+            <ArrowUpRight className="w-4 h-4" />
           </div>
         </div>
 
-        {/* Total À Receber (Pendente) */}
+        {/* 2. À Receber */}
+        <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider flex items-center space-x-1">
+              <span>À Receber</span>
+              <span className="text-[9px] font-normal text-amber-700 lowercase bg-amber-50 px-1 rounded">({currentMonthTotals.monthLabel})</span>
+            </span>
+            <div className="text-lg font-extrabold text-amber-600 mt-1">
+              {formatCurrency(currentMonthTotals.totalAReceber)}
+            </div>
+            <div className="text-[10px] text-gray-400">
+              {currentMonthTotals.aReceberCount} pendência(s)
+            </div>
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100 shrink-0">
+            <Clock className="w-4 h-4" />
+          </div>
+        </div>
+
+        {/* 3. Pago */}
+        <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center space-x-1">
+              <span>Pago</span>
+              <span className="text-[9px] font-normal text-gray-600 lowercase bg-gray-100 px-1 rounded">({currentMonthTotals.monthLabel})</span>
+            </span>
+            <div className="text-lg font-extrabold text-stone-800 mt-1">
+              {formatCurrency(currentMonthTotals.totalPago)}
+            </div>
+            <div className="text-[10px] text-gray-400">
+              {currentMonthTotals.pagoCount} despesa(s) paga(s)
+            </div>
+          </div>
+          <div className="w-9 h-9 rounded-xl bg-stone-100 text-stone-700 flex items-center justify-center border border-stone-200 shrink-0">
+            <ArrowDownRight className="w-4 h-4" />
+          </div>
+        </div>
+
+        {/* 4. A Pagar */}
         <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider flex items-center space-x-1">
-              <span>À Receber (Pendente)</span>
+              <span>A Pagar</span>
+              <span className="text-[9px] font-normal text-rose-700 lowercase bg-rose-50 px-1 rounded">({currentMonthTotals.monthLabel})</span>
             </span>
-            <div className="text-xl font-extrabold text-rose-600 mt-0.5">
-              {formatCurrency(totals.totalAReceber)}
+            <div className="text-lg font-extrabold text-rose-600 mt-1">
+              {formatCurrency(currentMonthTotals.totalAPagar)}
             </div>
             <div className="text-[10px] text-gray-400">
-              {pendingCount} recebível(is) em aberto
+              {currentMonthTotals.aPagarCount} conta(s) a pagar
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100">
-            <Clock className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100 shrink-0">
+            <ArrowDownLeft className="w-4 h-4" />
           </div>
         </div>
 
-        {/* Total de Saídas */}
+        {/* 5. Saldo Líquido */}
         <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-              Total de Saídas
-            </span>
-            <div className="text-xl font-extrabold text-gray-800 mt-0.5">
-              {formatCurrency(totals.totalSaidas)}
-            </div>
-            <div className="text-[10px] text-gray-400">
-              {filteredExpenses.length} pagamento(s)
-            </div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-gray-100 text-gray-700 flex items-center justify-center border border-gray-200">
-            <ArrowDownRight className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* Saldo Líquido */}
-        <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-              Saldo Líquido Realizado
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center space-x-1">
+              <span>Saldo Líquido</span>
+              <span className="text-[9px] font-normal text-[#C5A059] lowercase bg-amber-50 px-1 rounded">({currentMonthTotals.monthLabel})</span>
             </span>
             <div
-              className={`text-xl font-extrabold mt-0.5 ${
-                totals.saldoLiquido >= 0 ? 'text-[#1E2022]' : 'text-rose-600'
+              className={`text-lg font-extrabold mt-1 ${
+                currentMonthTotals.saldoLiquido >= 0 ? 'text-[#1E2022]' : 'text-rose-600'
               }`}
             >
-              {formatCurrency(totals.saldoLiquido)}
+              {formatCurrency(currentMonthTotals.saldoLiquido)}
             </div>
             <div className="text-[10px] text-[#C5A059] font-medium">
-              Recebido menos Saídas
+              Recebido menos Pago
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-amber-50 text-[#C5A059] flex items-center justify-center border border-amber-200">
-            <Scale className="w-6 h-6" />
+          <div className="w-9 h-9 rounded-xl bg-amber-50 text-[#C5A059] flex items-center justify-center border border-amber-200 shrink-0">
+            <Scale className="w-5 h-5" />
           </div>
         </div>
       </div>
