@@ -572,57 +572,25 @@ export const Financial: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              if (activeTab === 'entradas') {
-                if (filteredEntries.length === 0) {
-                  toast('Nenhum recebimento encontrado com os filtros atuais.', 'info');
-                  return;
-                }
-                const filterDesc = [
-                  selectedCompetencia !== 'Todas' ? selectedCompetencia : '',
-                  bancoFilter !== 'Todos' ? bancoFilter : '',
-                  clientFilter !== 'Todos' ? clientFilter : '',
-                  entryViewFilter !== 'TODOS' ? entryViewFilter : ''
-                ].filter(Boolean).join('_');
-                exportFinancialEntriesToExcel(filteredEntries, filterDesc);
-                toast(`Exportando ${filteredEntries.length} recebimento(s) para Excel...`, 'success');
-              } else {
-                if (filteredExpenses.length === 0) {
-                  toast('Nenhuma saída encontrada com os filtros atuais.', 'info');
-                  return;
-                }
-                const filterDesc = [
-                  selectedCompetencia !== 'Todas' ? selectedCompetencia : '',
-                  bancoFilter !== 'Todos' ? bancoFilter : '',
-                  statusFilter !== 'Todos' ? statusFilter : ''
-                ].filter(Boolean).join('_');
-                exportFinancialExpensesToExcel(filteredExpenses, filterDesc);
-                toast(`Exportando ${filteredExpenses.length} saída(s) para Excel...`, 'success');
-              }
+              setSelectedEntry(null);
+              setIsEntryModalOpen(true);
             }}
-            title={activeTab === 'entradas' ? 'Exportar recebimentos filtrados para Excel' : 'Exportar saídas filtradas para Excel'}
-            className="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-lg border border-emerald-200/80 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-800 text-xs font-semibold shadow-xs transition-all cursor-pointer"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
           >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
-            <span className="hidden sm:inline">Exportar Excel</span>
+            <Plus className="w-4 h-4" />
+            <span>Nova Entrada</span>
           </button>
 
           <button
             type="button"
             onClick={() => {
-              if (activeTab === 'entradas') {
-                setSelectedEntry(null);
-                setIsEntryModalOpen(true);
-              } else {
-                setSelectedExpense(null);
-                setIsExpenseModalOpen(true);
-              }
+              setSelectedExpense(null);
+              setIsExpenseModalOpen(true);
             }}
-            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-lg bg-[#C5A059] hover:bg-[#9E7B35] text-white text-xs font-semibold shadow-sm transition-all"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>
-              {activeTab === 'entradas' ? 'Novo Recebimento' : 'Nova Saída'}
-            </span>
+            <span>Nova Saída</span>
           </button>
         </div>
       </div>
@@ -1209,6 +1177,43 @@ export const Financial: React.FC = () => {
                 </select>
               </div>
             )}
+
+            {/* Botão Discreto de Exportar Excel */}
+            <button
+              type="button"
+              onClick={() => {
+                if (activeTab === 'entradas') {
+                  if (filteredEntries.length === 0) {
+                    toast('Nenhum recebimento encontrado com os filtros atuais.', 'info');
+                    return;
+                  }
+                  const filterDesc = [
+                    selectedCompetencia !== 'Todas' ? selectedCompetencia : '',
+                    bancoFilter !== 'Todos' ? bancoFilter : '',
+                    clientFilter !== 'Todos' ? clientFilter : '',
+                    entryViewFilter !== 'TODOS' ? entryViewFilter : ''
+                  ].filter(Boolean).join('_');
+                  exportFinancialEntriesToExcel(filteredEntries, filterDesc);
+                  toast(`Exportando ${filteredEntries.length} recebimento(s) para Excel...`, 'success');
+                } else {
+                  if (filteredExpenses.length === 0) {
+                    toast('Nenhuma saída encontrada com os filtros atuais.', 'info');
+                    return;
+                  }
+                  const filterDesc = [
+                    selectedCompetencia !== 'Todas' ? selectedCompetencia : '',
+                    bancoFilter !== 'Todos' ? bancoFilter : '',
+                    statusFilter !== 'Todos' ? statusFilter : ''
+                  ].filter(Boolean).join('_');
+                  exportFinancialExpensesToExcel(filteredExpenses, filterDesc);
+                  toast(`Exportando ${filteredExpenses.length} saída(s) para Excel...`, 'success');
+                }
+              }}
+              title={activeTab === 'entradas' ? 'Baixar recebimentos filtrados em Excel' : 'Baixar saídas filtradas em Excel'}
+              className="p-2 rounded-lg border border-gray-200 hover:border-emerald-300 bg-white hover:bg-emerald-50 text-gray-500 hover:text-emerald-700 transition-colors shadow-2xs cursor-pointer flex items-center justify-center"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
