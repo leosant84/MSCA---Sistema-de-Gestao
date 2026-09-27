@@ -14,7 +14,11 @@ const STORAGE_KEY = 'msca_google_drive_base_path';
  */
 export function normalizeWindowsPath(inputPath: string): string {
   if (!inputPath) return '';
-  let cleaned = inputPath.trim().replace(/^["']|["']$/g, '');
+  // Remove caracteres de controle invisíveis, non-breaking spaces (\u00A0, \u200B, etc)
+  let cleaned = inputPath
+    .replace(/[\u00A0\u1680\u180E\u2000-\u200B\u202F\u205F\u3000\uFEFF]/g, ' ')
+    .trim()
+    .replace(/^["']|["']$/g, '');
   cleaned = cleaned.replace(/\//g, '\\');
   // Substitui repetições de barras invertidas por uma única barra, mantendo se começar com \\
   const isUnc = cleaned.startsWith('\\\\');

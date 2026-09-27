@@ -123,9 +123,9 @@ export const Settings: React.FC = () => {
     } catch {
       setDriveStatus({
         success: false,
-        message: 'Falha de comunicação com o serviço local de pastas.'
+        message: 'O serviço local de pastas não está em execução nesta máquina. Execute o arquivo "iniciar_servico_pastas.bat" na pasta de scripts para habilitar a integração com o Windows Explorer.'
       });
-      toast('Falha ao comunicar com o serviço de pastas.', 'error');
+      toast('Serviço local de pastas não está ativo. Inicie o iniciar_servico_pastas.bat.', 'error');
     } finally {
       setTestingDrive(false);
     }
@@ -411,6 +411,17 @@ export const Settings: React.FC = () => {
                   <input
                     type="text"
                     value={drivePath}
+                    onPaste={(e) => {
+                      const pasted = e.clipboardData.getData('text');
+                      if (pasted) {
+                        e.preventDefault();
+                        const sanitized = normalizeWindowsPath(pasted);
+                        setDrivePath(sanitized);
+                        setDrivePathSaved(false);
+                        setTestingDrive(false);
+                        setDriveStatus(null);
+                      }
+                    }}
                     onChange={(e) => {
                       setDrivePath(e.target.value);
                       setDrivePathSaved(false);
@@ -418,7 +429,7 @@ export const Settings: React.FC = () => {
                       setDriveStatus(null);
                     }}
                     placeholder="Ex: G:\Meu Drive\00. MSCA\00. CLIENTES"
-                    className="w-full pl-10 pr-3.5 py-2.5 text-sm font-mono rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#C5A059] focus:border-transparent transition-all"
+                    className="w-full pl-10 pr-3.5 py-2.5 text-xs sm:text-sm font-sans tracking-normal rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#C5A059] focus:border-transparent transition-all"
                   />
                 </div>
                 <div className="flex items-center justify-between text-[11px] text-gray-400 mt-1.5">
