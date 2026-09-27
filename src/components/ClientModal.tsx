@@ -27,6 +27,19 @@ export const ClientModal: React.FC<ClientModalProps> = ({
   const { toast } = useToast();
   const [submitting, setSubmitting] = useState(false);
 
+  // Formata data do banco (AAAA-MM-DD ou AAAA-MM) para MM/AAAA
+  const formatInitialDate = (dateVal?: string | null) => {
+    if (!dateVal) return '';
+    const clean = dateVal.trim();
+    if (clean.includes('-')) {
+      const parts = clean.split('-');
+      if (parts.length >= 2) {
+        return `${parts[1]}/${parts[0]}`;
+      }
+    }
+    return clean;
+  };
+
   // Campos principais de cliente
   const [formData, setFormData] = useState({
     razao_social: clientToEdit?.razao_social || '',
@@ -40,8 +53,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     puro_ou_hibrido: clientToEdit?.puro_ou_hibrido || 'Puro',
     fator_r: clientToEdit?.fator_r || 'Não',
     codigo_acesso_simples: clientToEdit?.codigo_acesso_simples || '',
-    inicio_atividades: clientToEdit?.inicio_atividades || '',
-    localidade: clientToEdit?.localidade || '',
+    inicio_atividades: formatInitialDate(clientToEdit?.inicio_atividades),
+    localidade: (clientToEdit?.localidade || '').toUpperCase(),
     login_prefeitura: clientToEdit?.login_prefeitura || '',
     senha_prefeitura: clientToEdit?.senha_prefeitura || '',
     login_posto_fiscal: clientToEdit?.login_posto_fiscal || '',
@@ -70,6 +83,30 @@ export const ClientModal: React.FC<ClientModalProps> = ({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+
+    // Se for o campo de localidade, converte automaticamente para caixa alta (maiúsculas)
+    if (name === 'localidade') {
+      setFormData((prev) => ({
+        ...prev,
+        localidade: value.toUpperCase(),
+      }));
+      return;
+    }
+
+    // Se for o campo de início das atividades, formata como MM/AAAA
+    if (name === 'inicio_atividades') {
+      const numbers = value.replace(/\D/g, '').slice(0, 6);
+      let formatted = numbers;
+      if (numbers.length > 2) {
+        formatted = `${numbers.slice(0, 2)}/${numbers.slice(2)}`;
+      }
+      setFormData((prev) => ({
+        ...prev,
+        inicio_atividades: formatted,
+      }));
+      return;
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -126,6 +163,25 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       const cleanCnpj = formData.cnpj ? formData.cnpj.replace(/\D/g, '') : null;
       const cleanCpf = formData.cpf ? formData.cpf.replace(/\D/g, '') : null;
 
+      // Tratamento da data de Início das Atividades (permite MM/AAAA e converte para AAAA-MM-01 para persistência compatível)
+      let formattedInicioAtividades: string | null = null;
+      if (formData.inicio_atividades && formData.inicio_atividades.trim()) {
+        const val = formData.inicio_atividades.trim();
+        if (val.includes('/')) {
+          const [m, y] = val.split('/');
+          if (m && y) {
+            formattedInicioAtividades = `${y.padStart(4, '20')}-${m.padStart(2, '0')}-01`;
+          }
+        } else if (val.includes('-')) {
+          const parts = val.split('-');
+          if (parts.length === 2) {
+            formattedInicioAtividades = `${parts[0]}-${parts[1].padStart(2, '0')}-01`;
+          } else if (parts.length >= 3) {
+            formattedInicioAtividades = val;
+          }
+        }
+      }
+
       const payload = {
         razao_social: formData.razao_social.trim(),
         cnpj: cleanCnpj,
@@ -138,8 +194,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         puro_ou_hibrido: formData.puro_ou_hibrido || null,
         fator_r: formData.fator_r || null,
         codigo_acesso_simples: formData.codigo_acesso_simples.trim() || null,
-        inicio_atividades: formData.inicio_atividades || null,
-        localidade: formData.localidade.trim() || null,
+        inicio_atividades: formattedInicioAtividades,
+        localidade: formData.localidade.trim().toUpperCase() || null,
         login_prefeitura: formData.login_prefeitura.trim() || null,
         senha_prefeitura: formData.senha_prefeitura.trim() || null,
         login_posto_fiscal: hasPostoFiscal ? (formData.login_posto_fiscal.trim() || null) : null,
@@ -303,7 +359,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
 
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Nº
+                  Nº Domínio
                 </label>
                 <input
                   type="text"
@@ -353,21 +409,23 @@ export const ClientModal: React.FC<ClientModalProps> = ({
                   name="localidade"
                   value={formData.localidade}
                   onChange={handleInputChange}
-                  placeholder="Ex: São Paulo/SP"
-                  className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                  placeholder="Ex: SÃO PAULO/SP"
+                  className="w-full text-xs uppercase px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Início das Atividades
+                  Início das Atividades (Mês/Ano)
                 </label>
                 <input
-                  type="date"
+                  type="text"
                   name="inicio_atividades"
+                  maxLength={7}
                   value={formData.inicio_atividades}
                   onChange={handleInputChange}
-                  className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                  placeholder="MM/AAAA (ex: 03/2024)"
+                  className="w-full text-xs font-mono px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
                 />
               </div>
 
