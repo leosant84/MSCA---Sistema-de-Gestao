@@ -9,7 +9,8 @@ import {
   Shield,
   RefreshCw,
   FolderOpen,
-  AlertTriangle
+  AlertTriangle,
+  FileSpreadsheet
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useLocation } from 'react-router-dom';
@@ -20,6 +21,7 @@ import { CredentialSnippet } from '../components/CredentialSnippet';
 import { ClientModal } from '../components/ClientModal';
 import { isEntryOverdue } from '../utils/competencia';
 import { getDriveBasePath } from '../utils/driveConfig';
+import { exportClientsToExcel } from '../utils/excelExport';
 import type { Client, FinancialEntry } from '../types';
 
 export const Clients: React.FC = () => {
@@ -244,6 +246,23 @@ export const Clients: React.FC = () => {
             className="p-3 rounded-2xl border border-slate-200/80 bg-white/90 hover:bg-white text-stone-600 hover:text-stone-900 transition-all shadow-xs cursor-pointer"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[#C5A059]' : ''}`} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (filteredClients.length === 0) {
+                toast('Nenhum cliente disponível para exportar com os filtros atuais.', 'info');
+                return;
+              }
+              exportClientsToExcel(filteredClients, statusFilter !== 'Todos' ? statusFilter : undefined);
+              toast(`Exportando ${filteredClients.length} cliente(s) para Excel...`, 'success');
+            }}
+            title="Exportar clientes filtrados para Excel"
+            className="inline-flex items-center space-x-2 px-4 py-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-800 text-xs font-semibold shadow-xs transition-all cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+            <span className="hidden sm:inline">Exportar Excel</span>
           </button>
 
           <button

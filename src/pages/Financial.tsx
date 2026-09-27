@@ -21,7 +21,8 @@ import {
   Users,
   AlertTriangle,
   CalendarDays,
-  ArrowDownLeft
+  ArrowDownLeft,
+  FileSpreadsheet
 } from 'lucide-react';
 import { getEntryDueDate } from '../utils/competencia';
 import { supabase } from '../lib/supabase';
@@ -32,6 +33,7 @@ import { SettleEntryModal } from '../components/SettleEntryModal';
 import { SettleExpenseModal } from '../components/SettleExpenseModal';
 import { BatchSettleModal } from '../components/BatchSettleModal';
 import { EXPENSE_PAYMENT_METHODS } from '../constants/expenseCategories';
+import { exportFinancialEntriesToExcel, exportFinancialExpensesToExcel } from '../utils/excelExport';
 import type { FinancialEntry, FinancialExpense, FinancialEntryStatus } from '../types';
 
 export const Financial: React.FC = () => {
@@ -565,6 +567,43 @@ export const Financial: React.FC = () => {
             className="p-2.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 transition-colors shadow-xs"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[#C5A059]' : ''}`} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (activeTab === 'entradas') {
+                if (filteredEntries.length === 0) {
+                  toast('Nenhum recebimento encontrado com os filtros atuais.', 'info');
+                  return;
+                }
+                const filterDesc = [
+                  selectedCompetencia !== 'Todas' ? selectedCompetencia : '',
+                  bancoFilter !== 'Todos' ? bancoFilter : '',
+                  clientFilter !== 'Todos' ? clientFilter : '',
+                  entryViewFilter !== 'TODOS' ? entryViewFilter : ''
+                ].filter(Boolean).join('_');
+                exportFinancialEntriesToExcel(filteredEntries, filterDesc);
+                toast(`Exportando ${filteredEntries.length} recebimento(s) para Excel...`, 'success');
+              } else {
+                if (filteredExpenses.length === 0) {
+                  toast('Nenhuma saída encontrada com os filtros atuais.', 'info');
+                  return;
+                }
+                const filterDesc = [
+                  selectedCompetencia !== 'Todas' ? selectedCompetencia : '',
+                  bancoFilter !== 'Todos' ? bancoFilter : '',
+                  statusFilter !== 'Todos' ? statusFilter : ''
+                ].filter(Boolean).join('_');
+                exportFinancialExpensesToExcel(filteredExpenses, filterDesc);
+                toast(`Exportando ${filteredExpenses.length} saída(s) para Excel...`, 'success');
+              }
+            }}
+            title={activeTab === 'entradas' ? 'Exportar recebimentos filtrados para Excel' : 'Exportar saídas filtradas para Excel'}
+            className="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-lg border border-emerald-200/80 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-800 text-xs font-semibold shadow-xs transition-all cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+            <span className="hidden sm:inline">Exportar Excel</span>
           </button>
 
           <button
