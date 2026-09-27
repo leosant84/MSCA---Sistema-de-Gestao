@@ -52,11 +52,21 @@ export const FinancialEntryModal: React.FC<FinancialEntryModalProps> = ({
 
   // Busca lista de clientes e categorias contábeis dinâmicas
   const fetchAuxData = async () => {
+    // Busca apenas clientes ativos da carteira (ou o cliente atualmente em edição para manter a integridade)
     const { data: clientsData } = await supabase
       .from('clients')
       .select('id, razao_social, status')
       .order('razao_social', { ascending: true });
-    if (clientsData) setClients(clientsData as Client[]);
+    
+    if (clientsData) {
+      // Filtra clientes ativos, mas preserva o cliente selecionado se for edição
+      const activeClients = (clientsData as Client[]).filter(
+        (c) =>
+          c.status?.trim().toUpperCase() === 'ATIVO' ||
+          (entryToEdit?.client_id && c.id === entryToEdit.client_id)
+      );
+      setClients(activeClients);
+    }
 
     const { data: catData } = await supabase
       .from('financial_categories')
@@ -444,12 +454,15 @@ export const FinancialEntryModal: React.FC<FinancialEntryModalProps> = ({
                   onChange={handleInputChange}
                   className="w-full text-xs px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059]"
                 >
-                  <option value="">-- Selecione o cliente cadastrado --</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.razao_social} {c.status !== 'Ativo' ? `(${c.status})` : ''}
-                    </option>
-                  ))}
+                  <option value="">-- Selecione o cliente cadastrado (Apenas Ativos) --</option>
+                  {clients.map((c) => {
+                    const isNotAtivo = c.status?.trim().toUpperCase() !== 'ATIVO';
+                    return (
+                      <option key={c.id} value={c.id}>
+                        {c.razao_social} {isNotAtivo ? `(${c.status})` : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               )}
             </div>
