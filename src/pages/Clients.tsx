@@ -356,95 +356,95 @@ export const Clients: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50/60 border-b border-slate-200/60 text-[11px] font-bold text-stone-400 uppercase tracking-wider">
-                <th className="py-4 px-3 text-center w-12">Pasta</th>
-                <th className="py-4 px-4 whitespace-nowrap">Domínio</th>
-                <th className="py-4 px-6 min-w-[280px]">Razão Social</th>
-                <th className="py-4 px-4 whitespace-nowrap">CNPJ</th>
-                <th className="py-4 px-4 whitespace-nowrap">Regime</th>
-                <th className="py-4 px-4 whitespace-nowrap">Cód. Acesso</th>
-                <th className="py-4 px-4">Portais</th>
-                <th className="py-4 px-4 text-center">Status</th>
-                <th className="py-4 px-4 text-right">Ações</th>
+              <tr className="bg-slate-50/60 border-b border-slate-200/60 text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+                <th className="py-2.5 px-2 text-center w-10">Pasta</th>
+                <th className="py-2.5 px-2.5 whitespace-nowrap">Domínio</th>
+                <th className="py-2.5 px-3">Razão Social</th>
+                <th className="py-2.5 px-2.5 whitespace-nowrap">CNPJ</th>
+                <th className="py-2.5 px-2.5 whitespace-nowrap">Regime</th>
+                <th className="py-2.5 px-2.5 whitespace-nowrap">Cód. Acesso</th>
+                <th className="py-2.5 px-2.5">Portais</th>
+                <th className="py-2.5 px-2.5 text-center">Status</th>
+                <th className="py-2.5 px-3 text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 text-xs text-gray-700">
+            <tbody className="divide-y divide-gray-100 text-[11px] text-gray-700">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-gray-400">
+                  <td colSpan={9} className="py-10 text-center text-gray-400">
                     <div className="flex flex-col items-center justify-center space-y-2">
-                      <div className="w-6 h-6 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-xs">Carregando dados dos clientes...</span>
+                      <div className="w-5 h-5 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-[11px]">Carregando dados dos clientes...</span>
                     </div>
                   </td>
                 </tr>
               ) : filteredClients.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-gray-400">
-                    <Building className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                    <span>Nenhum cliente localizado para esta busca.</span>
+                  <td colSpan={9} className="py-10 text-center text-gray-400">
+                    <Building className="w-7 h-7 text-gray-300 mx-auto mb-2" />
+                    <span className="text-xs">Nenhum cliente localizado para esta busca.</span>
                   </td>
                 </tr>
               ) : (
                 filteredClients.map((c) => (
                   <tr key={c.id} className="hover:bg-amber-50/30 transition-colors">
                     {/* Pastinha com o link */}
-                    <td className="py-4 px-3 text-center whitespace-nowrap">
+                    <td className="py-2.5 px-2 text-center whitespace-nowrap">
                       {isAdmin ? (
                         <button
                           type="button"
                           onClick={() => handleOpenFolder(c)}
                           title={`Abrir pasta do cliente no Google Drive: G:\\Meu Drive\\00. MSCA\\00. CLIENTES\\${c.razao_social}`}
-                          className="p-2 inline-flex rounded-xl bg-amber-500/10 text-[#C5A059] hover:bg-[#C5A059] hover:text-white transition-all cursor-pointer group items-center justify-center shadow-2xs"
+                          className="p-1.5 inline-flex rounded-lg bg-amber-500/10 text-[#C5A059] hover:bg-[#C5A059] hover:text-white transition-all cursor-pointer group items-center justify-center shadow-2xs"
                         >
-                          <FolderOpen className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                          <FolderOpen className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
                         </button>
                       ) : (
-                        <div className="p-2 inline-flex rounded-xl bg-slate-100 text-stone-400 items-center justify-center">
-                          <FolderOpen className="w-4 h-4" />
+                        <div className="p-1.5 inline-flex rounded-lg bg-slate-100 text-stone-400 items-center justify-center">
+                          <FolderOpen className="w-3.5 h-3.5" />
                         </div>
                       )}
                     </td>
 
                     {/* Domínio */}
-                    <td className="py-4 px-4 whitespace-nowrap">
-                      <span className="text-sm font-bold text-stone-800">
+                    <td className="py-2.5 px-2.5 whitespace-nowrap">
+                      <span className="text-xs font-bold text-stone-800">
                         {c.numero_pasta || '-'}
                       </span>
                     </td>
 
                     {/* Razão Social */}
-                    <td className="py-4 px-6">
-                      <div className="flex items-center flex-wrap gap-2">
-                        <span className="font-bold text-stone-900 text-sm leading-relaxed">
+                    <td className="py-2.5 px-3">
+                      <div className="flex items-center flex-wrap gap-1.5">
+                        <span className="font-semibold text-stone-900 text-xs leading-tight">
                           {c.razao_social}
                         </span>
 
                         {c.parcelamento_ativo && (
                           <span
                             title="Cliente possui parcelamento ativo"
-                            className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300/80 shadow-2xs"
+                            className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300/80 shadow-2xs"
                           >
-                            <Receipt className="w-3 h-3 text-[#C5A059]" />
-                            <span>Parcelamento Ativo</span>
+                            <Receipt className="w-2.5 h-2.5 text-[#C5A059]" />
+                            <span>Parcelamento</span>
                           </span>
                         )}
                       </div>
                     </td>
 
                     {/* CNPJ */}
-                    <td className="py-4 px-4 whitespace-nowrap">
+                    <td className="py-2.5 px-2.5 whitespace-nowrap">
                       <CnpjCopyButton cnpj={c.cnpj} />
                     </td>
 
                     {/* Regime */}
-                    <td className="py-4 px-4 whitespace-nowrap">
-                      <div className="flex flex-col items-start gap-1">
-                        <span className="px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 font-semibold tracking-wide text-[11px] border border-blue-100">
+                    <td className="py-2.5 px-2.5 whitespace-nowrap">
+                      <div className="flex flex-col items-start gap-0.5">
+                        <span className="px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 font-semibold tracking-tight text-[10px] border border-blue-100">
                           {c.regime_tributario || 'Não def.'}
                         </span>
                         {c.fator_r === 'Sim' && (
-                          <span className="px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 font-semibold text-[10px] border border-emerald-100">
+                          <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 font-semibold text-[9px] border border-emerald-100">
                             Fator R
                           </span>
                         )}
@@ -452,10 +452,10 @@ export const Clients: React.FC = () => {
                     </td>
 
                     {/* Cód. Acesso */}
-                    <td className="py-4 px-4 whitespace-nowrap">
+                    <td className="py-2.5 px-2.5 whitespace-nowrap">
                       {c.codigo_acesso_simples ? (
-                        <div className="inline-flex items-center space-x-1.5 font-mono text-xs bg-amber-50/50 px-2.5 py-1 rounded-xl border border-amber-200/60 text-stone-800 shadow-xs">
-                          <Key className="w-3 h-3 text-[#C5A059]" />
+                        <div className="inline-flex items-center space-x-1 font-mono text-[11px] bg-amber-50/50 px-2 py-0.5 rounded-lg border border-amber-200/60 text-stone-800 shadow-2xs">
+                          <Key className="w-2.5 h-2.5 text-[#C5A059]" />
                           <span>{c.codigo_acesso_simples}</span>
                         </div>
                       ) : (
@@ -464,8 +464,8 @@ export const Clients: React.FC = () => {
                     </td>
 
                     {/* Portais (Prefeitura, Posto Fiscal e Sistemas Extras) */}
-                    <td className="py-4 px-4">
-                      <div className="space-y-1.5 min-w-[150px]">
+                    <td className="py-2.5 px-2.5">
+                      <div className="space-y-1">
                         <CredentialSnippet
                           label="Prefeitura"
                           login={c.login_prefeitura}
@@ -488,10 +488,10 @@ export const Clients: React.FC = () => {
                     </td>
 
                     {/* Status */}
-                    <td className="py-4 px-5 text-center whitespace-nowrap">
+                    <td className="py-2.5 px-2.5 text-center whitespace-nowrap">
                       <div className="flex flex-col items-center space-y-1">
                         <span
-                          className={`inline-block px-3 py-1 rounded-full text-[11px] font-semibold tracking-wide shadow-xs ${
+                          className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide shadow-2xs ${
                             (c.status || '').toUpperCase() === 'ATIVO'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
                               : (c.status || '').toUpperCase() === 'INADIMPLENTE'
@@ -509,7 +509,7 @@ export const Clients: React.FC = () => {
                         {isAdmin && overdueClientsMap.has(c.id) && (
                           <span
                             title="Total vencido em aberto"
-                            className="inline-flex items-center text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200"
+                            className="inline-flex items-center text-[9px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded-full border border-rose-200"
                           >
                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
                               overdueClientsMap.get(c.id)?.totalOverdue || 0
@@ -520,24 +520,24 @@ export const Clients: React.FC = () => {
                     </td>
 
                     {/* Ações */}
-                    <td className="py-4 px-5 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end space-x-1.5">
+                    <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end space-x-1">
                         <button
                           type="button"
                           onClick={() => handleEdit(c)}
-                          className="p-2 text-stone-400 hover:text-amber-700 rounded-xl hover:bg-amber-50 transition-colors cursor-pointer"
+                          className="p-1.5 text-stone-400 hover:text-amber-700 rounded-lg hover:bg-amber-50 transition-colors cursor-pointer"
                           title="Editar cadastro do cliente"
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
+                          <Edit2 className="w-3 h-3" />
                         </button>
                         {isAdmin && (
                           <button
                             type="button"
                             onClick={() => handleDelete(c.id, c.razao_social)}
-                            className="p-2 text-stone-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-colors cursor-pointer"
+                            className="p-1.5 text-stone-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
                             title="Excluir cliente"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3 h-3" />
                           </button>
                         )}
                       </div>
