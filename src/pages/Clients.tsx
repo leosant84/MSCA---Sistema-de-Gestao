@@ -18,7 +18,7 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { CnpjCopyButton } from '../components/CnpjCopyButton';
-import { CredentialSnippet } from '../components/CredentialSnippet';
+import { PortalsDropdown } from '../components/PortalsDropdown';
 import { ClientModal } from '../components/ClientModal';
 import { isEntryOverdue } from '../utils/competencia';
 import { getDriveBasePath } from '../utils/driveConfig';
@@ -463,28 +463,15 @@ export const Clients: React.FC = () => {
                       )}
                     </td>
 
-                    {/* Portais (Prefeitura, Posto Fiscal e Sistemas Extras) */}
-                    <td className="py-2.5 px-2.5">
-                      <div className="space-y-1">
-                        <CredentialSnippet
-                          label="Prefeitura"
-                          login={c.login_prefeitura}
-                          senha={c.senha_prefeitura}
-                        />
-                        <CredentialSnippet
-                          label="Posto Fiscal"
-                          login={c.login_posto_fiscal}
-                          senha={c.senha_posto_fiscal}
-                        />
-                        {c.client_credentials && c.client_credentials.map((cred) => (
-                          <CredentialSnippet
-                            key={cred.id}
-                            label={cred.sistema_nome}
-                            login={cred.login}
-                            senha={cred.senha}
-                          />
-                        ))}
-                      </div>
+                    {/* Portais (Dropdown com setinha para copiar logins e senhas) */}
+                    <td className="py-2.5 px-2.5 whitespace-nowrap">
+                      <PortalsDropdown
+                        loginPrefeitura={c.login_prefeitura}
+                        senhaPrefeitura={c.senha_prefeitura}
+                        loginPostoFiscal={c.login_posto_fiscal}
+                        senhaPostoFiscal={c.senha_posto_fiscal}
+                        extraCredentials={c.client_credentials}
+                      />
                     </td>
 
                     {/* Status */}
