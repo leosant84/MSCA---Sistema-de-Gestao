@@ -63,6 +63,10 @@ export const Financial: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('Todos');
   const [clientFilter, setClientFilter] = useState<string>('Todos');
 
+  // Filtro de Mês e Ano específico para os Cards de Resumo e Distribuição de Gastos
+  const [cardMonth, setCardMonth] = useState<number>(() => new Date().getMonth());
+  const [cardYear, setCardYear] = useState<number>(() => new Date().getFullYear());
+
   // Filtro Rápido de Visão de Cobrança (Pills de status para Entradas)
   const [entryViewFilter, setEntryViewFilter] = useState<
     'TODOS' | FinancialEntryStatus
@@ -295,24 +299,23 @@ export const Financial: React.FC = () => {
       });
   }, [expenses, selectedYear, selectedCompetencia, bancoFilter, statusFilter]);
 
-  // Totais Calculados para os Cards de Resumo (Estritamente fixados na competência do Mês Corrente)
+  // Totais Calculados para os Cards de Resumo (Filtrados por cardMonth e cardYear)
   const currentMonthTotals = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+    const targetMonth = cardMonth;
+    const targetYear = cardYear;
 
-    // Filtra lançamentos de entrada pertencentes ao mês corrente
+    // Filtra lançamentos de entrada pertencentes ao mês e ano selecionados
     const currentMonthEntries = entries.filter((e) => {
       if (!e.competencia) return false;
       const { month, year } = parseCompetencia(e.competencia);
-      return month === currentMonth && year === currentYear;
+      return month === targetMonth && year === targetYear;
     });
 
-    // Filtra lançamentos de despesa pertencentes ao mês corrente
+    // Filtra lançamentos de despesa pertencentes ao mês e ano selecionados
     const currentMonthExpenses = expenses.filter((e) => {
       if (!e.competencia) return false;
       const { month, year } = parseCompetencia(e.competencia);
-      return month === currentMonth && year === currentYear;
+      return month === targetMonth && year === targetYear;
     });
 
     const totalRecebido = currentMonthEntries
@@ -351,9 +354,9 @@ export const Financial: React.FC = () => {
       totalAPagar,
       aPagarCount,
       saldoLiquido,
-      monthLabel: formatCompetencia(currentMonth, currentYear, true),
+      monthLabel: formatCompetencia(targetMonth, targetYear, true),
     };
-  }, [entries, expenses]);
+  }, [entries, expenses, cardMonth, cardYear]);
 
   // Totais Calculados para a visualização atual (filtros ativos da tabela)
   const totals = useMemo(() => {
@@ -490,13 +493,13 @@ export const Financial: React.FC = () => {
       1
     );
 
-    // 2. Distribuição dos Gastos por Categoria Contábil (Fixado estritamente no Mês Corrente)
+    // 2. Distribuição dos Gastos por Categoria Contábil (Filtrado por cardMonth e cardYear)
     const gastosMap = new Map<string, number>();
     expenses
       .filter((ex) => {
         if (!ex.competencia || ex.status === 'Cancelado') return false;
         const { month, year } = parseCompetencia(ex.competencia);
-        return month === today.getMonth() && year === today.getFullYear();
+        return month === cardMonth && year === cardYear;
       })
       .forEach((ex) => {
         const cat = ex.conta_contabil || 'Outras Despesas';
@@ -574,7 +577,7 @@ export const Financial: React.FC = () => {
       topInadimplentes,
       maxInadimplenteTotal,
     };
-  }, [entries, expenses]);
+  }, [entries, expenses, cardMonth, cardYear]);
 
   // Agenda de Próximos Compromissos Financeiros: Apenas a PRÓXIMA data de obrigações de saída
   const agendaCommitments = useMemo(() => {
@@ -668,6 +671,8 @@ export const Financial: React.FC = () => {
   // Lista de anos disponíveis com base em todas as competências
   const availableYears = useMemo(() => {
     const years = new Set<string>();
+    years.add(String(new Date().getFullYear()));
+    years.add(String(cardYear));
     entries.forEach((e) => {
       if (e.competencia) {
         const { year } = parseCompetencia(e.competencia);
@@ -681,7 +686,7 @@ export const Financial: React.FC = () => {
       }
     });
     return Array.from(years).sort((a, b) => Number(b) - Number(a));
-  }, [entries, expenses]);
+  }, [entries, expenses, cardYear]);
 
   // Lista de competências disponíveis para escolha (filtráveis pelo ano selecionado se houver)
   const availableCompetencias = useMemo(() => {
@@ -899,7 +904,91 @@ export const Financial: React.FC = () => {
         </div>
       </div>
 
-      {/* Cards de Resumo - Apenas Mês Corrente */}
+      {/* Barra de Filtro de Mês e Ano para os Cards e Distribuição de Gastos */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-gray-200 shadow-xs">
+        <div className="flex items-center space-x-2">
+          <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700">
+            <Calendar className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-xs font-bold text-gray-900">Período dos Indicadores e Distribuição</h2>
+            <p className="text-[10px] text-gray-400">
+              Filtra os totais dos cards e o gráfico de distribuição de gastos ({currentMonthTotals.monthLabel})
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center flex-wrap gap-2">
+          {/* Seletor de Mês */}
+          <div className="flex items-center space-x-1.5">
+            <label htmlFor="card-month-select" className="text-[11px] font-semibold text-gray-500">
+              Mês:
+            </label>
+            <select
+              id="card-month-select"
+              value={cardMonth}
+              onChange={(e) => setCardMonth(Number(e.target.value))}
+              className="text-xs font-semibold bg-gray-50 hover:bg-gray-100 text-gray-800 border border-gray-200 rounded-lg px-2.5 py-1.5 transition-colors focus:ring-1 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+            >
+              {[
+                { value: 0, label: 'Janeiro (01)' },
+                { value: 1, label: 'Fevereiro (02)' },
+                { value: 2, label: 'Março (03)' },
+                { value: 3, label: 'Abril (04)' },
+                { value: 4, label: 'Maio (05)' },
+                { value: 5, label: 'Junho (06)' },
+                { value: 6, label: 'Julho (07)' },
+                { value: 7, label: 'Agosto (08)' },
+                { value: 8, label: 'Setembro (09)' },
+                { value: 9, label: 'Outubro (10)' },
+                { value: 10, label: 'Novembro (11)' },
+                { value: 11, label: 'Dezembro (12)' },
+              ].map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Seletor de Ano */}
+          <div className="flex items-center space-x-1.5">
+            <label htmlFor="card-year-select" className="text-[11px] font-semibold text-gray-500">
+              Ano:
+            </label>
+            <select
+              id="card-year-select"
+              value={cardYear}
+              onChange={(e) => setCardYear(Number(e.target.value))}
+              className="text-xs font-semibold bg-gray-50 hover:bg-gray-100 text-gray-800 border border-gray-200 rounded-lg px-2.5 py-1.5 transition-colors focus:ring-1 focus:ring-emerald-500 focus:outline-none cursor-pointer"
+            >
+              {availableYears.map((yr) => (
+                <option key={yr} value={yr}>
+                  {yr}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Botão Mês Atual */}
+          {(cardMonth !== new Date().getMonth() || cardYear !== new Date().getFullYear()) && (
+            <button
+              type="button"
+              onClick={() => {
+                const now = new Date();
+                setCardMonth(now.getMonth());
+                setCardYear(now.getFullYear());
+              }}
+              className="text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+              title="Voltar para o mês corrente"
+            >
+              Mês Atual
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Cards de Resumo */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
         {/* 1. Recebido */}
         <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex items-center justify-between">
@@ -1163,7 +1252,7 @@ export const Financial: React.FC = () => {
                 <div>
                   <h3 className="text-xs font-bold text-gray-900">Distribuição de Gastos</h3>
                   <p className="text-[10px] text-gray-400">
-                    Mês corrente ({currentMonthTotals.monthLabel})
+                    Competência {currentMonthTotals.monthLabel}
                   </p>
                 </div>
               </div>
@@ -1253,7 +1342,7 @@ export const Financial: React.FC = () => {
 
             <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
               <span>Top {analyticsData.distribuicaoGastos.length} categorias</span>
-              <span className="text-gray-500">Mês corrente ({currentMonthTotals.monthLabel})</span>
+              <span className="text-gray-500 font-medium">Competência ({currentMonthTotals.monthLabel})</span>
             </div>
           </div>
 
