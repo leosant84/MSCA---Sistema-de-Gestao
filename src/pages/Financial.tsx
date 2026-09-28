@@ -24,7 +24,7 @@ import {
   ArrowDownLeft,
   FileSpreadsheet
 } from 'lucide-react';
-import { getEntryDueDate, parseCompetencia, formatCompetencia } from '../utils/competencia';
+import { getEntryDueDate, parseCompetencia, formatCompetencia, isEntryOverdue } from '../utils/competencia';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { FinancialEntryModal } from '../components/FinancialEntryModal';
@@ -376,8 +376,8 @@ export const Financial: React.FC = () => {
     const maxClienteTotal = Math.max(...principaisClientes.map((c) => c.total), 1);
 
     // 4. Inadimplência e Top 5 Clientes Mais Inadimplentes
-    // Considera títulos vencidos ou pendentes com status À RECEBER ou PROTESTADO
-    const pendentes = entries.filter((e) => e.status === 'À RECEBER' || e.status === 'PROTESTADO');
+    // Considera inadimplente quem possui competência anterior ao mês corrente em aberto
+    const pendentes = entries.filter((e) => isEntryOverdue(e));
     const valorEmAtraso = pendentes.reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
     const totalGeralReceber = entries.reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
     
@@ -456,7 +456,7 @@ export const Financial: React.FC = () => {
           dataFormatted: `${dayStr}/${monthStr}/${yearStr}`,
           valor: Number(e.valor || 0),
           status: e.status,
-          isOverdue: dueDate.getTime() < todayMidnight.getTime(),
+          isOverdue: isEntryOverdue(e),
           diasDiferenca: diffDays,
         });
       });

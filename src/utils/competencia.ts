@@ -97,15 +97,23 @@ export function getEntryDueDate(competencia: string, observacao?: string | null)
 }
 
 /**
- * Verifica se um lançamento "À RECEBER" está vencido (inadimplente)
+ * Verifica se um lançamento "À RECEBER" ou "PROTESTADO" está vencido / inadimplente.
+ * Regra: considera inadimplente se a competência (mês/ano) for anterior ao mês corrente.
+ * Dentro do mês corrente, não considera inadimplente (não se preocupa com o dia).
  */
 export function isEntryOverdue(entry: {
   status: string;
   competencia: string;
   observacao?: string | null;
 }): boolean {
-  if (entry.status !== 'À RECEBER') return false;
-  const dueDate = getEntryDueDate(entry.competencia, entry.observacao);
+  if (entry.status !== 'À RECEBER' && entry.status !== 'PROTESTADO') return false;
+  if (!entry.competencia) return false;
+
+  const { month, year } = parseCompetencia(entry.competencia);
   const now = new Date();
-  return now.getTime() > dueDate.getTime();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  // É inadimplente se o ano for menor, ou no mesmo ano o mês for menor que o mês atual
+  return year < currentYear || (year === currentYear && month < currentMonth);
 }

@@ -31,7 +31,6 @@ export const FinancialEntryModal: React.FC<FinancialEntryModalProps> = ({
   // Recorrência / Lote
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringCount, setRecurringCount] = useState<number>(12); // Padrão: 12 meses (anual)
-  const [diaVencimento, setDiaVencimento] = useState<string>('10');
 
   // Tipo de seleção: vinculado a um cliente cadastrado ou nome avulso
   const [isAvulso, setIsAvulso] = useState<boolean>(() => {
@@ -179,9 +178,7 @@ export const FinancialEntryModal: React.FC<FinancialEntryModalProps> = ({
       } else if (isRecurring && recurringCount > 1) {
         // Lançamento em Lote / Recorrência de N competências
         const competencias = generateCompetenciaSequence(formData.competencia.trim(), recurringCount);
-        const obsRecorrente = formData.observacao.trim()
-          ? `${formData.observacao.trim()}${diaVencimento ? ` (Vencimento dia ${diaVencimento})` : ''}`
-          : diaVencimento ? `Vencimento dia ${diaVencimento}` : null;
+        const obsRecorrente = formData.observacao.trim() || null;
 
         const batchPayload = competencias.map((comp) => ({
           competencia: comp,
@@ -217,7 +214,6 @@ export const FinancialEntryModal: React.FC<FinancialEntryModalProps> = ({
             valor_total_lote: { new: parsedValor * recurringCount },
             conta_contabil: { new: formData.conta_contabil.trim() },
             status_inicial: { new: 'À RECEBER' },
-            dia_vencimento: { new: diaVencimento || '10' },
           },
         });
 
@@ -386,7 +382,7 @@ export const FinancialEntryModal: React.FC<FinancialEntryModalProps> = ({
                 </div>
 
                 {isRecurring && (
-                  <div className="pt-2 border-t border-amber-200/60 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in">
+                  <div className="pt-2 border-t border-amber-200/60 animate-in fade-in">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1">
                         Quantidade de Parcelas / Meses
@@ -394,33 +390,15 @@ export const FinancialEntryModal: React.FC<FinancialEntryModalProps> = ({
                       <select
                         value={recurringCount}
                         onChange={(e) => setRecurringCount(Number(e.target.value))}
-                        className="w-full text-xs px-3 py-1.5 bg-white border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059]"
+                        className="w-full text-xs px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059]"
                       >
                         <option value={3}>3 meses (Trimestral)</option>
                         <option value={6}>6 meses (Semestral)</option>
                         <option value={12}>12 meses (1 Ano / Anual)</option>
                         <option value={24}>24 meses (2 Anos)</option>
                       </select>
-                      <p className="text-[10px] text-gray-500 mt-1">
-                        Serão gerados {recurringCount} registros sequenciais com status <strong>À RECEBER</strong>.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">
-                        Dia de Vencimento Previsto (Opcional)
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={31}
-                        value={diaVencimento}
-                        onChange={(e) => setDiaVencimento(e.target.value)}
-                        placeholder="Ex: 10"
-                        className="w-full text-xs px-3 py-1.5 bg-white border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059]"
-                      />
-                      <p className="text-[10px] text-gray-500 mt-1">
-                        Registrado nas observações de cada competência para referência.
+                      <p className="text-[10px] text-gray-500 mt-1.5">
+                        Serão geradas {recurringCount} competências sequenciais com status <strong>À RECEBER</strong>.
                       </p>
                     </div>
                   </div>
