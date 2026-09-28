@@ -3,8 +3,6 @@ import {
   Search,
   Plus,
   Building,
-  Edit2,
-  Trash2,
   Shield,
   RefreshCw,
   FolderOpen,
@@ -311,27 +309,6 @@ export const Clients: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!isAdmin) {
-      toast('Apenas administradores podem excluir clientes.', 'error');
-      return;
-    }
-
-    if (!window.confirm(`Deseja realmente excluir o cliente "${name}"? Esta ação removerá também as credenciais vinculadas.`)) {
-      return;
-    }
-
-    try {
-      const { error } = await supabase.from('clients').delete().eq('id', id);
-      if (error) throw error;
-      toast(`Cliente "${name}" excluído com sucesso.`, 'success');
-      setClients((prev) => prev.filter((c) => c.id !== id));
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao excluir cliente';
-      toast(msg, 'error');
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Cabeçalho da Página */}
@@ -588,45 +565,44 @@ export const Clients: React.FC = () => {
 
                 <th className="py-2.5 px-2.5">Portais</th>
 
-                <th className="py-2.5 px-2 text-center whitespace-nowrap">
-                  <button
-                    type="button"
-                    onClick={() => handleSort('status')}
-                    className="inline-flex items-center space-x-1 font-bold text-stone-600 hover:text-[#C5A059] transition-colors cursor-pointer group"
-                    title="Classificar por Status"
-                  >
-                    <span>Status</span>
-                    {sortField === 'status' ? (
-                      sortDirection === 'asc' ? (
-                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
-                      ) : (
-                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
-                      )
-                    ) : (
-                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
+                <th className="py-2.5 px-3 text-right whitespace-nowrap">
+                  <div className="inline-flex items-center space-x-2 justify-end">
+                    {hasActiveFilters && (
+                      <button
+                        type="button"
+                        onClick={handleClearFilters}
+                        title="Limpar busca e filtros"
+                        className="px-2 py-0.5 rounded bg-stone-100 hover:bg-rose-50 text-stone-500 hover:text-rose-600 text-[10px] font-normal transition-colors cursor-pointer inline-flex items-center space-x-1"
+                      >
+                        <X className="w-3 h-3" />
+                        <span>Limpar</span>
+                      </button>
                     )}
-                  </button>
-                </th>
-
-                <th className="py-2.5 px-3 text-right">
-                  {hasActiveFilters && (
                     <button
                       type="button"
-                      onClick={handleClearFilters}
-                      title="Limpar busca e filtros"
-                      className="px-2 py-0.5 rounded bg-stone-100 hover:bg-rose-50 text-stone-500 hover:text-rose-600 text-[10px] font-normal transition-colors cursor-pointer inline-flex items-center space-x-1"
+                      onClick={() => handleSort('status')}
+                      className="inline-flex items-center space-x-1 font-bold text-stone-600 hover:text-[#C5A059] transition-colors cursor-pointer group"
+                      title="Classificar por Status"
                     >
-                      <X className="w-3 h-3" />
-                      <span>Limpar</span>
+                      <span>Status</span>
+                      {sortField === 'status' ? (
+                        sortDirection === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#C5A059]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#C5A059]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
+                      )}
                     </button>
-                  )}
+                  </div>
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-[11px] text-gray-700">
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="py-10 text-center text-gray-400">
+                  <td colSpan={8} className="py-10 text-center text-gray-400">
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <div className="w-5 h-5 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin"></div>
                       <span className="text-[11px]">Carregando dados dos clientes...</span>
@@ -635,7 +611,7 @@ export const Clients: React.FC = () => {
                 </tr>
               ) : filteredClients.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-10 text-center text-gray-400">
+                  <td colSpan={8} className="py-10 text-center text-gray-400">
                     <Building className="w-7 h-7 text-gray-300 mx-auto mb-2" />
                     <span className="text-xs">Nenhum cliente localizado para esta busca.</span>
                   </td>
@@ -662,13 +638,18 @@ export const Clients: React.FC = () => {
                       </span>
                     </td>
 
-                    {/* Razão Social com Regime Tributário discreto abaixo */}
+                    {/* Razão Social com link para abertura do formulário de edição */}
                     <td className="py-2.5 px-3">
                       <div className="flex flex-col items-start gap-1">
                         <div className="flex items-center flex-wrap gap-1.5">
-                          <span className="font-semibold text-stone-900 text-xs leading-tight">
-                            {c.razao_social}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(c)}
+                            title="Clique para abrir formulário de edição deste cliente"
+                            className="font-semibold text-stone-900 text-xs leading-tight text-left hover:text-[#C5A059] transition-colors cursor-pointer group inline-flex items-center space-x-1"
+                          >
+                            <span className="group-hover:underline underline-offset-2">{c.razao_social}</span>
+                          </button>
 
                           {c.parcelamento_ativo && (
                             <span
@@ -744,8 +725,8 @@ export const Clients: React.FC = () => {
                     </td>
 
                     {/* Status */}
-                    <td className="py-2.5 px-2.5 text-center whitespace-nowrap">
-                      <div className="flex flex-col items-center space-y-1">
+                    <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                      <div className="flex flex-col items-end space-y-1">
                         <span
                           className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide shadow-2xs ${
                             (c.status || '').toUpperCase() === 'ATIVO'
@@ -771,30 +752,6 @@ export const Clients: React.FC = () => {
                               overdueClientsMap.get(c.id)?.totalOverdue || 0
                             )}
                           </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Ações */}
-                    <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end space-x-1">
-                        <button
-                          type="button"
-                          onClick={() => handleEdit(c)}
-                          className="p-1.5 text-stone-400 hover:text-amber-700 rounded-lg hover:bg-amber-50 transition-colors cursor-pointer"
-                          title="Editar cadastro do cliente"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                        </button>
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(c.id, c.razao_social)}
-                            className="p-1.5 text-stone-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                            title="Excluir cliente"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
                         )}
                       </div>
                     </td>
