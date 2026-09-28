@@ -5,19 +5,22 @@ import {
   Building,
   Edit2,
   Trash2,
-  Key,
   Shield,
   RefreshCw,
   FolderOpen,
   AlertTriangle,
   FileSpreadsheet,
-  Receipt
+  Receipt,
+  MapPin,
+  Percent,
+  X
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { CnpjCopyButton } from '../components/CnpjCopyButton';
+import { CpfCopyButton } from '../components/CpfCopyButton';
 import { PortalsDropdown } from '../components/PortalsDropdown';
 import { ClientModal } from '../components/ClientModal';
 import { isEntryOverdue } from '../utils/competencia';
@@ -34,6 +37,15 @@ export const Clients: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ATIVO');
+
+  // Filtros de Cabeçalho das Colunas
+  const [filterDominio, setFilterDominio] = useState('');
+  const [filterRazao, setFilterRazao] = useState('');
+  const [filterCnpj, setFilterCnpj] = useState('');
+  const [filterCpf, setFilterCpf] = useState('');
+  const [filterLocalidade, setFilterLocalidade] = useState('Todos');
+  const [filterFatorR, setFilterFatorR] = useState('Todos');
+  const [filterRegime, setFilterRegime] = useState('Todos');
 
   useEffect(() => {
     if (location.state?.accessDenied) {
@@ -161,19 +173,69 @@ export const Clients: React.FC = () => {
     return map;
   }, [isAdmin, financialEntries]);
 
-  // Filtragem dinâmica por Razão Social, CNPJ, CPF, SIEG ou Nº da pasta
+  // Opções únicas para selects de cabeçalho
+  const uniqueLocalidades = useMemo(() => {
+    const set = new Set<string>();
+    clients.forEach((c) => {
+      if (c.localidade && c.localidade.trim()) {
+        set.add(c.localidade.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [clients]);
+
+  const uniqueRegimes = useMemo(() => {
+    const set = new Set<string>();
+    clients.forEach((c) => {
+      if (c.regime_tributario && c.regime_tributario.trim()) {
+        set.add(c.regime_tributario.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [clients]);
+
+  // Limpa todos os filtros ativos
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('Todos');
+    setFilterDominio('');
+    setFilterRazao('');
+    setFilterCnpj('');
+    setFilterCpf('');
+    setFilterLocalidade('Todos');
+    setFilterFatorR('Todos');
+    setFilterRegime('Todos');
+  };
+
+  const hasActiveFilters = Boolean(
+    searchQuery ||
+    statusFilter !== 'ATIVO' ||
+    filterDominio ||
+    filterRazao ||
+    filterCnpj ||
+    filterCpf ||
+    filterLocalidade !== 'Todos' ||
+    filterFatorR !== 'Todos' ||
+    filterRegime !== 'Todos'
+  );
+
+  // Filtragem dinâmica por filtros de cabeçalho, status e busca global
   const filteredClients = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     const cleanNumbersQuery = searchQuery.replace(/\D/g, '');
 
+    const fDominioClean = filterDominio.toLowerCase().trim();
+    const fRazaoClean = filterRazao.toLowerCase().trim();
+    const fCnpjClean = filterCnpj.replace(/\D/g, '').trim();
+    const fCpfClean = filterCpf.replace(/\D/g, '').trim();
+
     return clients.filter((c) => {
-      // Filtro de Status
+      // 1. Filtro de Status
       if (statusFilter !== 'Todos') {
         const clientStatusNorm = (c.status || '').trim().toUpperCase();
         const filterStatusNorm = statusFilter.trim().toUpperCase();
 
         if (filterStatusNorm === 'INADIMPLENTE') {
-          // Cliente marcado no cadastro como INADIMPLENTE OU que possua pendências em atraso no financeiro
           const hasOverdue = overdueClientsMap.has(c.id);
           const isMarkedInadimplente = clientStatusNorm === 'INADIMPLENTE';
           if (!hasOverdue && !isMarkedInadimplente) return false;
@@ -188,22 +250,82 @@ export const Clients: React.FC = () => {
         }
       }
 
-      if (!q) return true;
+      // 2. Filtro do Cabeçalho: Domínio
+      if (fDominioClean) {
+        const dom = (c.numero_pasta || '').toLowerCase();
+        if (!dom.includes(fDominioClean)) return false;
+      }
 
-      const matchesRazao = c.razao_social?.toLowerCase().includes(q);
-      const matchesSieg = c.sieg?.toLowerCase().includes(q);
-      const matchesPasta = c.numero_pasta?.toLowerCase().includes(q);
+      // 3. Filtro do Cabeçalho: Razão Social / Nome
+      if (fRazaoClean) {
+        const rz = (c.razao_social || '').toLowerCase();
+        if (!rz.includes(fRazaoClean)) return false;
+      }
 
-      // Verificação por CNPJ e CPF (removendo máscaras para precisão)
-      const rawCnpj = (c.cnpj || '').replace(/\D/g, '');
-      const rawCpf = (c.cpf || '').replace(/\D/g, '');
+      // 4. Filtro do Cabeçalho: CNPJ
+      if (fCnpjClean) {
+        const rawCnpj = (c.cnpj || '').replace(/\D/g, '');
+        if (!rawCnpj.includes(fCnpjClean)) return false;
+      }
 
-      const matchesCnpj = cleanNumbersQuery && rawCnpj.includes(cleanNumbersQuery);
-      const matchesCpf = cleanNumbersQuery && rawCpf.includes(cleanNumbersQuery);
+      // 5. Filtro do Cabeçalho: CPF
+      if (fCpfClean) {
+        const rawCpf = (c.cpf || '').replace(/\D/g, '');
+        if (!rawCpf.includes(fCpfClean)) return false;
+      }
 
-      return matchesRazao || matchesSieg || matchesPasta || matchesCnpj || matchesCpf;
+      // 6. Filtro do Cabeçalho: Localidade
+      if (filterLocalidade !== 'Todos') {
+        const loc = (c.localidade || '').trim();
+        if (loc !== filterLocalidade) return false;
+      }
+
+      // 7. Filtro do Cabeçalho: Fator R
+      if (filterFatorR !== 'Todos') {
+        const fr = (c.fator_r || '').trim();
+        if (filterFatorR === 'Sim' && fr !== 'Sim') return false;
+        if (filterFatorR === 'Não' && fr === 'Sim') return false;
+      }
+
+      // 8. Filtro do Cabeçalho: Regime Tributário (discreto abaixo da Razão)
+      if (filterRegime !== 'Todos') {
+        const reg = (c.regime_tributario || '').trim();
+        if (reg !== filterRegime) return false;
+      }
+
+      // 9. Campo de Busca Geral (se preenchido)
+      if (q) {
+        const matchesRazao = c.razao_social?.toLowerCase().includes(q);
+        const matchesSieg = c.sieg?.toLowerCase().includes(q);
+        const matchesPasta = c.numero_pasta?.toLowerCase().includes(q);
+        const matchesLocal = c.localidade?.toLowerCase().includes(q);
+
+        const rawCnpj = (c.cnpj || '').replace(/\D/g, '');
+        const rawCpf = (c.cpf || '').replace(/\D/g, '');
+
+        const matchesCnpj = cleanNumbersQuery && rawCnpj.includes(cleanNumbersQuery);
+        const matchesCpf = cleanNumbersQuery && rawCpf.includes(cleanNumbersQuery);
+
+        if (!matchesRazao && !matchesSieg && !matchesPasta && !matchesLocal && !matchesCnpj && !matchesCpf) {
+          return false;
+        }
+      }
+
+      return true;
     });
-  }, [clients, searchQuery, statusFilter, overdueClientsMap]);
+  }, [
+    clients,
+    searchQuery,
+    statusFilter,
+    filterDominio,
+    filterRazao,
+    filterCnpj,
+    filterCpf,
+    filterLocalidade,
+    filterFatorR,
+    filterRegime,
+    overdueClientsMap,
+  ]);
 
   const handleEdit = (client: Client) => {
     setSelectedClient(client);
@@ -258,6 +380,18 @@ export const Clients: React.FC = () => {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[#C5A059]' : ''}`} />
           </button>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleClearFilters}
+              title="Limpar todos os filtros da tabela"
+              className="inline-flex items-center space-x-1.5 px-3.5 py-3 rounded-2xl border border-stone-200 bg-white hover:bg-stone-50 text-stone-600 hover:text-stone-900 text-xs font-semibold shadow-xs transition-all cursor-pointer animate-in fade-in"
+            >
+              <X className="w-3.5 h-3.5 text-stone-400" />
+              <span className="hidden sm:inline">Limpar Filtros</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -356,22 +490,150 @@ export const Clients: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50/60 border-b border-slate-200/60 text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                <th className="py-2.5 px-2 text-center w-10">Pasta</th>
-                <th className="py-2.5 px-2.5 whitespace-nowrap">Domínio</th>
-                <th className="py-2.5 px-3">Razão Social</th>
-                <th className="py-2.5 px-2.5 whitespace-nowrap">CNPJ</th>
-                <th className="py-2.5 px-2.5 whitespace-nowrap">Regime</th>
-                <th className="py-2.5 px-2.5 whitespace-nowrap">Cód. Acesso</th>
-                <th className="py-2.5 px-2.5">Portais</th>
-                <th className="py-2.5 px-2.5 text-center">Status</th>
-                <th className="py-2.5 px-3 text-right">Ações</th>
+              {/* Linha 1 do Cabeçalho: Títulos das Colunas */}
+              <tr className="bg-slate-50/80 border-b border-slate-200/60 text-[10px] font-bold text-stone-500 uppercase tracking-wider">
+                <th className="py-2 px-2 text-center w-10">Pasta</th>
+                <th className="py-2 px-2.5 whitespace-nowrap">Domínio</th>
+                <th className="py-2 px-3">Razão Social / Regime</th>
+                <th className="py-2 px-2.5 whitespace-nowrap">CNPJ</th>
+                <th className="py-2 px-2.5 whitespace-nowrap">CPF</th>
+                <th className="py-2 px-2.5 whitespace-nowrap">Localidade</th>
+                <th className="py-2 px-2.5 text-center whitespace-nowrap">Fator R</th>
+                <th className="py-2 px-2.5">Portais</th>
+                <th className="py-2 px-2.5 text-center">Status</th>
+                <th className="py-2 px-3 text-right">Ações</th>
+              </tr>
+              {/* Linha 2 do Cabeçalho: Filtros Integrados em Cada Coluna */}
+              <tr className="bg-slate-100/50 border-b border-slate-200/80 text-[11px]">
+                {/* Pasta - vazio */}
+                <th className="py-1 px-1"></th>
+
+                {/* Domínio */}
+                <th className="py-1.5 px-2">
+                  <input
+                    type="text"
+                    value={filterDominio}
+                    onChange={(e) => setFilterDominio(e.target.value)}
+                    placeholder="Filtrar..."
+                    className="w-20 px-2 py-1 text-[11px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] placeholder-slate-400 font-normal"
+                  />
+                </th>
+
+                {/* Razão Social + Regime */}
+                <th className="py-1.5 px-2.5">
+                  <div className="flex items-center space-x-1.5">
+                    <input
+                      type="text"
+                      value={filterRazao}
+                      onChange={(e) => setFilterRazao(e.target.value)}
+                      placeholder="Filtrar razão..."
+                      className="w-36 sm:w-44 px-2 py-1 text-[11px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] placeholder-slate-400 font-normal"
+                    />
+                    <select
+                      value={filterRegime}
+                      onChange={(e) => setFilterRegime(e.target.value)}
+                      title="Filtrar por Regime Tributário"
+                      className="px-2 py-1 text-[10px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] font-normal text-slate-700 cursor-pointer"
+                    >
+                      <option value="Todos">Regime: Todos</option>
+                      {uniqueRegimes.map((reg) => (
+                        <option key={reg} value={reg}>
+                          {reg}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </th>
+
+                {/* CNPJ */}
+                <th className="py-1.5 px-2">
+                  <input
+                    type="text"
+                    value={filterCnpj}
+                    onChange={(e) => setFilterCnpj(e.target.value)}
+                    placeholder="Números..."
+                    className="w-28 px-2 py-1 text-[11px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] placeholder-slate-400 font-normal font-mono"
+                  />
+                </th>
+
+                {/* CPF */}
+                <th className="py-1.5 px-2">
+                  <input
+                    type="text"
+                    value={filterCpf}
+                    onChange={(e) => setFilterCpf(e.target.value)}
+                    placeholder="Números..."
+                    className="w-24 px-2 py-1 text-[11px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] placeholder-slate-400 font-normal font-mono"
+                  />
+                </th>
+
+                {/* Localidade */}
+                <th className="py-1.5 px-2">
+                  <select
+                    value={filterLocalidade}
+                    onChange={(e) => setFilterLocalidade(e.target.value)}
+                    className="w-28 px-2 py-1 text-[11px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] font-normal text-slate-700 cursor-pointer"
+                  >
+                    <option value="Todos">Todas</option>
+                    {uniqueLocalidades.map((loc) => (
+                      <option key={loc} value={loc}>
+                        {loc}
+                      </option>
+                    ))}
+                  </select>
+                </th>
+
+                {/* Fator R */}
+                <th className="py-1.5 px-2 text-center">
+                  <select
+                    value={filterFatorR}
+                    onChange={(e) => setFilterFatorR(e.target.value)}
+                    className="w-20 px-1.5 py-1 text-[11px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] font-normal text-slate-700 cursor-pointer"
+                  >
+                    <option value="Todos">Todos</option>
+                    <option value="Sim">Sim</option>
+                    <option value="Não">Não</option>
+                  </select>
+                </th>
+
+                {/* Portais - vazio */}
+                <th className="py-1 px-1"></th>
+
+                {/* Status */}
+                <th className="py-1.5 px-2 text-center">
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="w-24 px-1.5 py-1 text-[10px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] font-semibold text-slate-700 cursor-pointer"
+                  >
+                    <option value="Todos">TODOS</option>
+                    <option value="ATIVO">ATIVO</option>
+                    <option value="TRANSFERIDO">TRANSF.</option>
+                    <option value="INADIMPLENTE">INADIMP.</option>
+                    <option value="BAIXADA">BAIXADA</option>
+                    <option value="INATIVA">INATIVA</option>
+                  </select>
+                </th>
+
+                {/* Ações / Limpar Filtros */}
+                <th className="py-1.5 px-2 text-right">
+                  {hasActiveFilters && (
+                    <button
+                      type="button"
+                      onClick={handleClearFilters}
+                      title="Limpar todos os filtros da tabela"
+                      className="p-1 rounded bg-stone-100 hover:bg-rose-50 text-stone-500 hover:text-rose-600 transition-colors cursor-pointer inline-flex items-center"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-[11px] text-gray-700">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-gray-400">
+                  <td colSpan={10} className="py-10 text-center text-gray-400">
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <div className="w-5 h-5 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin"></div>
                       <span className="text-[11px]">Carregando dados dos clientes...</span>
@@ -380,7 +642,7 @@ export const Clients: React.FC = () => {
                 </tr>
               ) : filteredClients.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-gray-400">
+                  <td colSpan={10} className="py-10 text-center text-gray-400">
                     <Building className="w-7 h-7 text-gray-300 mx-auto mb-2" />
                     <span className="text-xs">Nenhum cliente localizado para esta busca.</span>
                   </td>
@@ -407,53 +669,73 @@ export const Clients: React.FC = () => {
                       </span>
                     </td>
 
-                    {/* Razão Social */}
+                    {/* Razão Social com Regime Tributário discreto abaixo */}
                     <td className="py-2.5 px-3">
-                      <div className="flex items-center flex-wrap gap-1.5">
-                        <span className="font-semibold text-stone-900 text-xs leading-tight">
-                          {c.razao_social}
-                        </span>
-
-                        {c.parcelamento_ativo && (
-                          <span
-                            title="Cliente possui parcelamento ativo"
-                            className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300/80 shadow-2xs"
-                          >
-                            <Receipt className="w-2.5 h-2.5 text-[#C5A059]" />
-                            <span>Parcelamento</span>
+                      <div className="flex flex-col items-start gap-1">
+                        <div className="flex items-center flex-wrap gap-1.5">
+                          <span className="font-semibold text-stone-900 text-xs leading-tight">
+                            {c.razao_social}
                           </span>
+
+                          {c.parcelamento_ativo && (
+                            <span
+                              title="Cliente possui parcelamento ativo"
+                              className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300/80 shadow-2xs"
+                            >
+                              <Receipt className="w-2.5 h-2.5 text-[#C5A059]" />
+                              <span>Parcelamento</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Regime Tributário discreto abaixo do nome */}
+                        {c.regime_tributario ? (
+                          <div className="flex items-center space-x-1 text-[10px] text-stone-500 font-medium">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500/70"></span>
+                            <span className="tracking-tight text-stone-600 bg-stone-50 px-1.5 py-0.2 rounded border border-stone-200/60">
+                              {c.regime_tributario}
+                              {c.puro_ou_hibrido ? ` • ${c.puro_ou_hibrido}` : ''}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-stone-400 italic">Regime não def.</span>
                         )}
                       </div>
                     </td>
 
-                    {/* CNPJ */}
+                    {/* CNPJ com recurso de copiar */}
                     <td className="py-2.5 px-2.5 whitespace-nowrap">
                       <CnpjCopyButton cnpj={c.cnpj} />
                     </td>
 
-                    {/* Regime */}
+                    {/* CPF sem máscara com recurso de copiar */}
                     <td className="py-2.5 px-2.5 whitespace-nowrap">
-                      <div className="flex flex-col items-start gap-0.5">
-                        <span className="px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 font-semibold tracking-tight text-[10px] border border-blue-100">
-                          {c.regime_tributario || 'Não def.'}
-                        </span>
-                        {c.fator_r === 'Sim' && (
-                          <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 font-semibold text-[9px] border border-emerald-100">
-                            Fator R
-                          </span>
-                        )}
-                      </div>
+                      <CpfCopyButton cpf={c.cpf} />
                     </td>
 
-                    {/* Cód. Acesso */}
+                    {/* Localidade (Substitui o antigo Cód. Acesso) */}
                     <td className="py-2.5 px-2.5 whitespace-nowrap">
-                      {c.codigo_acesso_simples ? (
-                        <div className="inline-flex items-center space-x-1 font-mono text-[11px] bg-amber-50/50 px-2 py-0.5 rounded-lg border border-amber-200/60 text-stone-800 shadow-2xs">
-                          <Key className="w-2.5 h-2.5 text-[#C5A059]" />
-                          <span>{c.codigo_acesso_simples}</span>
+                      {c.localidade ? (
+                        <div className="inline-flex items-center space-x-1 text-[11px] font-medium text-stone-700 bg-stone-50 px-2 py-0.5 rounded-lg border border-stone-200/80 shadow-2xs">
+                          <MapPin className="w-3 h-3 text-[#C5A059] shrink-0" />
+                          <span className="uppercase">{c.localidade}</span>
                         </div>
                       ) : (
                         <span className="text-gray-300">-</span>
+                      )}
+                    </td>
+
+                    {/* Coluna Fator R */}
+                    <td className="py-2.5 px-2.5 text-center whitespace-nowrap">
+                      {c.fator_r === 'Sim' ? (
+                        <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-bold text-[10px] border border-emerald-200 shadow-2xs">
+                          <Percent className="w-2.5 h-2.5 text-emerald-600" />
+                          <span>Sim</span>
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md bg-slate-50 text-stone-400 font-medium text-[10px] border border-slate-200">
+                          Não
+                        </span>
                       )}
                     </td>
 
