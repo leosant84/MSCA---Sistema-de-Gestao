@@ -969,10 +969,10 @@ export const Financial: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           
           {/* Bloco 1: Evolução Receita vs Despesa (Gráfico de Colunas Verticais dos Últimos 6 Meses) */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between min-w-0 overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-gray-100 gap-2">
               <div className="flex items-center space-x-2">
-                <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+                <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 shrink-0">
                   <TrendingUp className="w-4 h-4" />
                 </div>
                 <div>
@@ -980,7 +980,7 @@ export const Financial: React.FC = () => {
                   <p className="text-[10px] text-gray-400">Comparativo dos últimos 6 meses</p>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-3 text-[10px]">
+              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 text-[10px]">
                 {/* Receita Recebida (Sólida) */}
                 <span className="flex items-center space-x-1" title="Receita liquidada / recebida">
                   <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500 inline-block shadow-2xs"></span>
@@ -1005,16 +1005,16 @@ export const Financial: React.FC = () => {
             </div>
 
             {/* Gráfico de Colunas Verticais */}
-            <div className="my-4">
+            <div className="my-4 w-full min-w-0">
               {analyticsData.evolucaoList.length === 0 ? (
                 <div className="py-12 text-center text-xs text-gray-400">
                   Nenhum dado com competência registrada.
                 </div>
               ) : (
-                <div className="h-48 flex items-end justify-between gap-2 sm:gap-4 pt-6 px-1 border-b border-gray-100">
+                <div className="h-52 w-full flex items-end justify-between gap-1 sm:gap-2 pt-6 px-1 border-b border-gray-100 min-w-0">
                   {analyticsData.evolucaoList.map((item, idx) => {
                     const hReceitaTotal = Math.max(
-                      item.totalReceita > 0 ? 8 : 0,
+                      item.totalReceita > 0 ? 6 : 0,
                       Math.round((item.totalReceita / analyticsData.maxEvolucao) * 100)
                     );
                     const pctRecebido =
@@ -1023,7 +1023,7 @@ export const Financial: React.FC = () => {
                       item.totalReceita > 0 ? (item.receitaAReceber / item.totalReceita) * 100 : 0;
 
                     const hDespesaTotal = Math.max(
-                      item.totalDespesa > 0 ? 8 : 0,
+                      item.totalDespesa > 0 ? 6 : 0,
                       Math.round((item.totalDespesa / analyticsData.maxEvolucao) * 100)
                     );
                     const pctPago =
@@ -1032,9 +1032,9 @@ export const Financial: React.FC = () => {
                       item.totalDespesa > 0 ? (item.despesaAPagar / item.totalDespesa) * 100 : 0;
 
                     return (
-                      <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
-                        {/* Tooltip detalhado com valores ao passar o mouse */}
-                        <div className="text-[9px] font-semibold text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity mb-1 text-center whitespace-nowrap pointer-events-none bg-white p-1 rounded border border-gray-100 shadow-md z-10">
+                      <div key={idx} className="flex-1 min-w-0 flex flex-col items-center h-full justify-end group relative">
+                        {/* Tooltip detalhado posicionado absolutamente para não empurrar colunas */}
+                        <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 text-[9px] font-semibold text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity text-center whitespace-nowrap pointer-events-none bg-white p-1.5 rounded-lg border border-gray-100 shadow-lg z-20">
                           <span className="text-emerald-700 block font-bold">
                             Rec: {formatCurrency(item.totalReceita)}
                           </span>
@@ -1049,48 +1049,48 @@ export const Financial: React.FC = () => {
                           </span>
                         </div>
 
-                        {/* Par de colunas lado a lado */}
+                        {/* Par de colunas empilhadas lado a lado */}
                         <div className="w-full flex items-end justify-center gap-1 sm:gap-1.5 h-36">
-                          {/* Coluna Receita: Sólida (Recebido) na base + Vazada (A Receber) no topo */}
+                          {/* Coluna Receita: Empilhada (Topo: A Receber vazado, Base: Recebido sólido) */}
                           <div
                             style={{ height: `${hReceitaTotal}%` }}
-                            className="w-full max-w-[18px] flex flex-col-reverse rounded-t-sm overflow-hidden transition-all duration-500 cursor-pointer shadow-xs"
+                            className="w-full max-w-[14px] sm:max-w-[18px] flex flex-col justify-end rounded-t-sm overflow-hidden transition-all duration-500 cursor-pointer shadow-xs"
                             title={`Receita (${item.comp}) Total: ${formatCurrency(item.totalReceita)} | Recebido: ${formatCurrency(item.receitaRecebida)} | A Receber: ${formatCurrency(item.receitaAReceber)}`}
                           >
-                            {/* Parte Sólida (Recebido) */}
-                            {pctRecebido > 0 && (
-                              <div
-                                style={{ height: `${pctRecebido}%` }}
-                                className="w-full bg-emerald-500 hover:bg-emerald-600 transition-colors"
-                              />
-                            )}
-                            {/* Parte Vazada (A Receber) */}
+                            {/* Topo: A Receber (Vazada/Dashed) */}
                             {pctAReceber > 0 && (
                               <div
                                 style={{ height: `${pctAReceber}%` }}
-                                className="w-full bg-emerald-50 border-2 border-dashed border-emerald-500 hover:bg-emerald-100/70 transition-colors"
+                                className="w-full bg-emerald-50 border border-dashed border-emerald-500 hover:bg-emerald-100/70 transition-colors shrink-0"
+                              />
+                            )}
+                            {/* Base: Recebido (Sólida) */}
+                            {pctRecebido > 0 && (
+                              <div
+                                style={{ height: `${pctRecebido}%` }}
+                                className="w-full bg-emerald-500 hover:bg-emerald-600 transition-colors shrink-0"
                               />
                             )}
                           </div>
 
-                          {/* Coluna Despesa: Sólida (Pago) na base + Vazada (A Pagar) no topo */}
+                          {/* Coluna Despesa: Empilhada (Topo: A Pagar vazado, Base: Pago sólido) */}
                           <div
                             style={{ height: `${hDespesaTotal}%` }}
-                            className="w-full max-w-[18px] flex flex-col-reverse rounded-t-sm overflow-hidden transition-all duration-500 cursor-pointer shadow-xs"
+                            className="w-full max-w-[14px] sm:max-w-[18px] flex flex-col justify-end rounded-t-sm overflow-hidden transition-all duration-500 cursor-pointer shadow-xs"
                             title={`Despesa (${item.comp}) Total: ${formatCurrency(item.totalDespesa)} | Pago: ${formatCurrency(item.despesaPaga)} | A Pagar: ${formatCurrency(item.despesaAPagar)}`}
                           >
-                            {/* Parte Sólida (Pago) */}
-                            {pctPago > 0 && (
-                              <div
-                                style={{ height: `${pctPago}%` }}
-                                className="w-full bg-[#C5A059] hover:bg-[#b08e4c] transition-colors"
-                              />
-                            )}
-                            {/* Parte Vazada (A Pagar) */}
+                            {/* Topo: A Pagar (Vazada/Dashed) */}
                             {pctAPagar > 0 && (
                               <div
                                 style={{ height: `${pctAPagar}%` }}
-                                className="w-full bg-amber-50 border-2 border-dashed border-[#C5A059] hover:bg-amber-100/70 transition-colors"
+                                className="w-full bg-amber-50 border border-dashed border-[#C5A059] hover:bg-amber-100/70 transition-colors shrink-0"
+                              />
+                            )}
+                            {/* Base: Pago (Sólida) */}
+                            {pctPago > 0 && (
+                              <div
+                                style={{ height: `${pctPago}%` }}
+                                className="w-full bg-[#C5A059] hover:bg-[#b08e4c] transition-colors shrink-0"
                               />
                             )}
                           </div>
@@ -1116,7 +1116,7 @@ export const Financial: React.FC = () => {
           </div>
 
           {/* Bloco 2: Distribuição dos Gastos (Gráfico de Rosca/Pizza por Categorias) */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between">
+          <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between min-w-0 overflow-hidden">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <div className="flex items-center space-x-2">
                 <div className="p-1.5 rounded-lg bg-amber-50 text-[#C5A059]">
