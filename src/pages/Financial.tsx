@@ -54,10 +54,8 @@ export const Financial: React.FC = () => {
   }, []);
 
   // Filtros Globais
-  const [selectedCompetencia, setSelectedCompetencia] = useState<string>(() => {
-    const now = new Date();
-    return formatCompetencia(now.getMonth(), now.getFullYear(), true);
-  });
+  const [selectedYear, setSelectedYear] = useState<string>('Todos');
+  const [selectedCompetencia, setSelectedCompetencia] = useState<string>('Todas');
   const [bancoFilter, setBancoFilter] = useState<string>('Todos');
   const [statusFilter, setStatusFilter] = useState<string>('Todos');
   const [clientFilter, setClientFilter] = useState<string>('Todos');
@@ -85,33 +83,64 @@ export const Financial: React.FC = () => {
   const [settleExpenseModalOpen, setSettleExpenseModalOpen] = useState(false);
   const [expenseToSettle, setExpenseToSettle] = useState<FinancialExpense | null>(null);
 
-  // Carregar dados de Entradas e Saídas
+  // Carregar dados de Entradas e Saídas (em páginas para superar o limite padrão de 1.000 registros do PostgREST)
   const fetchFinancialData = async () => {
     setLoading(true);
     try {
-      // 1. Busca Entradas vinculando dados do cliente
-      const { data: entriesData, error: entriesError } = await supabase
-        .from('financial_entries')
-        .select(`
-          *,
-          client:client_id (
-            id,
-            razao_social
-          )
-        `)
-        .order('created_at', { ascending: false });
+      // 1. Busca Entradas vinculando dados do cliente em blocos
+      const PAGE_SIZE = 1000;
+      let allEntries: FinancialEntry[] = [];
+      let fromEntry = 0;
+      let hasMoreEntries = true;
 
-      if (entriesError) throw entriesError;
-      setEntries(entriesData as FinancialEntry[]);
+      while (hasMoreEntries) {
+        const { data: pageData, error: pageError } = await supabase
+          .from('financial_entries')
+          .select(`
+            *,
+            client:client_id (
+              id,
+              razao_social
+            )
+          `)
+          .order('competencia', { ascending: false })
+          .range(fromEntry, fromEntry + PAGE_SIZE - 1);
 
-      // 2. Busca Saídas
-      const { data: expensesData, error: expensesError } = await supabase
-        .from('financial_expenses')
-        .select('*')
-        .order('data_pagamento_previsao', { ascending: false });
+        if (pageError) throw pageError;
+        if (pageData && pageData.length > 0) {
+          allEntries = allEntries.concat(pageData as FinancialEntry[]);
+        }
+        if (!pageData || pageData.length < PAGE_SIZE) {
+          hasMoreEntries = false;
+        } else {
+          fromEntry += PAGE_SIZE;
+        }
+      }
+      setEntries(allEntries);
 
-      if (expensesError) throw expensesError;
-      setExpenses(expensesData as FinancialExpense[]);
+      // 2. Busca Saídas em blocos
+      let allExpenses: FinancialExpense[] = [];
+      let fromExpense = 0;
+      let hasMoreExpenses = true;
+
+      while (hasMoreExpenses) {
+        const { data: pageExpenses, error: pageExpError } = await supabase
+          .from('financial_expenses')
+          .select('*')
+          .order('data_pagamento_previsao', { ascending: false })
+          .range(fromExpense, fromExpense + PAGE_SIZE - 1);
+
+        if (pageExpError) throw pageExpError;
+        if (pageExpenses && pageExpenses.length > 0) {
+          allExpenses = allExpenses.concat(pageExpenses as FinancialExpense[]);
+        }
+        if (!pageExpenses || pageExpenses.length < PAGE_SIZE) {
+          hasMoreExpenses = false;
+        } else {
+          fromExpense += PAGE_SIZE;
+        }
+      }
+      setExpenses(allExpenses);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao buscar dados financeiros';
       toast(msg, 'error');
@@ -167,6 +196,13 @@ export const Financial: React.FC = () => {
       .filter((e) => {
         const clientName = e.client?.razao_social || e.cliente_nome_avulso || '';
         const matchClient = clientFilter === 'Todos' || clientName === clientFilter;
+        
+        let matchYear = true;
+        if (selectedYear !== 'Todos') {
+          const { year } = parseCompetencia(e.competencia || '');
+          matchYear = String(year) === selectedYear;
+        }
+
         const matchComp = selectedCompetencia === 'Todas' || e.competencia === selectedCompetencia;
         const matchBanco = bancoFilter === 'Todos' || (e.banco || '') === bancoFilter;
 
@@ -178,7 +214,7 @@ export const Financial: React.FC = () => {
           matchStatus = e.status === statusFilter;
         }
 
-        return matchClient && matchComp && matchBanco && matchStatus;
+        return matchClient && matchYear && matchComp && matchBanco && matchStatus;
       })
       .sort((a, b) => {
         // Ordenação crescente por competência (ano e mês)
@@ -193,19 +229,25 @@ export const Financial: React.FC = () => {
         const nameB = b.client?.razao_social || b.cliente_nome_avulso || '';
         return nameA.localeCompare(nameB, 'pt-BR');
       });
-  }, [entries, entryViewFilter, selectedCompetencia, bancoFilter, clientFilter, statusFilter]);
+  }, [entries, entryViewFilter, selectedYear, selectedCompetencia, bancoFilter, clientFilter, statusFilter]);
 
   // Filtragem e Ordenação Crescente de Saídas por Competência
   const filteredExpenses = useMemo(() => {
     return expenses
       .filter((e) => {
+        let matchYear = true;
+        if (selectedYear !== 'Todos') {
+          const { year } = parseCompetencia(e.competencia || '');
+          matchYear = String(year) === selectedYear;
+        }
+
         const matchComp = selectedCompetencia === 'Todas' || e.competencia === selectedCompetencia;
         const matchBanco = bancoFilter === 'Todos' || e.banco === bancoFilter;
         const matchStatus =
           statusFilter === 'Todos' ||
           e.status === statusFilter ||
           (statusFilter.startsWith('A pagar') && e.status === 'A pagar');
-        return matchComp && matchBanco && matchStatus;
+        return matchYear && matchComp && matchBanco && matchStatus;
       })
       .sort((a, b) => {
         // Ordenação crescente por competência (ano e mês)
@@ -218,52 +260,83 @@ export const Financial: React.FC = () => {
         // Desempate por data de pagamento ou descrição
         return (a.data_pagamento_previsao || '').localeCompare(b.data_pagamento_previsao || '');
       });
-  }, [expenses, selectedCompetencia, bancoFilter, statusFilter]);
+  }, [expenses, selectedYear, selectedCompetencia, bancoFilter, statusFilter]);
 
-  // Totais Calculados para os Cards de Resumo (Considera apenas o Mês Corrente)
+  // Totais Calculados para os Cards de Resumo (Reflete os filtros ativos de Ano/Competência/Banco/Cliente, ou padrão mês corrente)
   const currentMonthTotals = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+    // Se o usuário selecionou Ano ou Competência ou Banco ou Cliente específico, os cards acompanham os filtros
+    const hasFilter = selectedYear !== 'Todos' || selectedCompetencia !== 'Todas' || bancoFilter !== 'Todos' || clientFilter !== 'Todos';
 
-    // Filtra lançamentos de entrada pertencentes ao mês corrente
-    const currentMonthEntries = entries.filter((e) => {
-      if (!e.competencia) return false;
-      const { month, year } = parseCompetencia(e.competencia);
-      return month === currentMonth && year === currentYear;
-    });
+    if (hasFilter) {
+      const totalRecebido = filteredEntries
+        .filter((e) => e.status === 'RECEBIDO')
+        .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
 
-    // Filtra lançamentos de despesa pertencentes ao mês corrente
-    const currentMonthExpenses = expenses.filter((e) => {
-      if (!e.competencia) return false;
-      const { month, year } = parseCompetencia(e.competencia);
-      return month === currentMonth && year === currentYear;
-    });
+      const totalAReceber = filteredEntries
+        .filter((e) => e.status === 'À RECEBER')
+        .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
 
-    const totalRecebido = currentMonthEntries
+      const aReceberCount = filteredEntries
+        .filter((e) => e.status === 'À RECEBER').length;
+
+      const totalPago = filteredExpenses
+        .filter((e) => e.status === 'Pago' || e.status === 'Descontado' || e.status === 'PAGO')
+        .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
+
+      const pagoCount = filteredExpenses
+        .filter((e) => e.status === 'Pago' || e.status === 'Descontado' || e.status === 'PAGO').length;
+
+      const totalAPagar = filteredExpenses
+        .filter((e) => e.status === 'A pagar' || e.status === 'À PAGAR')
+        .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
+
+      const aPagarCount = filteredExpenses
+        .filter((e) => e.status === 'A pagar' || e.status === 'À PAGAR').length;
+
+      const saldoLiquido = totalRecebido - totalPago;
+
+      let label = 'Filtro Ativo';
+      if (selectedCompetencia !== 'Todas') label = selectedCompetencia;
+      else if (selectedYear !== 'Todos') label = `Ano ${selectedYear}`;
+
+      return {
+        totalRecebido,
+        totalAReceber,
+        aReceberCount,
+        totalPago,
+        pagoCount,
+        totalAPagar,
+        aPagarCount,
+        saldoLiquido,
+        monthLabel: label,
+      };
+    }
+
+    // Padrão geral quando nenhum filtro está ativo (Mostra totais consolidados de toda a base)
+    const totalRecebido = entries
       .filter((e) => e.status === 'RECEBIDO')
       .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
 
-    const totalAReceber = currentMonthEntries
+    const totalAReceber = entries
       .filter((e) => e.status === 'À RECEBER')
       .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
 
-    const aReceberCount = currentMonthEntries
+    const aReceberCount = entries
       .filter((e) => e.status === 'À RECEBER').length;
 
-    const totalPago = currentMonthExpenses
-      .filter((e) => e.status === 'Pago' || e.status === 'Descontado')
+    const totalPago = expenses
+      .filter((e) => e.status === 'Pago' || e.status === 'Descontado' || e.status === 'PAGO')
       .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
 
-    const pagoCount = currentMonthExpenses
-      .filter((e) => e.status === 'Pago' || e.status === 'Descontado').length;
+    const pagoCount = expenses
+      .filter((e) => e.status === 'Pago' || e.status === 'Descontado' || e.status === 'PAGO').length;
 
-    const totalAPagar = currentMonthExpenses
-      .filter((e) => e.status === 'A pagar')
+    const totalAPagar = expenses
+      .filter((e) => e.status === 'A pagar' || e.status === 'À PAGAR')
       .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
 
-    const aPagarCount = currentMonthExpenses
-      .filter((e) => e.status === 'A pagar').length;
+    const aPagarCount = expenses
+      .filter((e) => e.status === 'A pagar' || e.status === 'À PAGAR').length;
 
     const saldoLiquido = totalRecebido - totalPago;
 
@@ -276,9 +349,9 @@ export const Financial: React.FC = () => {
       totalAPagar,
       aPagarCount,
       saldoLiquido,
-      monthLabel: formatCompetencia(currentMonth, currentYear, true),
+      monthLabel: 'Total Geral',
     };
-  }, [entries, expenses]);
+  }, [entries, expenses, filteredEntries, filteredExpenses, selectedYear, selectedCompetencia, bancoFilter, clientFilter]);
 
   // Totais Calculados para a visualização atual (filtros ativos da tabela)
   const totals = useMemo(() => {
@@ -547,12 +620,48 @@ export const Financial: React.FC = () => {
     };
   }, [entries, expenses]);
 
-  // Lista de competências disponíveis para escolha (inclui o mês corrente e ordenadas cronologicamente)
+  // Lista de anos disponíveis com base em todas as competências
+  const availableYears = useMemo(() => {
+    const years = new Set<string>();
+    entries.forEach((e) => {
+      if (e.competencia) {
+        const { year } = parseCompetencia(e.competencia);
+        years.add(String(year));
+      }
+    });
+    expenses.forEach((e) => {
+      if (e.competencia) {
+        const { year } = parseCompetencia(e.competencia);
+        years.add(String(year));
+      }
+    });
+    return Array.from(years).sort((a, b) => Number(b) - Number(a));
+  }, [entries, expenses]);
+
+  // Lista de competências disponíveis para escolha (filtráveis pelo ano selecionado se houver)
   const availableCompetencias = useMemo(() => {
     const comps = new Set<string>();
     comps.add(currentMonthCompetencia);
-    entries.forEach((e) => e.competencia && comps.add(e.competencia));
-    expenses.forEach((e) => e.competencia && comps.add(e.competencia));
+    entries.forEach((e) => {
+      if (e.competencia) {
+        if (selectedYear === 'Todos') {
+          comps.add(e.competencia);
+        } else {
+          const { year } = parseCompetencia(e.competencia);
+          if (String(year) === selectedYear) comps.add(e.competencia);
+        }
+      }
+    });
+    expenses.forEach((e) => {
+      if (e.competencia) {
+        if (selectedYear === 'Todos') {
+          comps.add(e.competencia);
+        } else {
+          const { year } = parseCompetencia(e.competencia);
+          if (String(year) === selectedYear) comps.add(e.competencia);
+        }
+      }
+    });
 
     return Array.from(comps).sort((a, b) => {
       const compA = parseCompetencia(a);
@@ -561,7 +670,7 @@ export const Financial: React.FC = () => {
       const keyB = compB.year * 100 + compB.month;
       return keyB - keyA; // Decrescente no dropdown para acesso rápido às mais recentes
     });
-  }, [entries, expenses, currentMonthCompetencia]);
+  }, [entries, expenses, currentMonthCompetencia, selectedYear]);
 
   // Transição rápida de Status direto na tabela in-line
   const handleQuickStatusChange = async (entry: FinancialEntry, newStatus: FinancialEntryStatus) => {
@@ -1347,6 +1456,27 @@ export const Financial: React.FC = () => {
               </div>
             )}
 
+            {/* Seletor de Ano */}
+            <div className="flex items-center space-x-1.5">
+              <CalendarDays className="w-3.5 h-3.5 text-gray-400" />
+              <span className="text-xs text-gray-500 font-medium">Ano:</span>
+              <select
+                value={selectedYear}
+                onChange={(e) => {
+                  setSelectedYear(e.target.value);
+                  setSelectedCompetencia('Todas');
+                }}
+                className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-800 font-semibold focus:ring-1 focus:ring-[#C5A059]"
+              >
+                <option value="Todos">Todos os anos</option>
+                {availableYears.map((yr) => (
+                  <option key={yr} value={yr}>
+                    {yr}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Seletor de Competência */}
             <div className="flex items-center space-x-1.5">
               <Calendar className="w-3.5 h-3.5 text-gray-400" />
@@ -1387,6 +1517,7 @@ export const Financial: React.FC = () => {
                   <>
                     <option value="Itaú">Itaú</option>
                     <option value="Cora">Cora</option>
+                    <option value="C6">C6</option>
                   </>
                 )}
               </select>
