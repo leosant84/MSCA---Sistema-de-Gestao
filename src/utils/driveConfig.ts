@@ -6,6 +6,14 @@ export const DEFAULT_DRIVE_FOLDER_PATH = 'G:\\Meu Drive\\00. MSCA\\00. CLIENTES'
 const STORAGE_KEY = 'msca_google_drive_base_path';
 
 /**
+ * Mapeamento pré-configurado de caminhos por e-mail de usuário
+ */
+export const USER_DRIVE_PATHS: Record<string, string> = {
+  'mssantos@msca.com.br': 'I:\\Meu Drive\\00. MSCA\\00. CLIENTES',
+  'fiscal@msca.com.br': 'J:\\Meu Drive\\00. MSCA\\00. CLIENTES',
+};
+
+/**
  * Normaliza caminhos no formato Windows
  * - Substitui barras normais '/' por barras invertidas '\'
  * - Remove barras invertidas duplicadas (exceto prefixos UNC se houver)
@@ -34,9 +42,25 @@ export function normalizeWindowsPath(inputPath: string): string {
 }
 
 /**
+ * Obtém o caminho padrão configurado para o usuário
+ */
+export function getDefaultDrivePathForUser(userEmail?: string | null): string {
+  if (userEmail) {
+    const cleanEmail = userEmail.trim().toLowerCase();
+    if (USER_DRIVE_PATHS[cleanEmail]) {
+      return USER_DRIVE_PATHS[cleanEmail];
+    }
+  }
+  return DEFAULT_DRIVE_FOLDER_PATH;
+}
+
+/**
  * Obtém o caminho base do Google Drive configurado para o usuário/máquina atual
  */
-export function getDriveBasePath(): string {
+export function getDriveBasePath(userEmail?: string | null): string {
+  // 1. Se o usuário tiver um caminho pré-configurado especificamente por e-mail, prioriza
+  const userDefault = getDefaultDrivePathForUser(userEmail);
+  
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved && saved.trim()) {
@@ -45,7 +69,7 @@ export function getDriveBasePath(): string {
   } catch {
     // Caso localStorage não esteja acessível
   }
-  return DEFAULT_DRIVE_FOLDER_PATH;
+  return userDefault;
 }
 
 /**
@@ -62,13 +86,13 @@ export function setDriveBasePath(newPath: string): string {
 }
 
 /**
- * Reseta para o valor padrão
+ * Reseta para o valor padrão do usuário
  */
-export function resetDriveBasePath(): string {
+export function resetDriveBasePath(userEmail?: string | null): string {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
     // Ignore
   }
-  return DEFAULT_DRIVE_FOLDER_PATH;
+  return getDefaultDrivePathForUser(userEmail);
 }

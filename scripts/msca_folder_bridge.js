@@ -31,14 +31,28 @@ const server = http.createServer((req, res) => {
     const rawBasePath = url.searchParams.get('basePath') || '';
 
     // Normaliza caminho se recebido do frontend ou usa padrão
-    const activeBaseDir = rawBasePath ? path.normalize(rawBasePath.trim().replace(/^["']|["']$/g, '')) : BASE_DIR;
+    let activeBaseDir = rawBasePath ? path.normalize(rawBasePath.trim().replace(/^["']|["']$/g, '')) : BASE_DIR;
+
+    // Se o diretório não existir diretamente, faz busca inteligente pelas unidades comuns (I:, J:, G:, H:, D:, C:)
+    if (!fs.existsSync(activeBaseDir)) {
+      const CANDIDATE_DRIVES = ['I', 'J', 'G', 'H', 'D', 'C'];
+      const subPath = '\\Meu Drive\\00. MSCA\\00. CLIENTES';
+      for (const drive of CANDIDATE_DRIVES) {
+        const candidate = `${drive}:${subPath}`;
+        if (fs.existsSync(candidate)) {
+          console.log(`[BRIDGE] Diretório auto-detectado na unidade ${drive}: ${candidate}`);
+          activeBaseDir = candidate;
+          break;
+        }
+      }
+    }
 
     if (!fs.existsSync(activeBaseDir)) {
       res.statusCode = 404;
       res.setHeader('Content-Type', 'application/json');
       return res.end(JSON.stringify({
         success: false,
-        message: `O diretório configurado não foi encontrado ou não está acessível nesta máquina: "${activeBaseDir}". Verifique o caminho nas Configurações do sistema.`
+        message: `O diretório configurado não foi encontrado ou não está acessível nesta máquina: "${activeBaseDir}". Verifique se o Google Drive está conectado e sincronizado.`
       }));
     }
 

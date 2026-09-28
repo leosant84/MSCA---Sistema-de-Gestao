@@ -26,7 +26,7 @@ import { exportClientsToExcel } from '../utils/excelExport';
 import type { Client, FinancialEntry } from '../types';
 
 export const Clients: React.FC = () => {
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { toast } = useToast();
   const location = useLocation();
 
@@ -52,7 +52,7 @@ export const Clients: React.FC = () => {
 
   const handleOpenFolder = async (client: Client) => {
     try {
-      const basePath = getDriveBasePath();
+      const basePath = getDriveBasePath(user?.email);
       const queryParams = new URLSearchParams({
         name: client.razao_social,
         folder: client.numero_pasta || '',
