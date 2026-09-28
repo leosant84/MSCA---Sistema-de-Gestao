@@ -147,7 +147,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 "        if (-not (Test-Path $clientPath)) { " ^
 "            New-Item -ItemType Directory -Path $clientPath -Force | Out-Null; " ^
 "        }; " ^
-"        $subs = @('01. SOCIETÁRIO', '02. FISCAL', '03. DER.PESSOAL'); " ^
+"        $subs = @('01. SOCIETÁRIO', '02. FISCAL', '03. DEP. PESSOAL'); " ^
 "        foreach ($s in $subs) { " ^
 "            $subPath = Join-Path $clientPath $s; " ^
 "            if (-not (Test-Path $subPath)) { " ^

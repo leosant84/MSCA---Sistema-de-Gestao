@@ -306,7 +306,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
           }
 
           if (folderRes && folderRes.ok) {
-            toast(`Cliente cadastrado com sucesso! Pastas criadas no Google Drive: ${clientNameUpper} (01. SOCIETÁRIO, 02. FISCAL, 03. DER.PESSOAL)`, 'success');
+            toast(`Cliente cadastrado com sucesso! Pastas criadas no Google Drive: ${clientNameUpper} (01. SOCIETÁRIO, 02. FISCAL, 03. DEP. PESSOAL)`, 'success');
           } else {
             toast(`Cliente cadastrado com sucesso! (A pasta no Drive será sincronizada quando o assistente local estiver ativo)`, 'success');
           }
