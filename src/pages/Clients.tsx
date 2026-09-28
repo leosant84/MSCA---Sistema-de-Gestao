@@ -24,9 +24,9 @@ import { CnpjCopyButton } from '../components/CnpjCopyButton';
 import { CpfCopyButton } from '../components/CpfCopyButton';
 import { PortalsDropdown } from '../components/PortalsDropdown';
 import { ClientModal } from '../components/ClientModal';
+import { ExportClientsModal } from '../components/ExportClientsModal';
 import { isEntryOverdue } from '../utils/competencia';
 import { getDriveBasePath } from '../utils/driveConfig';
-import { exportClientsToExcel } from '../utils/excelExport';
 import type { Client, FinancialEntry } from '../types';
 
 export const Clients: React.FC = () => {
@@ -64,6 +64,7 @@ export const Clients: React.FC = () => {
   // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   // Referência para o atalho de teclado Ctrl+K
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -351,8 +352,7 @@ export const Clients: React.FC = () => {
                 toast('Nenhum cliente disponível para exportar com os filtros atuais.', 'info');
                 return;
               }
-              exportClientsToExcel(filteredClients, statusFilter !== 'Todos' ? statusFilter : undefined);
-              toast(`Exportando ${filteredClients.length} cliente(s) para Excel...`, 'success');
+              setIsExportModalOpen(true);
             }}
             title="Exportar clientes filtrados para Excel"
             className="inline-flex items-center space-x-2 px-4 py-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-800 text-xs font-semibold shadow-xs transition-all cursor-pointer"
@@ -782,6 +782,16 @@ export const Clients: React.FC = () => {
           onClose={() => setIsModalOpen(false)}
           onSuccess={fetchClients}
           clientToEdit={selectedClient}
+        />
+      )}
+
+      {/* Modal de Seleção de Campos para Exportação Excel */}
+      {isExportModalOpen && (
+        <ExportClientsModal
+          isOpen={isExportModalOpen}
+          onClose={() => setIsExportModalOpen(false)}
+          clients={filteredClients}
+          filterContext={statusFilter !== 'Todos' ? statusFilter : undefined}
         />
       )}
     </div>

@@ -37,59 +37,89 @@ function formatDate(dateStr?: string | null): string {
   return clean;
 }
 
-/**
- * Exporta a lista de Clientes para Excel (.xlsx) respeitando os filtros aplicados
- */
-export function exportClientsToExcel(clients: Client[], filterContext?: string) {
-  const rows = clients.map((c) => {
-    // Formata credenciais extras em texto legível se houver
-    const extras = (c.client_credentials || [])
-      .map((cr) => `${cr.sistema_nome}: ${cr.login || ''}`)
-      .join(' | ');
+export interface ClientExportFieldOption {
+  key: string;
+  label: string;
+  defaultChecked?: boolean;
+}
 
-    return {
-      'Nº Domínio': c.numero_pasta || '',
-      'Razão Social': c.razao_social || '',
-      'Status': c.status || '',
-      'CNPJ': c.cnpj || '',
-      'CPF': c.cpf || '',
-      'Regime Tributário': c.regime_tributario || '',
-      'Puro/Híbrido': c.puro_ou_hibrido || '',
-      'Fator R': c.fator_r || '',
-      'Localidade': c.localidade || '',
-      'Início Atividades': formatDate(c.inicio_atividades),
-      'Parcelamento Ativo': c.parcelamento_ativo ? 'Sim' : 'Não',
-      'SIEG': c.sieg || 'Não',
-      'NIRE': c.nire || '',
-      'Cód. Acesso Simples': c.codigo_acesso_simples || '',
-      'Login Prefeitura': c.login_prefeitura || '',
-      'Login Posto Fiscal': c.login_posto_fiscal || '',
-      'Sistemas Extras': extras,
-    };
+export const AVAILABLE_CLIENT_EXPORT_FIELDS: ClientExportFieldOption[] = [
+  { key: 'numero_pasta', label: 'Nº Domínio', defaultChecked: true },
+  { key: 'razao_social', label: 'Razão Social / Nome', defaultChecked: true },
+  { key: 'cnpj', label: 'CNPJ', defaultChecked: true },
+  { key: 'cpf', label: 'CPF', defaultChecked: true },
+  { key: 'regime_tributario', label: 'Regime Tributário', defaultChecked: true },
+  { key: 'puro_ou_hibrido', label: 'Puro ou Híbrido', defaultChecked: true },
+  { key: 'fator_r', label: 'Fator R', defaultChecked: true },
+  { key: 'localidade', label: 'Localidade', defaultChecked: true },
+  { key: 'parcelamento_ativo', label: 'Parcelamento Ativo', defaultChecked: true },
+];
+
+/**
+ * Exporta a lista de Clientes para Excel (.xlsx) respeitando os campos selecionados e filtros aplicados
+ */
+export function exportClientsToExcel(
+  clients: Client[],
+  filterContext?: string,
+  selectedFieldKeys?: string[]
+) {
+  // Se não informar lista, usa todos os campos disponíveis
+  const fieldKeys = selectedFieldKeys && selectedFieldKeys.length > 0
+    ? selectedFieldKeys
+    : AVAILABLE_CLIENT_EXPORT_FIELDS.map((f) => f.key);
+
+  const columnWidthsMap: Record<string, number> = {
+    'numero_pasta': 14,
+    'razao_social': 42,
+    'cnpj': 22,
+    'cpf': 18,
+    'regime_tributario': 24,
+    'puro_ou_hibrido': 16,
+    'fator_r': 12,
+    'localidade': 26,
+    'parcelamento_ativo': 20,
+  };
+
+  const rows = clients.map((c) => {
+    const row: Record<string, string> = {};
+
+    if (fieldKeys.includes('numero_pasta')) {
+      row['Nº Domínio'] = c.numero_pasta || '';
+    }
+    if (fieldKeys.includes('razao_social')) {
+      row['Razão Social'] = c.razao_social || '';
+    }
+    if (fieldKeys.includes('cnpj')) {
+      row['CNPJ'] = c.cnpj || '';
+    }
+    if (fieldKeys.includes('cpf')) {
+      row['CPF'] = c.cpf || '';
+    }
+    if (fieldKeys.includes('regime_tributario')) {
+      row['Regime Tributário'] = c.regime_tributario || '';
+    }
+    if (fieldKeys.includes('puro_ou_hibrido')) {
+      row['Puro/Híbrido'] = c.puro_ou_hibrido || '';
+    }
+    if (fieldKeys.includes('fator_r')) {
+      row['Fator R'] = c.fator_r || '';
+    }
+    if (fieldKeys.includes('localidade')) {
+      row['Localidade'] = c.localidade || '';
+    }
+    if (fieldKeys.includes('parcelamento_ativo')) {
+      row['Parcelamento Ativo'] = c.parcelamento_ativo ? 'Sim' : 'Não';
+    }
+
+    return row;
   });
 
   const worksheet = XLSX.utils.json_to_sheet(rows);
 
-  // Ajuste automático de largura de colunas
-  worksheet['!cols'] = [
-    { wch: 12 }, // Nº Domínio
-    { wch: 40 }, // Razão Social
-    { wch: 14 }, // Status
-    { wch: 20 }, // CNPJ
-    { wch: 16 }, // CPF
-    { wch: 20 }, // Regime Tributário
-    { wch: 14 }, // Puro/Híbrido
-    { wch: 10 }, // Fator R
-    { wch: 25 }, // Localidade
-    { wch: 18 }, // Início Atividades
-    { wch: 18 }, // Parcelamento Ativo
-    { wch: 8 },  // SIEG
-    { wch: 16 }, // NIRE
-    { wch: 20 }, // Cód. Acesso Simples
-    { wch: 20 }, // Login Prefeitura
-    { wch: 20 }, // Login Posto Fiscal
-    { wch: 35 }, // Sistemas Extras
-  ];
+  // Ajusta larguras das colunas baseado nas chaves selecionadas
+  worksheet['!cols'] = fieldKeys.map((k) => ({
+    wch: columnWidthsMap[k] || 18,
+  }));
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Clientes');
