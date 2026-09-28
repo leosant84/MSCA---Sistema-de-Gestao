@@ -74,16 +74,16 @@ export const FinancialEntryModal: React.FC<FinancialEntryModalProps> = ({
     const { data: catData } = await supabase
       .from('financial_categories')
       .select('*')
-      .eq('tipo', 'entrada')
-      .order('nome', { ascending: true });
+      .eq('tipo', 'entrada');
+
+    let loadedCategories: FinancialCategory[] = [];
 
     if (catData && catData.length > 0) {
-      setCategories(catData as FinancialCategory[]);
-      if (!entryToEdit && !formData.conta_contabil) {
-        setFormData((prev) => ({ ...prev, conta_contabil: catData[0].nome }));
-      }
+      loadedCategories = (catData as FinancialCategory[]).sort((a, b) =>
+        a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
+      );
     } else {
-      setCategories([
+      const fallbackCats: FinancialCategory[] = [
         { id: '1', nome: 'Honorários', tipo: 'entrada' },
         { id: '2', nome: '13º Honorários', tipo: 'entrada' },
         { id: '3', nome: 'Aberturas de empresa', tipo: 'entrada' },
@@ -93,7 +93,15 @@ export const FinancialEntryModal: React.FC<FinancialEntryModalProps> = ({
         { id: '7', nome: 'Demais receitas', tipo: 'entrada' },
         { id: '8', nome: 'Devoluções', tipo: 'entrada' },
         { id: '9', nome: 'Empréstimos', tipo: 'entrada' },
-      ]);
+      ];
+      loadedCategories = fallbackCats.sort((a, b) =>
+        a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
+      );
+    }
+
+    setCategories(loadedCategories);
+    if (!entryToEdit && !formData.conta_contabil && loadedCategories.length > 0) {
+      setFormData((prev) => ({ ...prev, conta_contabil: loadedCategories[0].nome }));
     }
   };
 
@@ -109,7 +117,9 @@ export const FinancialEntryModal: React.FC<FinancialEntryModalProps> = ({
   };
 
   const handleCategoryCreated = (newCat: FinancialCategory) => {
-    setCategories((prev) => [...prev, newCat].sort((a, b) => a.nome.localeCompare(b.nome)));
+    setCategories((prev) =>
+      [...prev, newCat].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+    );
     setFormData((prev) => ({ ...prev, conta_contabil: newCat.nome }));
   };
 
