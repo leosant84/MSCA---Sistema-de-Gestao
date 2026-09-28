@@ -395,24 +395,22 @@ export const Clients: React.FC = () => {
         </div>
       </div>
 
-      {/* Banner de Alerta para o Administrador sobre Inadimplência */}
+      {/* Banner de Alerta Discreto para o Administrador sobre Inadimplência */}
       {isAdmin && overdueClientsMap.size > 0 && (
-        <div className="bg-red-50/80 border border-red-200 rounded-xl p-3.5 flex items-center justify-between text-xs text-red-800">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-1.5 rounded-lg bg-red-100 text-red-600">
-              <AlertTriangle className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="font-bold">Atenção Financeira:</span>
+        <div className="bg-amber-50/60 border border-amber-200/70 rounded-2xl px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-xs text-stone-700">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <div className="text-[11px] text-stone-600">
+              <span className="font-semibold text-stone-800">Atenção Financeira:</span>
               <span className="ml-1">
-                Existe(m) <strong>{overdueClientsMap.size} cliente(s)</strong> com valores a receber que já excederam a data de vencimento.
+                Existe(m) <strong className="text-stone-900 font-semibold">{overdueClientsMap.size} cliente(s)</strong> com valores a receber que já excederam a data de vencimento.
               </span>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setStatusFilter(statusFilter === 'INADIMPLENTE' ? 'Todos' : 'INADIMPLENTE')}
-            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold transition-colors shrink-0 shadow-xs cursor-pointer"
+            className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-amber-100/80 text-stone-700 hover:text-amber-900 border border-stone-200/80 text-[11px] font-medium transition-colors shrink-0 cursor-pointer"
           >
             {statusFilter === 'INADIMPLENTE' ? 'Ver Todos os Clientes' : 'Filtrar Inadimplentes'}
           </button>
