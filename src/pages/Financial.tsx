@@ -174,14 +174,28 @@ export const Financial: React.FC = () => {
     return dateStr;
   };
 
-  // Contagem de pendentes para badge
+  // Contagem de pendentes para badge e filtro
   const pendingCount = useMemo(() => {
-    return entries.filter((e) => e.status === 'À RECEBER').length;
+    return entries.filter((e) => {
+      const s = (e.status || '').trim().toUpperCase();
+      return s === 'À RECEBER' || s === 'A RECEBER';
+    }).length;
   }, [entries]);
 
   const expensePendingCount = useMemo(() => {
-    return expenses.filter((e) => e.status === 'A pagar').length;
-  }, [expenses]);
+    return expenses.filter((e) => {
+      let matchYear = true;
+      if (selectedYear !== 'Todos') {
+        const { year } = parseCompetencia(e.competencia || '');
+        matchYear = String(year) === selectedYear;
+      }
+      const matchComp = selectedCompetencia === 'Todas' || e.competencia === selectedCompetencia;
+      const matchBanco = bancoFilter === 'Todos' || e.banco === bancoFilter;
+      const normStatus = (e.status || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const isPending = normStatus === 'A PAGAR';
+      return matchYear && matchComp && matchBanco && isPending;
+    }).length;
+  }, [expenses, selectedYear, selectedCompetencia, bancoFilter]);
 
   // Lista de clientes únicos para filtro
   const uniqueClients = useMemo(() => {
@@ -246,10 +260,21 @@ export const Financial: React.FC = () => {
 
         const matchComp = selectedCompetencia === 'Todas' || e.competencia === selectedCompetencia;
         const matchBanco = bancoFilter === 'Todos' || e.banco === bancoFilter;
-        const matchStatus =
-          statusFilter === 'Todos' ||
-          e.status === statusFilter ||
-          (statusFilter.startsWith('A pagar') && e.status === 'A pagar');
+
+        let matchStatus = true;
+        if (statusFilter !== 'Todos') {
+          const normFilter = statusFilter.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const normExpStatus = (e.status || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+          if (normFilter.startsWith('A PAGAR')) {
+            matchStatus = normExpStatus === 'A PAGAR';
+          } else if (normFilter === 'PAGO') {
+            matchStatus = normExpStatus === 'PAGO' || normExpStatus === 'DESCONTADO';
+          } else {
+            matchStatus = normExpStatus === normFilter;
+          }
+        }
+
         return matchYear && matchComp && matchBanco && matchStatus;
       })
       .sort((a, b) => {
@@ -345,11 +370,17 @@ export const Financial: React.FC = () => {
       .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
 
     const totalPago = filteredExpenses
-      .filter((e) => e.status === 'Pago' || e.status === 'Descontado')
+      .filter((e) => {
+        const norm = (e.status || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return norm === 'PAGO' || norm === 'DESCONTADO';
+      })
       .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
 
     const totalAPagar = filteredExpenses
-      .filter((e) => e.status === 'A pagar')
+      .filter((e) => {
+        const norm = (e.status || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return norm === 'A PAGAR';
+      })
       .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
 
     const saldoLiquido = totalRecebido - totalPago;
@@ -567,7 +598,10 @@ export const Financial: React.FC = () => {
     const futureExpenses: AgendaItem[] = [];
 
     expenses
-      .filter((ex) => ex.status === 'A pagar' || ex.status === 'À PAGAR')
+      .filter((ex) => {
+        const norm = (ex.status || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return norm === 'A PAGAR';
+      })
       .forEach((ex) => {
         let dueDate = new Date();
         if (ex.data_pagamento_previsao) {
@@ -2094,38 +2128,47 @@ export const Financial: React.FC = () => {
                       {/* Status / Ação Rápida */}
                       <td className="py-3.5 px-4 text-center whitespace-nowrap">
                         <div className="inline-flex items-center space-x-1.5">
-                          <select
-                            value={exp.status}
-                            onChange={(e) => handleQuickExpenseStatusChange(exp, e.target.value)}
-                            className={`text-[10px] font-bold py-1 px-2 rounded-full border cursor-pointer transition-all focus:outline-none focus:ring-1 focus:ring-[#C5A059] ${
-                              exp.status === 'Pago' || exp.status === 'Descontado'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100 font-bold'
-                                : exp.status === 'A pagar'
-                                ? 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100 font-bold'
-                                : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
-                            }`}
-                          >
-                            <option value="A pagar">A pagar</option>
-                            <option value="Pago">Pago</option>
-                            <option value="Descontado">Descontado</option>
-                            <option value="Permuta">Permuta</option>
-                          </select>
+                          {(() => {
+                            const norm = (exp.status || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                            const isPaid = norm === 'PAGO' || norm === 'DESCONTADO';
+                            const isPending = norm === 'A PAGAR';
+                            return (
+                              <>
+                                <select
+                                  value={isPending ? 'A pagar' : isPaid ? (norm === 'DESCONTADO' ? 'Descontado' : 'Pago') : exp.status}
+                                  onChange={(e) => handleQuickExpenseStatusChange(exp, e.target.value)}
+                                  className={`text-[10px] font-bold py-1 px-2 rounded-full border cursor-pointer transition-all focus:outline-none focus:ring-1 focus:ring-[#C5A059] ${
+                                    isPaid
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100 font-bold'
+                                      : isPending
+                                      ? 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100 font-bold'
+                                      : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
+                                  }`}
+                                >
+                                  <option value="A pagar">A pagar</option>
+                                  <option value="Pago">Pago</option>
+                                  <option value="Descontado">Descontado</option>
+                                  <option value="Permuta">Permuta</option>
+                                </select>
 
-                          {/* Botão de Atalho "Dar Baixa" em 1 clique quando "A pagar" */}
-                          {exp.status === 'A pagar' && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setExpenseToSettle(exp);
-                                setSettleExpenseModalOpen(true);
-                              }}
-                              className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs transition-all cursor-pointer"
-                              title="Dar baixa rápida e marcar como Pago"
-                            >
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Baixa</span>
-                            </button>
-                          )}
+                                {/* Botão de Atalho "Dar Baixa" em 1 clique quando "A pagar" */}
+                                {isPending && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setExpenseToSettle(exp);
+                                      setSettleExpenseModalOpen(true);
+                                    }}
+                                    className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs transition-all cursor-pointer"
+                                    title="Dar baixa rápida e marcar como Pago"
+                                  >
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    <span>Baixa</span>
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       </td>
 
