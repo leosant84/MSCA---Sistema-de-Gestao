@@ -59,13 +59,16 @@ export const FinancialEntryModal: React.FC<FinancialEntryModalProps> = ({
       .order('razao_social', { ascending: true });
     
     if (clientsData) {
-      // Filtra clientes ativos, mas preserva o cliente selecionado se for edição
-      const activeClients = (clientsData as Client[]).filter(
-        (c) =>
-          c.status?.trim().toUpperCase() === 'ATIVO' ||
+      // Filtra clientes ATIVOS e INADIMPLENTES, mas preserva o cliente selecionado se for edição
+      const allowedClients = (clientsData as Client[]).filter((c) => {
+        const statusUpper = c.status?.trim().toUpperCase();
+        return (
+          statusUpper === 'ATIVO' ||
+          statusUpper === 'INADIMPLENTE' ||
           (entryToEdit?.client_id && c.id === entryToEdit.client_id)
-      );
-      setClients(activeClients);
+        );
+      });
+      setClients(allowedClients);
     }
 
     const { data: catData } = await supabase
@@ -454,12 +457,14 @@ export const FinancialEntryModal: React.FC<FinancialEntryModalProps> = ({
                   onChange={handleInputChange}
                   className="w-full text-xs px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059]"
                 >
-                  <option value="">-- Selecione o cliente cadastrado (Apenas Ativos) --</option>
+                  <option value="">-- Selecione o cliente cadastrado (Ativos / Inadimplentes) --</option>
                   {clients.map((c) => {
-                    const isNotAtivo = c.status?.trim().toUpperCase() !== 'ATIVO';
+                    const statusUpper = c.status?.trim().toUpperCase();
+                    const isOverdue = statusUpper === 'INADIMPLENTE';
+                    const isOther = statusUpper !== 'ATIVO' && !isOverdue;
                     return (
                       <option key={c.id} value={c.id}>
-                        {c.razao_social} {isNotAtivo ? `(${c.status})` : ''}
+                        {c.razao_social} {isOverdue ? '(INADIMPLENTE)' : isOther ? `(${c.status})` : ''}
                       </option>
                     );
                   })}
