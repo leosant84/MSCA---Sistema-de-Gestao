@@ -200,23 +200,19 @@ BEGIN
 END;
 $$;
 
--- 4. Criação dos Triggers nas tabelas sensíveis
+-- 4. Criação dos Triggers exclusivamente nas tabelas cadastrais e credenciais
+-- 4.1. Monitoria de Clientes (Inclusão, Alteração e Exclusão de dados cadastrais)
 DROP TRIGGER IF EXISTS trg_audit_clients ON public.clients;
 CREATE TRIGGER trg_audit_clients
     AFTER INSERT OR UPDATE OR DELETE ON public.clients
     FOR EACH ROW EXECUTE FUNCTION public.process_audit_log();
 
+-- 4.2. Monitoria de Credenciais e Senhas (Segurança e acessos fiscais)
 DROP TRIGGER IF EXISTS trg_audit_client_credentials ON public.client_credentials;
 CREATE TRIGGER trg_audit_client_credentials
     AFTER INSERT OR UPDATE OR DELETE ON public.client_credentials
     FOR EACH ROW EXECUTE FUNCTION public.process_audit_log();
 
+-- 4.3. Remove triggers das tabelas financeiras (não auditadas para evitar poluição dos logs)
 DROP TRIGGER IF EXISTS trg_audit_financial_entries ON public.financial_entries;
-CREATE TRIGGER trg_audit_financial_entries
-    AFTER INSERT OR UPDATE OR DELETE ON public.financial_entries
-    FOR EACH ROW EXECUTE FUNCTION public.process_audit_log();
-
 DROP TRIGGER IF EXISTS trg_audit_financial_expenses ON public.financial_expenses;
-CREATE TRIGGER trg_audit_financial_expenses
-    AFTER INSERT OR UPDATE OR DELETE ON public.financial_expenses
-    FOR EACH ROW EXECUTE FUNCTION public.process_audit_log();

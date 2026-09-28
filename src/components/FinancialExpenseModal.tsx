@@ -3,7 +3,6 @@ import { X, ArrowDownRight, Repeat } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { generateCompetenciaSequence } from '../utils/competencia';
-import { logAuditEvent } from '../services/auditService';
 import {
   EXPENSE_CATEGORIES_DATA,
   EXPENSE_PAYMENT_METHODS,
@@ -139,22 +138,6 @@ export const FinancialExpenseModal: React.FC<FinancialExpenseModalProps> = ({
 
         const { error } = await supabase.from('financial_expenses').insert(batchPayload);
         if (error) throw error;
-
-        // Registra um único log consolidado para todo o lote
-        await logAuditEvent({
-          action: 'BATCH_INSERT',
-          entity: 'FINANCIAL_EXPENSE',
-          entityName: `${baseDesc} (${recurringCount} parcelas)`,
-          changes: {
-            descricao: { new: baseDesc },
-            parcelas: { new: `${recurringCount} meses (${competencias[0]} a ${competencias[competencias.length - 1]})` },
-            valor_parcela: { new: parsedValor },
-            valor_total_lote: { new: parsedValor * recurringCount },
-            conta_contabil: { new: formData.conta_contabil.trim() },
-            forma_pagamento: { new: formData.banco.trim() },
-            status: { new: formData.status || 'A pagar' },
-          },
-        });
 
         toast(
           `Sucesso! ${recurringCount} parcelas de saída geradas em lote (de ${competencias[0]} até ${competencias[competencias.length - 1]}).`,

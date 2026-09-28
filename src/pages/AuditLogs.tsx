@@ -318,12 +318,10 @@ export const AuditLogs: React.FC = () => {
                 className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-800 focus:ring-1 focus:ring-[#C5A059]"
               >
                 <option value="TODOS">Todos os módulos</option>
-                <option value="CLIENT">Clientes</option>
-                <option value="CREDENTIAL">Credenciais / Senhas</option>
-                <option value="FINANCIAL_ENTRY">Entradas Financeiras</option>
-                <option value="FINANCIAL_EXPENSE">Saídas / Pagamentos</option>
-                <option value="USER">Conta de Usuário</option>
-                <option value="SECURITY">Segurança</option>
+                <option value="CLIENT">Clientes (Dados Cadastrais)</option>
+                <option value="CREDENTIAL">Credenciais & Senhas</option>
+                <option value="USER">Contas de Usuário</option>
+                <option value="SECURITY">Segurança & Bloqueios</option>
               </select>
             </div>
 

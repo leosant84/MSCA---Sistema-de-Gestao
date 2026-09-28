@@ -4,7 +4,6 @@ import { supabase } from '../lib/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { NewCategoryModal } from './NewCategoryModal';
 import { generateCompetenciaSequence } from '../utils/competencia';
-import { logAuditEvent } from '../services/auditService';
 import type { FinancialEntry, Client, FinancialCategory, FinancialEntryStatus } from '../types';
 
 interface FinancialEntryModalProps {
@@ -194,28 +193,6 @@ export const FinancialEntryModal: React.FC<FinancialEntryModalProps> = ({
 
         const { error } = await supabase.from('financial_entries').insert(batchPayload);
         if (error) throw error;
-
-        // Identifica nome do cliente para o log
-        const selectedClientObj = clients.find((c) => c.id === formData.client_id);
-        const clientLabel = isAvulso
-          ? formData.cliente_nome_avulso.trim()
-          : selectedClientObj?.razao_social || 'Cliente não identificado';
-
-        // Registra um único log consolidado para o lote de receitas
-        await logAuditEvent({
-          action: 'BATCH_INSERT',
-          entity: 'FINANCIAL_ENTRY',
-          entityId: isAvulso ? undefined : formData.client_id || undefined,
-          entityName: `${clientLabel} (${recurringCount} competências)`,
-          changes: {
-            cliente: { new: clientLabel },
-            competencias: { new: `${recurringCount} meses (${competencias[0]} a ${competencias[competencias.length - 1]})` },
-            valor_unitario: { new: parsedValor },
-            valor_total_lote: { new: parsedValor * recurringCount },
-            conta_contabil: { new: formData.conta_contabil.trim() },
-            status_inicial: { new: 'À RECEBER' },
-          },
-        });
 
         toast(
           `Sucesso! ${recurringCount} competências geradas em lote (de ${competencias[0]} até ${competencias[competencias.length - 1]}).`,
