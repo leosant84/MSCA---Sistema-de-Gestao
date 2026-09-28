@@ -74,7 +74,7 @@ export const Clients: React.FC = () => {
       }
 
       if (!res) {
-        toast('O serviço local de pastas não está ativo. Inicie o "iniciar_servico_pastas.bat" no computador.', 'error');
+        toast('O serviço local de pastas não está ativo. Inicie o "MSCA_Assistente_Pastas.bat" no seu computador.', 'error');
         return;
       }
 
@@ -89,7 +89,7 @@ export const Clients: React.FC = () => {
         }
       }
     } catch {
-      toast('O serviço local de pastas não está ativo. Inicie o "iniciar_servico_pastas.bat" no computador.', 'error');
+      toast('O serviço local de pastas não está ativo. Inicie o "MSCA_Assistente_Pastas.bat" no seu computador.', 'error');
     }
   };
 
