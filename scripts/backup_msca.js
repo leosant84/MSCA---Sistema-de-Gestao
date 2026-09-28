@@ -379,7 +379,16 @@ async function exportToExcel() {
 
 // Obtém cliente autenticado via OAuth ou Service Account
 async function getDriveAuthClient() {
-  // 1. Checa Service Account
+  // 1. Checa Service Account em arquivo ou variável de ambiente
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    console.log(`🔑 Usando credenciais Service Account de variável de ambiente`);
+    const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+    return new google.auth.GoogleAuth({
+      credentials,
+      scopes: SCOPES
+    });
+  }
+
   if (fs.existsSync(SERVICE_KEY_PATH)) {
     console.log(`🔑 Usando credenciais Service Account de: ${SERVICE_KEY_PATH}`);
     return new google.auth.GoogleAuth({
@@ -388,7 +397,22 @@ async function getDriveAuthClient() {
     });
   }
 
-  // 2. Checa OAuth Desktop Client
+  // 2. Checa OAuth via variável de ambiente (GitHub Actions / Cloud)
+  if (process.env.GOOGLE_OAUTH_CREDENTIALS && process.env.GOOGLE_TOKEN) {
+    console.log(`🔑 Usando credenciais OAuth via variáveis de ambiente`);
+    const credentials = JSON.parse(process.env.GOOGLE_OAUTH_CREDENTIALS);
+    const { client_secret, client_id } = credentials.installed || credentials.web || credentials;
+    const oAuth2Client = new google.auth.OAuth2(
+      client_id,
+      client_secret,
+      'http://localhost:3333/oauth2callback'
+    );
+    const token = JSON.parse(process.env.GOOGLE_TOKEN);
+    oAuth2Client.setCredentials(token);
+    return oAuth2Client;
+  }
+
+  // 3. Checa OAuth Desktop Client local em arquivo
   if (fs.existsSync(OAUTH_PATH)) {
     const content = fs.readFileSync(OAUTH_PATH, 'utf8');
     const credentials = JSON.parse(content);
