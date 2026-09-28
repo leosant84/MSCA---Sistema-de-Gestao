@@ -451,10 +451,14 @@ export const Financial: React.FC = () => {
       1
     );
 
-    // 2. Distribuição dos Gastos por Categoria Contábil
+    // 2. Distribuição dos Gastos por Categoria Contábil (Fixado estritamente no Mês Corrente)
     const gastosMap = new Map<string, number>();
-    filteredExpenses
-      .filter((ex) => ex.status !== 'Cancelado')
+    expenses
+      .filter((ex) => {
+        if (!ex.competencia || ex.status === 'Cancelado') return false;
+        const { month, year } = parseCompetencia(ex.competencia);
+        return month === today.getMonth() && year === today.getFullYear();
+      })
       .forEach((ex) => {
         const cat = ex.conta_contabil || 'Outras Despesas';
         gastosMap.set(cat, (gastosMap.get(cat) || 0) + Number(ex.valor || 0));
@@ -531,9 +535,9 @@ export const Financial: React.FC = () => {
       topInadimplentes,
       maxInadimplenteTotal,
     };
-  }, [entries, expenses, filteredEntries, filteredExpenses]);
+  }, [entries, expenses]);
 
-  // Agenda de Próximos Compromissos Financeiros (A Pagar e A Receber)
+  // Agenda de Próximos Compromissos Financeiros (A Pagar e A Receber) - Apenas próximas datas a partir de hoje
   const agendaCommitments = useMemo(() => {
     interface AgendaItem {
       id: string;
@@ -544,7 +548,6 @@ export const Financial: React.FC = () => {
       dataFormatted: string;
       valor: number;
       status: string;
-      isOverdue: boolean;
       diasDiferenca: number;
     }
 
@@ -552,11 +555,14 @@ export const Financial: React.FC = () => {
     const now = new Date();
     const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    // 1. Recebíveis pendentes
+    // 1. Recebíveis pendentes futuros (não vencidos/não antigos)
     entries
       .filter((e) => e.status === 'À RECEBER')
       .forEach((e) => {
         const dueDate = getEntryDueDate(e.competencia, e.observacao);
+        // Desconsidera datas passadas / antigas
+        if (dueDate.getTime() < todayMidnight.getTime()) return;
+
         const diffDays = Math.ceil((dueDate.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
         const dayStr = String(dueDate.getDate()).padStart(2, '0');
         const monthStr = String(dueDate.getMonth() + 1).padStart(2, '0');
@@ -571,12 +577,11 @@ export const Financial: React.FC = () => {
           dataFormatted: `${dayStr}/${monthStr}/${yearStr}`,
           valor: Number(e.valor || 0),
           status: e.status,
-          isOverdue: isEntryOverdue(e),
           diasDiferenca: diffDays,
         });
       });
 
-    // 2. Pagamentos a pagar (saídas)
+    // 2. Pagamentos a pagar (saídas) futuros (não vencidos/não antigos)
     expenses
       .filter((ex) => ex.status === 'A pagar')
       .forEach((ex) => {
@@ -587,6 +592,9 @@ export const Financial: React.FC = () => {
             dueDate = new Date(y, m - 1, d, 23, 59, 59);
           }
         }
+        // Desconsidera datas passadas / antigas
+        if (dueDate.getTime() < todayMidnight.getTime()) return;
+
         const diffDays = Math.ceil((dueDate.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
         const dayStr = String(dueDate.getDate()).padStart(2, '0');
         const monthStr = String(dueDate.getMonth() + 1).padStart(2, '0');
@@ -601,26 +609,28 @@ export const Financial: React.FC = () => {
           dataFormatted: `${dayStr}/${monthStr}/${yearStr}`,
           valor: Number(ex.valor || 0),
           status: ex.status,
-          isOverdue: dueDate.getTime() < todayMidnight.getTime(),
           diasDiferenca: diffDays,
         });
       });
 
-    // Ordena do mais próximo / atrasado para frente
+    // Ordena do compromisso mais próximo em diante (cronológico ascendente)
     items.sort((a, b) => a.dataObj.getTime() - b.dataObj.getTime());
 
-    // Totais da agenda
-    const totalReceberAgenda = items
+    // Pega somente as próximas 5 datas/compromissos
+    const next5Items = items.slice(0, 5);
+
+    // Totais dos próximos 5 compromissos da agenda
+    const totalReceberAgenda = next5Items
       .filter((i) => i.tipo === 'RECEBER')
       .reduce((acc, curr) => acc + curr.valor, 0);
 
-    const totalPagarAgenda = items
+    const totalPagarAgenda = next5Items
       .filter((i) => i.tipo === 'PAGAR')
       .reduce((acc, curr) => acc + curr.valor, 0);
 
     return {
-      items: items.slice(0, 10), // Próximos 10 compromissos
-      totalCount: items.length,
+      items: next5Items,
+      totalCount: next5Items.length,
       totalReceberAgenda,
       totalPagarAgenda,
       saldoPrevisto: totalReceberAgenda - totalPagarAgenda,
@@ -1124,7 +1134,9 @@ export const Financial: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-xs font-bold text-gray-900">Distribuição de Gastos</h3>
-                  <p className="text-[10px] text-gray-400">Por categorias contábeis</p>
+                  <p className="text-[10px] text-gray-400">
+                    Mês corrente ({currentMonthTotals.monthLabel})
+                  </p>
                 </div>
               </div>
               <span className="text-[11px] font-bold text-gray-800">
@@ -1135,7 +1147,7 @@ export const Financial: React.FC = () => {
             {/* Gráfico Donut / Rosca em SVG + Lista de Legenda */}
             {analyticsData.distribuicaoGastos.length === 0 ? (
               <div className="py-12 text-center text-xs text-gray-400">
-                Nenhuma despesa para o filtro selecionado.
+                Nenhuma despesa para o mês corrente.
               </div>
             ) : (
               <div className="my-4 flex flex-col sm:flex-row items-center justify-center gap-6">
@@ -1213,7 +1225,7 @@ export const Financial: React.FC = () => {
 
             <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
               <span>Top {analyticsData.distribuicaoGastos.length} categorias</span>
-              <span className="text-gray-500">Classificação contábil</span>
+              <span className="text-gray-500">Mês corrente ({currentMonthTotals.monthLabel})</span>
             </div>
           </div>
 
@@ -1378,11 +1390,11 @@ export const Financial: React.FC = () => {
                 <h3 className="text-sm font-bold text-gray-900 flex items-center space-x-2">
                   <span>Agenda Financeira</span>
                   <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                    {agendaCommitments.totalCount} compromisso(s)
+                    {agendaCommitments.totalCount} próximo(s)
                   </span>
                 </h3>
                 <p className="text-[11px] text-gray-400">
-                  Próximos compromissos cronológicos a pagar e a receber
+                  Próximas 5 datas de compromissos a pagar e a receber
                 </p>
               </div>
             </div>
@@ -1410,19 +1422,17 @@ export const Financial: React.FC = () => {
           <div className="mt-3.5 divide-y divide-gray-100">
             {agendaCommitments.items.length === 0 ? (
               <div className="py-8 text-center text-xs text-gray-400">
-                Nenhum compromisso financeiro pendente na agenda.
+                Nenhum compromisso financeiro futuro na agenda.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
                 {agendaCommitments.items.map((item) => {
                   const isReceber = item.tipo === 'RECEBER';
                   return (
                     <div
                       key={item.id}
                       className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
-                        item.isOverdue
-                          ? 'bg-rose-50/40 border-rose-200/80 hover:bg-rose-50/70'
-                          : isReceber
+                        isReceber
                           ? 'bg-emerald-50/30 border-emerald-100 hover:bg-emerald-50/60'
                           : 'bg-slate-50/50 border-slate-200/70 hover:bg-slate-50'
                       }`}
@@ -1446,11 +1456,6 @@ export const Financial: React.FC = () => {
                             <span className="text-xs font-bold text-gray-900 truncate" title={item.titulo}>
                               {item.titulo}
                             </span>
-                            {item.isOverdue && (
-                              <span className="text-[9px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded-md shrink-0">
-                                Vencido
-                              </span>
-                            )}
                           </div>
                           <div className="text-[10px] text-gray-500 truncate mt-0.5">
                             {item.detalhe}
