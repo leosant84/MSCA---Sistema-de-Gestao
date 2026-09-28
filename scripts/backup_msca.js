@@ -112,32 +112,54 @@ function applyDataRowStyle(row, rowIndex, currencyColIndices = [], dateColIndice
   row.height = 20;
 }
 
+async function fetchAll(table, selectQuery = '*', orderCol = 'created_at', ascending = false) {
+  let allRows = [];
+  let from = 0;
+  const PAGE_SIZE = 1000;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(selectQuery)
+      .order(orderCol, { ascending })
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (error) {
+      console.error(`Erro ao buscar dados da tabela ${table}:`, error);
+      break;
+    }
+    if (data && data.length > 0) {
+      allRows = allRows.concat(data);
+    }
+    if (!data || data.length < PAGE_SIZE) {
+      hasMore = false;
+    } else {
+      from += PAGE_SIZE;
+    }
+  }
+  return allRows;
+}
+
 async function exportToExcel() {
   console.log('🔄 Conectando ao Supabase para extração dos dados...');
   console.log(`📡 URL: ${SUPABASE_URL}`);
   
   const [
-    clientsRes,
-    credentialsRes,
-    entriesRes,
-    expensesRes,
-    auditLogsRes,
-    profilesRes
+    clients,
+    credentials,
+    entries,
+    expenses,
+    auditLogs,
+    profiles
   ] = await Promise.all([
-    supabase.from('clients').select('*').order('razao_social', { ascending: true }),
-    supabase.from('client_credentials').select('*, clients(razao_social)').order('created_at', { ascending: false }),
-    supabase.from('financial_entries').select('*, clients(razao_social)').order('created_at', { ascending: false }),
-    supabase.from('financial_expenses').select('*').order('data_pagamento_previsao', { ascending: false }),
-    supabase.from('audit_logs').select('*').order('created_at', { ascending: false }),
-    supabase.from('profiles').select('*').order('created_at', { ascending: false })
+    fetchAll('clients', '*', 'razao_social', true),
+    fetchAll('client_credentials', '*, clients(razao_social)', 'created_at', false),
+    fetchAll('financial_entries', '*, clients(razao_social)', 'created_at', false),
+    fetchAll('financial_expenses', '*', 'data_pagamento_previsao', false),
+    fetchAll('audit_logs', '*', 'created_at', false),
+    fetchAll('profiles', '*', 'created_at', false)
   ]);
-
-  const clients = clientsRes.data || [];
-  const credentials = credentialsRes.data || [];
-  const entries = entriesRes.data || [];
-  const expenses = expensesRes.data || [];
-  const auditLogs = auditLogsRes.data || [];
-  const profiles = profilesRes.data || [];
 
   console.log(`📊 Registros extraídos:`);
   console.log(`   - Clientes: ${clients.length}`);
