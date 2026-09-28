@@ -47,8 +47,17 @@ export const Financial: React.FC = () => {
   const [entries, setEntries] = useState<FinancialEntry[]>([]);
   const [expenses, setExpenses] = useState<FinancialExpense[]>([]);
 
+  // Inicialização da Competência padrão no Mês Corrente (ex: "set/26")
+  const currentMonthCompetencia = useMemo(() => {
+    const now = new Date();
+    return formatCompetencia(now.getMonth(), now.getFullYear(), true);
+  }, []);
+
   // Filtros Globais
-  const [selectedCompetencia, setSelectedCompetencia] = useState<string>('Todas');
+  const [selectedCompetencia, setSelectedCompetencia] = useState<string>(() => {
+    const now = new Date();
+    return formatCompetencia(now.getMonth(), now.getFullYear(), true);
+  });
   const [bancoFilter, setBancoFilter] = useState<string>('Todos');
   const [statusFilter, setStatusFilter] = useState<string>('Todos');
   const [clientFilter, setClientFilter] = useState<string>('Todos');
@@ -152,37 +161,63 @@ export const Financial: React.FC = () => {
     return Array.from(map.values()).sort();
   }, [entries]);
 
-  // Filtragem de Entradas considerando Visão de Cobrança, Competência, Banco, Cliente e Status
+  // Filtragem e Ordenação Crescente de Entradas por Competência
   const filteredEntries = useMemo(() => {
-    return entries.filter((e) => {
-      const clientName = e.client?.razao_social || e.cliente_nome_avulso || '';
-      const matchClient = clientFilter === 'Todos' || clientName === clientFilter;
-      const matchComp = selectedCompetencia === 'Todas' || e.competencia === selectedCompetencia;
-      const matchBanco = bancoFilter === 'Todos' || (e.banco || '') === bancoFilter;
+    return entries
+      .filter((e) => {
+        const clientName = e.client?.razao_social || e.cliente_nome_avulso || '';
+        const matchClient = clientFilter === 'Todos' || clientName === clientFilter;
+        const matchComp = selectedCompetencia === 'Todas' || e.competencia === selectedCompetencia;
+        const matchBanco = bancoFilter === 'Todos' || (e.banco || '') === bancoFilter;
 
-      // Filtro por Pill rápida de status (ou select)
-      let matchStatus = true;
-      if (entryViewFilter !== 'TODOS') {
-        matchStatus = e.status === entryViewFilter;
-      } else if (statusFilter !== 'Todos') {
-        matchStatus = e.status === statusFilter;
-      }
+        // Filtro por Pill rápida de status (ou select)
+        let matchStatus = true;
+        if (entryViewFilter !== 'TODOS') {
+          matchStatus = e.status === entryViewFilter;
+        } else if (statusFilter !== 'Todos') {
+          matchStatus = e.status === statusFilter;
+        }
 
-      return matchClient && matchComp && matchBanco && matchStatus;
-    });
+        return matchClient && matchComp && matchBanco && matchStatus;
+      })
+      .sort((a, b) => {
+        // Ordenação crescente por competência (ano e mês)
+        const compA = parseCompetencia(a.competencia || '');
+        const compB = parseCompetencia(b.competencia || '');
+        const keyA = compA.year * 100 + compA.month;
+        const keyB = compB.year * 100 + compB.month;
+        if (keyA !== keyB) return keyA - keyB;
+
+        // Desempate por nome do cliente
+        const nameA = a.client?.razao_social || a.cliente_nome_avulso || '';
+        const nameB = b.client?.razao_social || b.cliente_nome_avulso || '';
+        return nameA.localeCompare(nameB, 'pt-BR');
+      });
   }, [entries, entryViewFilter, selectedCompetencia, bancoFilter, clientFilter, statusFilter]);
 
-  // Filtragem de Saídas por Competência, Banco e Status
+  // Filtragem e Ordenação Crescente de Saídas por Competência
   const filteredExpenses = useMemo(() => {
-    return expenses.filter((e) => {
-      const matchComp = selectedCompetencia === 'Todas' || e.competencia === selectedCompetencia;
-      const matchBanco = bancoFilter === 'Todos' || e.banco === bancoFilter;
-      const matchStatus =
-        statusFilter === 'Todos' ||
-        e.status === statusFilter ||
-        (statusFilter.startsWith('A pagar') && e.status === 'A pagar');
-      return matchComp && matchBanco && matchStatus;
-    });
+    return expenses
+      .filter((e) => {
+        const matchComp = selectedCompetencia === 'Todas' || e.competencia === selectedCompetencia;
+        const matchBanco = bancoFilter === 'Todos' || e.banco === bancoFilter;
+        const matchStatus =
+          statusFilter === 'Todos' ||
+          e.status === statusFilter ||
+          (statusFilter.startsWith('A pagar') && e.status === 'A pagar');
+        return matchComp && matchBanco && matchStatus;
+      })
+      .sort((a, b) => {
+        // Ordenação crescente por competência (ano e mês)
+        const compA = parseCompetencia(a.competencia || '');
+        const compB = parseCompetencia(b.competencia || '');
+        const keyA = compA.year * 100 + compA.month;
+        const keyB = compB.year * 100 + compB.month;
+        if (keyA !== keyB) return keyA - keyB;
+
+        // Desempate por data de pagamento ou descrição
+        return (a.data_pagamento_previsao || '').localeCompare(b.data_pagamento_previsao || '');
+      });
   }, [expenses, selectedCompetencia, bancoFilter, statusFilter]);
 
   // Totais Calculados para os Cards de Resumo (Considera apenas o Mês Corrente)
@@ -512,13 +547,21 @@ export const Financial: React.FC = () => {
     };
   }, [entries, expenses]);
 
-  // Lista de competências disponíveis para escolha
+  // Lista de competências disponíveis para escolha (inclui o mês corrente e ordenadas cronologicamente)
   const availableCompetencias = useMemo(() => {
     const comps = new Set<string>();
+    comps.add(currentMonthCompetencia);
     entries.forEach((e) => e.competencia && comps.add(e.competencia));
     expenses.forEach((e) => e.competencia && comps.add(e.competencia));
-    return Array.from(comps).sort().reverse();
-  }, [entries, expenses]);
+
+    return Array.from(comps).sort((a, b) => {
+      const compA = parseCompetencia(a);
+      const compB = parseCompetencia(b);
+      const keyA = compA.year * 100 + compA.month;
+      const keyB = compB.year * 100 + compB.month;
+      return keyB - keyA; // Decrescente no dropdown para acesso rápido às mais recentes
+    });
+  }, [entries, expenses, currentMonthCompetencia]);
 
   // Transição rápida de Status direto na tabela in-line
   const handleQuickStatusChange = async (entry: FinancialEntry, newStatus: FinancialEntryStatus) => {
@@ -1965,7 +2008,7 @@ export const Financial: React.FC = () => {
           onClose={() => setIsEntryModalOpen(false)}
           onSuccess={fetchFinancialData}
           entryToEdit={selectedEntry}
-          defaultCompetencia={selectedCompetencia === 'Todas' ? 'out/26' : selectedCompetencia}
+          defaultCompetencia={selectedCompetencia === 'Todas' ? currentMonthCompetencia : selectedCompetencia}
         />
       )}
 
@@ -1976,7 +2019,7 @@ export const Financial: React.FC = () => {
           onClose={() => setIsExpenseModalOpen(false)}
           onSuccess={fetchFinancialData}
           expenseToEdit={selectedExpense}
-          defaultCompetencia={selectedCompetencia === 'Todas' ? 'out/26' : selectedCompetencia}
+          defaultCompetencia={selectedCompetencia === 'Todas' ? currentMonthCompetencia : selectedCompetencia}
         />
       )}
 
