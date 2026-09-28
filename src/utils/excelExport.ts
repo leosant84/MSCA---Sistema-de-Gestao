@@ -58,6 +58,7 @@ export function exportClientsToExcel(clients: Client[], filterContext?: string) 
       'Fator R': c.fator_r || '',
       'Localidade': c.localidade || '',
       'Início Atividades': formatDate(c.inicio_atividades),
+      'Parcelamento Ativo': c.parcelamento_ativo ? 'Sim' : 'Não',
       'SIEG': c.sieg || 'Não',
       'NIRE': c.nire || '',
       'Cód. Acesso Simples': c.codigo_acesso_simples || '',
@@ -81,6 +82,7 @@ export function exportClientsToExcel(clients: Client[], filterContext?: string) 
     { wch: 10 }, // Fator R
     { wch: 25 }, // Localidade
     { wch: 18 }, // Início Atividades
+    { wch: 18 }, // Parcelamento Ativo
     { wch: 8 },  // SIEG
     { wch: 16 }, // NIRE
     { wch: 20 }, // Cód. Acesso Simples

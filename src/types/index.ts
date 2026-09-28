@@ -36,6 +36,7 @@ export interface Client {
   senha_prefeitura?: string | null;
   login_posto_fiscal?: string | null;
   senha_posto_fiscal?: string | null;
+  parcelamento_ativo?: boolean | null;
   created_at?: string;
   updated_at?: string;
   client_credentials?: ClientCredential[];

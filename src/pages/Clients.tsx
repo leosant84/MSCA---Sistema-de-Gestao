@@ -10,7 +10,8 @@ import {
   RefreshCw,
   FolderOpen,
   AlertTriangle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Receipt
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useLocation } from 'react-router-dom';
@@ -439,6 +440,16 @@ export const Clients: React.FC = () => {
                           >
                             <FolderOpen className="w-3.5 h-3.5" />
                           </button>
+                        )}
+
+                        {c.parcelamento_ativo && (
+                          <span
+                            title="Cliente possui parcelamento ativo"
+                            className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300/80 shadow-2xs"
+                          >
+                            <Receipt className="w-3 h-3 text-[#C5A059]" />
+                            <span>Parcelamento Ativo</span>
+                          </span>
                         )}
                       </div>
                       <div className="text-[11px] font-semibold text-stone-400 uppercase tracking-wide mt-0.5">

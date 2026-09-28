@@ -59,6 +59,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     senha_prefeitura: clientToEdit?.senha_prefeitura || '',
     login_posto_fiscal: clientToEdit?.login_posto_fiscal || '',
     senha_posto_fiscal: clientToEdit?.senha_posto_fiscal || '',
+    parcelamento_ativo: Boolean(clientToEdit?.parcelamento_ativo),
   });
 
   // Flag para controlar se o Posto Fiscal foi adicionado/habilitado
@@ -200,6 +201,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         senha_prefeitura: formData.senha_prefeitura.trim() || null,
         login_posto_fiscal: hasPostoFiscal ? (formData.login_posto_fiscal.trim() || null) : null,
         senha_posto_fiscal: hasPostoFiscal ? (formData.senha_posto_fiscal.trim() || null) : null,
+        parcelamento_ativo: Boolean(formData.parcelamento_ativo),
       };
 
       let clientId = clientToEdit?.id;
@@ -489,6 +491,28 @@ export const ClientModal: React.FC<ClientModalProps> = ({
                   placeholder="Ex: 12345678"
                   className="w-full text-xs font-mono px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
                 />
+              </div>
+
+              {/* Caixinha Parcelamento Ativo */}
+              <div className="flex items-center pt-2 sm:pt-6">
+                <label className="flex items-center space-x-2.5 p-2 rounded-xl bg-amber-50/50 border border-amber-200/60 hover:bg-amber-50 cursor-pointer transition-colors w-full">
+                  <input
+                    type="checkbox"
+                    name="parcelamento_ativo"
+                    checked={formData.parcelamento_ativo}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        parcelamento_ativo: e.target.checked,
+                      }))
+                    }
+                    className="w-4 h-4 text-[#C5A059] rounded border-gray-300 focus:ring-[#C5A059] cursor-pointer"
+                  />
+                  <div className="text-xs">
+                    <span className="font-bold text-stone-800 block">Parcelamento Ativo</span>
+                    <span className="text-[10px] text-stone-500">Possui parcelamento de débitos ativo</span>
+                  </div>
+                </label>
               </div>
             </div>
           </div>
