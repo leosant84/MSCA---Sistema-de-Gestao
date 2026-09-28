@@ -379,7 +379,14 @@ async function exportToExcel() {
 
 // Obtém cliente autenticado via OAuth ou Service Account
 async function getDriveAuthClient() {
-  // 1. Checa Service Account em arquivo ou variável de ambiente
+  console.log('🔍 Verificando métodos de autenticação disponíveis...');
+  console.log(`   - process.env.GOOGLE_OAUTH_CREDENTIALS: ${process.env.GOOGLE_OAUTH_CREDENTIALS ? 'Presente (' + process.env.GOOGLE_OAUTH_CREDENTIALS.length + ' chars)' : 'Ausente'}`);
+  console.log(`   - process.env.GOOGLE_TOKEN: ${process.env.GOOGLE_TOKEN ? 'Presente (' + process.env.GOOGLE_TOKEN.length + ' chars)' : 'Ausente'}`);
+  console.log(`   - process.env.GOOGLE_SERVICE_ACCOUNT_JSON: ${process.env.GOOGLE_SERVICE_ACCOUNT_JSON ? 'Presente' : 'Ausente'}`);
+  console.log(`   - Arquivo OAUTH_PATH (${OAUTH_PATH}): ${fs.existsSync(OAUTH_PATH) ? 'Existe' : 'Não encontrado'}`);
+  console.log(`   - Arquivo TOKEN_PATH (${TOKEN_PATH}): ${fs.existsSync(TOKEN_PATH) ? 'Existe' : 'Não encontrado'}`);
+
+  // 1. Checa Service Account em variável de ambiente
   if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
     console.log(`🔑 Usando credenciais Service Account de variável de ambiente`);
     const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
@@ -389,6 +396,7 @@ async function getDriveAuthClient() {
     });
   }
 
+  // 2. Checa Service Account em arquivo
   if (fs.existsSync(SERVICE_KEY_PATH)) {
     console.log(`🔑 Usando credenciais Service Account de: ${SERVICE_KEY_PATH}`);
     return new google.auth.GoogleAuth({
@@ -397,22 +405,31 @@ async function getDriveAuthClient() {
     });
   }
 
-  // 2. Checa OAuth via variável de ambiente (GitHub Actions / Cloud)
+  // 3. Checa OAuth via variável de ambiente (GitHub Actions / Cloud)
   if (process.env.GOOGLE_OAUTH_CREDENTIALS && process.env.GOOGLE_TOKEN) {
     console.log(`🔑 Usando credenciais OAuth via variáveis de ambiente`);
-    const credentials = JSON.parse(process.env.GOOGLE_OAUTH_CREDENTIALS);
-    const { client_secret, client_id } = credentials.installed || credentials.web || credentials;
-    const oAuth2Client = new google.auth.OAuth2(
-      client_id,
-      client_secret,
-      'http://localhost:3333/oauth2callback'
-    );
-    const token = JSON.parse(process.env.GOOGLE_TOKEN);
-    oAuth2Client.setCredentials(token);
-    return oAuth2Client;
+    try {
+      const credentials = typeof process.env.GOOGLE_OAUTH_CREDENTIALS === 'string'
+        ? JSON.parse(process.env.GOOGLE_OAUTH_CREDENTIALS)
+        : process.env.GOOGLE_OAUTH_CREDENTIALS;
+      const { client_secret, client_id } = credentials.installed || credentials.web || credentials;
+      const oAuth2Client = new google.auth.OAuth2(
+        client_id,
+        client_secret,
+        'http://localhost:3333/oauth2callback'
+      );
+      const token = typeof process.env.GOOGLE_TOKEN === 'string'
+        ? JSON.parse(process.env.GOOGLE_TOKEN)
+        : process.env.GOOGLE_TOKEN;
+      oAuth2Client.setCredentials(token);
+      return oAuth2Client;
+    } catch (parseErr) {
+      console.error('❌ Erro ao decodificar JSON das credenciais/token do Google:', parseErr);
+      throw parseErr;
+    }
   }
 
-  // 3. Checa OAuth Desktop Client local em arquivo
+  // 4. Checa OAuth Desktop Client local em arquivo
   if (fs.existsSync(OAUTH_PATH)) {
     const content = fs.readFileSync(OAUTH_PATH, 'utf8');
     const credentials = JSON.parse(content);
@@ -480,7 +497,7 @@ async function getDriveAuthClient() {
     });
   }
 
-  throw new Error('Nenhuma credencial (oauth_credentials.json ou google_credentials.json) encontrada.');
+  throw new Error('Nenhuma credencial (GOOGLE_OAUTH_CREDENTIALS / GOOGLE_TOKEN ou oauth_credentials.json) configurada ou encontrada.');
 }
 
 async function uploadToGoogleDrive(filePath, fileName) {
