@@ -13,7 +13,10 @@ import {
   Receipt,
   MapPin,
   Percent,
-  X
+  X,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useLocation } from 'react-router-dom';
@@ -38,14 +41,19 @@ export const Clients: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ATIVO');
 
-  // Filtros de Cabeçalho das Colunas
-  const [filterDominio, setFilterDominio] = useState('');
-  const [filterRazao, setFilterRazao] = useState('');
-  const [filterCnpj, setFilterCnpj] = useState('');
-  const [filterCpf, setFilterCpf] = useState('');
-  const [filterLocalidade, setFilterLocalidade] = useState('Todos');
-  const [filterFatorR, setFilterFatorR] = useState('Todos');
-  const [filterRegime, setFilterRegime] = useState('Todos');
+  // Ordenação das Colunas
+  type SortField = 'numero_pasta' | 'razao_social' | 'cnpj' | 'cpf' | 'localidade' | 'fator_r' | 'status';
+  const [sortField, setSortField] = useState<SortField>('razao_social');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
 
   useEffect(() => {
     if (location.state?.accessDenied) {
@@ -173,63 +181,23 @@ export const Clients: React.FC = () => {
     return map;
   }, [isAdmin, financialEntries]);
 
-  // Opções únicas para selects de cabeçalho
-  const uniqueLocalidades = useMemo(() => {
-    const set = new Set<string>();
-    clients.forEach((c) => {
-      if (c.localidade && c.localidade.trim()) {
-        set.add(c.localidade.trim());
-      }
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [clients]);
-
-  const uniqueRegimes = useMemo(() => {
-    const set = new Set<string>();
-    clients.forEach((c) => {
-      if (c.regime_tributario && c.regime_tributario.trim()) {
-        set.add(c.regime_tributario.trim());
-      }
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [clients]);
-
   // Limpa todos os filtros ativos
   const handleClearFilters = () => {
     setSearchQuery('');
     setStatusFilter('Todos');
-    setFilterDominio('');
-    setFilterRazao('');
-    setFilterCnpj('');
-    setFilterCpf('');
-    setFilterLocalidade('Todos');
-    setFilterFatorR('Todos');
-    setFilterRegime('Todos');
   };
 
   const hasActiveFilters = Boolean(
     searchQuery ||
-    statusFilter !== 'ATIVO' ||
-    filterDominio ||
-    filterRazao ||
-    filterCnpj ||
-    filterCpf ||
-    filterLocalidade !== 'Todos' ||
-    filterFatorR !== 'Todos' ||
-    filterRegime !== 'Todos'
+    statusFilter !== 'ATIVO'
   );
 
-  // Filtragem dinâmica por filtros de cabeçalho, status e busca global
+  // Filtragem dinâmica e ordenação por colunas
   const filteredClients = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     const cleanNumbersQuery = searchQuery.replace(/\D/g, '');
 
-    const fDominioClean = filterDominio.toLowerCase().trim();
-    const fRazaoClean = filterRazao.toLowerCase().trim();
-    const fCnpjClean = filterCnpj.replace(/\D/g, '').trim();
-    const fCpfClean = filterCpf.replace(/\D/g, '').trim();
-
-    return clients.filter((c) => {
+    const filtered = clients.filter((c) => {
       // 1. Filtro de Status
       if (statusFilter !== 'Todos') {
         const clientStatusNorm = (c.status || '').trim().toUpperCase();
@@ -250,50 +218,7 @@ export const Clients: React.FC = () => {
         }
       }
 
-      // 2. Filtro do Cabeçalho: Domínio
-      if (fDominioClean) {
-        const dom = (c.numero_pasta || '').toLowerCase();
-        if (!dom.includes(fDominioClean)) return false;
-      }
-
-      // 3. Filtro do Cabeçalho: Razão Social / Nome
-      if (fRazaoClean) {
-        const rz = (c.razao_social || '').toLowerCase();
-        if (!rz.includes(fRazaoClean)) return false;
-      }
-
-      // 4. Filtro do Cabeçalho: CNPJ
-      if (fCnpjClean) {
-        const rawCnpj = (c.cnpj || '').replace(/\D/g, '');
-        if (!rawCnpj.includes(fCnpjClean)) return false;
-      }
-
-      // 5. Filtro do Cabeçalho: CPF
-      if (fCpfClean) {
-        const rawCpf = (c.cpf || '').replace(/\D/g, '');
-        if (!rawCpf.includes(fCpfClean)) return false;
-      }
-
-      // 6. Filtro do Cabeçalho: Localidade
-      if (filterLocalidade !== 'Todos') {
-        const loc = (c.localidade || '').trim();
-        if (loc !== filterLocalidade) return false;
-      }
-
-      // 7. Filtro do Cabeçalho: Fator R
-      if (filterFatorR !== 'Todos') {
-        const fr = (c.fator_r || '').trim();
-        if (filterFatorR === 'Sim' && fr !== 'Sim') return false;
-        if (filterFatorR === 'Não' && fr === 'Sim') return false;
-      }
-
-      // 8. Filtro do Cabeçalho: Regime Tributário (discreto abaixo da Razão)
-      if (filterRegime !== 'Todos') {
-        const reg = (c.regime_tributario || '').trim();
-        if (reg !== filterRegime) return false;
-      }
-
-      // 9. Campo de Busca Geral (se preenchido)
+      // 2. Campo de Busca Geral (se preenchido)
       if (q) {
         const matchesRazao = c.razao_social?.toLowerCase().includes(q);
         const matchesSieg = c.sieg?.toLowerCase().includes(q);
@@ -313,17 +238,66 @@ export const Clients: React.FC = () => {
 
       return true;
     });
+
+    // Ordenação dinâmica pela coluna selecionada
+    return filtered.sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortField) {
+        case 'numero_pasta': {
+          const pastaA = (a.numero_pasta || '').trim();
+          const pastaB = (b.numero_pasta || '').trim();
+          comparison = pastaA.localeCompare(pastaB, undefined, { numeric: true, sensitivity: 'base' });
+          break;
+        }
+        case 'razao_social': {
+          const razaoA = (a.razao_social || '').trim();
+          const razaoB = (b.razao_social || '').trim();
+          comparison = razaoA.localeCompare(razaoB, 'pt-BR', { sensitivity: 'base' });
+          break;
+        }
+        case 'cnpj': {
+          const cnpjA = (a.cnpj || '').replace(/\D/g, '');
+          const cnpjB = (b.cnpj || '').replace(/\D/g, '');
+          comparison = cnpjA.localeCompare(cnpjB);
+          break;
+        }
+        case 'cpf': {
+          const cpfA = (a.cpf || '').replace(/\D/g, '');
+          const cpfB = (b.cpf || '').replace(/\D/g, '');
+          comparison = cpfA.localeCompare(cpfB);
+          break;
+        }
+        case 'localidade': {
+          const locA = (a.localidade || '').trim();
+          const locB = (b.localidade || '').trim();
+          comparison = locA.localeCompare(locB, 'pt-BR', { sensitivity: 'base' });
+          break;
+        }
+        case 'fator_r': {
+          const frA = (a.fator_r || '').trim();
+          const frB = (b.fator_r || '').trim();
+          comparison = frA.localeCompare(frB);
+          break;
+        }
+        case 'status': {
+          const stA = (a.status || '').trim();
+          const stB = (b.status || '').trim();
+          comparison = stA.localeCompare(stB);
+          break;
+        }
+        default:
+          comparison = 0;
+      }
+
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
   }, [
     clients,
     searchQuery,
     statusFilter,
-    filterDominio,
-    filterRazao,
-    filterCnpj,
-    filterCpf,
-    filterLocalidade,
-    filterFatorR,
-    filterRegime,
+    sortField,
+    sortDirection,
     overdueClientsMap,
   ]);
 
@@ -490,141 +464,162 @@ export const Clients: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              {/* Linha 1 do Cabeçalho: Títulos das Colunas */}
-              <tr className="bg-slate-50/80 border-b border-slate-200/60 text-[10px] font-bold text-stone-500 uppercase tracking-wider">
-                <th className="py-2 px-2 text-center w-10">Pasta</th>
-                <th className="py-2 px-2.5 whitespace-nowrap">Domínio</th>
-                <th className="py-2 px-3">Razão Social / Regime</th>
-                <th className="py-2 px-2.5 whitespace-nowrap">CNPJ</th>
-                <th className="py-2 px-2.5 whitespace-nowrap">CPF</th>
-                <th className="py-2 px-2.5 whitespace-nowrap">Localidade</th>
-                <th className="py-2 px-2.5 text-center whitespace-nowrap">Fator R</th>
-                <th className="py-2 px-2.5">Portais</th>
-                <th className="py-2 px-2.5 text-center">Status</th>
-                <th className="py-2 px-3 text-right">Ações</th>
-              </tr>
-              {/* Linha 2 do Cabeçalho: Filtros Integrados em Cada Coluna */}
-              <tr className="bg-slate-100/50 border-b border-slate-200/80 text-[11px]">
-                {/* Pasta - vazio */}
-                <th className="py-1 px-1"></th>
+              {/* Linha Única do Cabeçalho: Títulos das Colunas com Setas de Ordenação */}
+              <tr className="bg-slate-50/80 border-b border-slate-200/60 text-[10px] font-bold text-stone-500 uppercase tracking-wider select-none">
+                <th className="py-2.5 px-2 text-center w-10">Pasta</th>
 
-                {/* Domínio */}
-                <th className="py-1.5 px-2">
-                  <input
-                    type="text"
-                    value={filterDominio}
-                    onChange={(e) => setFilterDominio(e.target.value)}
-                    placeholder="Filtrar..."
-                    className="w-20 px-2 py-1 text-[11px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] placeholder-slate-400 font-normal"
-                  />
-                </th>
-
-                {/* Razão Social + Regime */}
-                <th className="py-1.5 px-2.5">
-                  <div className="flex items-center space-x-1.5">
-                    <input
-                      type="text"
-                      value={filterRazao}
-                      onChange={(e) => setFilterRazao(e.target.value)}
-                      placeholder="Filtrar razão..."
-                      className="w-36 sm:w-44 px-2 py-1 text-[11px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] placeholder-slate-400 font-normal"
-                    />
-                    <select
-                      value={filterRegime}
-                      onChange={(e) => setFilterRegime(e.target.value)}
-                      title="Filtrar por Regime Tributário"
-                      className="px-2 py-1 text-[10px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] font-normal text-slate-700 cursor-pointer"
-                    >
-                      <option value="Todos">Regime: Todos</option>
-                      {uniqueRegimes.map((reg) => (
-                        <option key={reg} value={reg}>
-                          {reg}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </th>
-
-                {/* CNPJ */}
-                <th className="py-1.5 px-2">
-                  <input
-                    type="text"
-                    value={filterCnpj}
-                    onChange={(e) => setFilterCnpj(e.target.value)}
-                    placeholder="Números..."
-                    className="w-28 px-2 py-1 text-[11px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] placeholder-slate-400 font-normal font-mono"
-                  />
-                </th>
-
-                {/* CPF */}
-                <th className="py-1.5 px-2">
-                  <input
-                    type="text"
-                    value={filterCpf}
-                    onChange={(e) => setFilterCpf(e.target.value)}
-                    placeholder="Números..."
-                    className="w-24 px-2 py-1 text-[11px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] placeholder-slate-400 font-normal font-mono"
-                  />
-                </th>
-
-                {/* Localidade */}
-                <th className="py-1.5 px-2">
-                  <select
-                    value={filterLocalidade}
-                    onChange={(e) => setFilterLocalidade(e.target.value)}
-                    className="w-28 px-2 py-1 text-[11px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] font-normal text-slate-700 cursor-pointer"
+                <th className="py-2.5 px-2.5 whitespace-nowrap">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('numero_pasta')}
+                    className="inline-flex items-center space-x-1 font-bold text-stone-600 hover:text-[#C5A059] transition-colors cursor-pointer group"
+                    title="Classificar por Domínio"
                   >
-                    <option value="Todos">Todas</option>
-                    {uniqueLocalidades.map((loc) => (
-                      <option key={loc} value={loc}>
-                        {loc}
-                      </option>
-                    ))}
-                  </select>
+                    <span>Domínio</span>
+                    {sortField === 'numero_pasta' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
+                    )}
+                  </button>
                 </th>
 
-                {/* Fator R */}
-                <th className="py-1.5 px-2 text-center">
-                  <select
-                    value={filterFatorR}
-                    onChange={(e) => setFilterFatorR(e.target.value)}
-                    className="w-20 px-1.5 py-1 text-[11px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] font-normal text-slate-700 cursor-pointer"
+                <th className="py-2.5 px-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('razao_social')}
+                    className="inline-flex items-center space-x-1 font-bold text-stone-600 hover:text-[#C5A059] transition-colors cursor-pointer group"
+                    title="Classificar por Razão Social"
                   >
-                    <option value="Todos">Todos</option>
-                    <option value="Sim">Sim</option>
-                    <option value="Não">Não</option>
-                  </select>
+                    <span>Razão Social / Regime</span>
+                    {sortField === 'razao_social' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
+                    )}
+                  </button>
                 </th>
 
-                {/* Portais - vazio */}
-                <th className="py-1 px-1"></th>
-
-                {/* Status */}
-                <th className="py-1.5 px-2 text-center">
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="w-24 px-1.5 py-1 text-[10px] bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059] font-semibold text-slate-700 cursor-pointer"
+                <th className="py-2.5 px-2.5 whitespace-nowrap">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('cnpj')}
+                    className="inline-flex items-center space-x-1 font-bold text-stone-600 hover:text-[#C5A059] transition-colors cursor-pointer group"
+                    title="Classificar por CNPJ"
                   >
-                    <option value="Todos">TODOS</option>
-                    <option value="ATIVO">ATIVO</option>
-                    <option value="TRANSFERIDO">TRANSF.</option>
-                    <option value="INADIMPLENTE">INADIMP.</option>
-                    <option value="BAIXADA">BAIXADA</option>
-                    <option value="INATIVA">INATIVA</option>
-                  </select>
+                    <span>CNPJ</span>
+                    {sortField === 'cnpj' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
+                    )}
+                  </button>
                 </th>
 
-                {/* Ações / Limpar Filtros */}
-                <th className="py-1.5 px-2 text-right">
+                <th className="py-2.5 px-2.5 whitespace-nowrap">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('cpf')}
+                    className="inline-flex items-center space-x-1 font-bold text-stone-600 hover:text-[#C5A059] transition-colors cursor-pointer group"
+                    title="Classificar por CPF"
+                  >
+                    <span>CPF</span>
+                    {sortField === 'cpf' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
+                    )}
+                  </button>
+                </th>
+
+                <th className="py-2.5 px-2 whitespace-nowrap">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('localidade')}
+                    className="inline-flex items-center space-x-1 font-bold text-stone-600 hover:text-[#C5A059] transition-colors cursor-pointer group"
+                    title="Classificar por Localidade"
+                  >
+                    <span>Localidade</span>
+                    {sortField === 'localidade' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
+                    )}
+                  </button>
+                </th>
+
+                <th className="py-2.5 px-2 text-center whitespace-nowrap">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('fator_r')}
+                    className="inline-flex items-center space-x-1 font-bold text-stone-600 hover:text-[#C5A059] transition-colors cursor-pointer group"
+                    title="Classificar por Fator R"
+                  >
+                    <span>Fator R</span>
+                    {sortField === 'fator_r' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
+                    )}
+                  </button>
+                </th>
+
+                <th className="py-2.5 px-2.5">Portais</th>
+
+                <th className="py-2.5 px-2 text-center whitespace-nowrap">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('status')}
+                    className="inline-flex items-center space-x-1 font-bold text-stone-600 hover:text-[#C5A059] transition-colors cursor-pointer group"
+                    title="Classificar por Status"
+                  >
+                    <span>Status</span>
+                    {sortField === 'status' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
+                    )}
+                  </button>
+                </th>
+
+                <th className="py-2.5 px-3 text-right">
                   {hasActiveFilters && (
                     <button
                       type="button"
                       onClick={handleClearFilters}
-                      title="Limpar todos os filtros da tabela"
-                      className="p-1 rounded bg-stone-100 hover:bg-rose-50 text-stone-500 hover:text-rose-600 transition-colors cursor-pointer inline-flex items-center"
+                      title="Limpar busca e filtros"
+                      className="px-2 py-0.5 rounded bg-stone-100 hover:bg-rose-50 text-stone-500 hover:text-rose-600 text-[10px] font-normal transition-colors cursor-pointer inline-flex items-center space-x-1"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <X className="w-3 h-3" />
+                      <span>Limpar</span>
                     </button>
                   )}
                 </th>
@@ -713,15 +708,15 @@ export const Clients: React.FC = () => {
                       <CpfCopyButton cpf={c.cpf} />
                     </td>
 
-                    {/* Localidade (Substitui o antigo Cód. Acesso) */}
-                    <td className="py-2.5 px-2.5 whitespace-nowrap">
+                    {/* Localidade (com fonte e espaçamento reduzidos) */}
+                    <td className="py-2.5 px-2 whitespace-nowrap">
                       {c.localidade ? (
-                        <div className="inline-flex items-center space-x-1 text-[11px] font-medium text-stone-700 bg-stone-50 px-2 py-0.5 rounded-lg border border-stone-200/80 shadow-2xs">
-                          <MapPin className="w-3 h-3 text-[#C5A059] shrink-0" />
-                          <span className="uppercase">{c.localidade}</span>
+                        <div className="inline-flex items-center space-x-1 text-[10px] font-medium text-stone-700 bg-stone-50 px-1.5 py-0.5 rounded-md border border-stone-200/80 shadow-2xs">
+                          <MapPin className="w-2.5 h-2.5 text-[#C5A059] shrink-0" />
+                          <span className="uppercase tracking-tight">{c.localidade}</span>
                         </div>
                       ) : (
-                        <span className="text-gray-300">-</span>
+                        <span className="text-gray-300 text-xs">-</span>
                       )}
                     </td>
 
