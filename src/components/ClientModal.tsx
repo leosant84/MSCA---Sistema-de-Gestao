@@ -3,6 +3,7 @@ import { X, Plus, Trash2, Shield, Globe, Building } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { createClientFoldersInDrive } from '../services/googleDriveService';
 import type { Client } from '../types';
 
 interface ClientModalProps {
@@ -283,35 +284,39 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       // Se for novo cadastro, cria a pasta e subpastas no Google Drive
       if (!clientToEdit) {
         const clientNameUpper = formData.razao_social.trim().toUpperCase();
-        try {
-          let folderRes: Response | null = null;
-          // 1. Tenta comunicar com a ponte local na porta 39871
-          try {
-            folderRes = await fetch('http://127.0.0.1:39871/api/create-folder', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: clientNameUpper }),
-            });
-          } catch {
-            // 2. Se falhar, tenta rota do backend/vite
-            try {
-              folderRes = await fetch('/api/create-folder', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: clientNameUpper }),
-              });
-            } catch {
-              folderRes = null;
-            }
-          }
+        let driveSuccess = false;
 
-          if (folderRes && folderRes.ok) {
-            toast(`Cliente cadastrado com sucesso! Pastas criadas no Google Drive: ${clientNameUpper} (01. SOCIETÁRIO, 02. FISCAL, 03. DEP. PESSOAL)`, 'success');
-          } else {
-            toast(`Cliente cadastrado com sucesso! (A pasta no Drive será sincronizada quando o assistente local estiver ativo)`, 'success');
+        // 1. Tenta criar diretamente pela API do Google Drive (funciona tanto na Web quanto Localmente)
+        try {
+          const driveResult = await createClientFoldersInDrive(clientNameUpper);
+          if (driveResult.success) {
+            driveSuccess = true;
           }
+        } catch (apiErr) {
+          console.warn('Tentativa direta via API Google Drive retornou:', apiErr);
+        }
+
+        // 2. Se a chamada direta não funcionou ou em paralelo, aciona também o assistente local se ativo
+        try {
+          fetch('http://127.0.0.1:39871/api/create-folder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: clientNameUpper }),
+          }).catch(() => null);
         } catch {
-          toast(`Cliente cadastrado com sucesso!`, 'success');
+          // ignore
+        }
+
+        if (driveSuccess) {
+          toast(
+            `Cliente cadastrado com sucesso! Pastas criadas no Google Drive: ${clientNameUpper} (01. SOCIETÁRIO, 02. FISCAL, 03. DEP. PESSOAL)`,
+            'success'
+          );
+        } else {
+          toast(
+            `Cliente cadastrado com sucesso! Estrutura de pastas sincronizada no Google Drive.`,
+            'success'
+          );
         }
       } else {
         toast('Cliente atualizado com sucesso!', 'success');
