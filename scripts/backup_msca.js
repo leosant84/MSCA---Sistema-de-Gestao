@@ -32,7 +32,10 @@ const TOKEN_PATH = path.resolve('token.json');
 const OAUTH_PATH = path.resolve('oauth_credentials.json');
 const SERVICE_KEY_PATH = path.resolve('google_credentials.json');
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: false },
+  realtime: { createClient: () => null }
+});
 
 function getFormattedTimestamp() {
   const now = new Date();
