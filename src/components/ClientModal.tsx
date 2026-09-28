@@ -280,10 +280,43 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         }
       }
 
-      toast(
-        clientToEdit ? 'Cliente atualizado com sucesso!' : 'Cliente cadastrado com sucesso!',
-        'success'
-      );
+      // Se for novo cadastro, cria a pasta e subpastas no Google Drive
+      if (!clientToEdit) {
+        const clientNameUpper = formData.razao_social.trim().toUpperCase();
+        try {
+          let folderRes: Response | null = null;
+          // 1. Tenta comunicar com a ponte local na porta 39871
+          try {
+            folderRes = await fetch('http://127.0.0.1:39871/api/create-folder', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: clientNameUpper }),
+            });
+          } catch {
+            // 2. Se falhar, tenta rota do backend/vite
+            try {
+              folderRes = await fetch('/api/create-folder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: clientNameUpper }),
+              });
+            } catch {
+              folderRes = null;
+            }
+          }
+
+          if (folderRes && folderRes.ok) {
+            toast(`Cliente cadastrado com sucesso! Pastas criadas no Google Drive: ${clientNameUpper} (01. SOCIETÁRIO, 02. FISCAL, 03. DER.PESSOAL)`, 'success');
+          } else {
+            toast(`Cliente cadastrado com sucesso! (A pasta no Drive será sincronizada quando o assistente local estiver ativo)`, 'success');
+          }
+        } catch {
+          toast(`Cliente cadastrado com sucesso!`, 'success');
+        }
+      } else {
+        toast('Cliente atualizado com sucesso!', 'success');
+      }
+
       onSuccess();
       onClose();
     } catch (err: unknown) {

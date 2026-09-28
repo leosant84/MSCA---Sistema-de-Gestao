@@ -100,6 +100,62 @@ export default defineConfig({
             return res.end(JSON.stringify({ success: false, message: error?.message }));
           }
         });
+
+        // Endpoint para criação automática da pasta do cliente e subpastas no Google Drive
+        server.middlewares.use('/api/create-folder', async (req, res) => {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+          if (req.method === 'OPTIONS') {
+            res.statusCode = 204;
+            return res.end();
+          }
+
+          try {
+            let body = '';
+            req.on('data', chunk => { body += chunk; });
+            req.on('end', async () => {
+              try {
+                let name = '';
+                if (body) {
+                  try {
+                    const parsed = JSON.parse(body);
+                    name = parsed.name || '';
+                  } catch {
+                    name = '';
+                  }
+                }
+                if (!name) {
+                  const url = new URL(req.url || '', 'http://localhost');
+                  name = url.searchParams.get('name') || '';
+                }
+
+                if (!name.trim()) {
+                  res.statusCode = 400;
+                  res.setHeader('Content-Type', 'application/json');
+                  return res.end(JSON.stringify({ success: false, message: 'Nome da Razão Social não informado.' }));
+                }
+
+                const { createDriveClientFolders } = await import('./server/driveFolderService.js');
+                const result = await createDriveClientFolders(name);
+
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                return res.end(JSON.stringify({ success: true, ...result }));
+              } catch (err: any) {
+                console.error('Erro na criação de pastas no Google Drive:', err);
+                res.statusCode = 500;
+                res.setHeader('Content-Type', 'application/json');
+                return res.end(JSON.stringify({ success: false, message: err?.message || 'Falha ao criar pastas no Drive' }));
+              }
+            });
+          } catch (error: any) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            return res.end(JSON.stringify({ success: false, message: error?.message }));
+          }
+        });
       }
     }
   ],

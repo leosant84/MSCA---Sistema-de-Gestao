@@ -102,6 +102,66 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 "        $res.Close(); " ^
 "        continue; " ^
 "    }; " ^
+"    if ($req.Url.AbsolutePath -eq '/api/create-folder') { " ^
+"        $clientName = ''; " ^
+"        if ($req.HasEntityBody) { " ^
+"            $reader = New-Object System.IO.StreamReader($req.InputStream, $req.ContentEncoding); " ^
+"            $bodyText = $reader.ReadToEnd(); " ^
+"            try { " ^
+"                $parsed = $bodyText | ConvertFrom-Json; " ^
+"                $clientName = $parsed.name; " ^
+"            } catch {}; " ^
+"        }; " ^
+"        if (-not $clientName) { " ^
+"            $qs = [System.Web.HttpUtility]::ParseQueryString($req.Url.Query); " ^
+"            $clientName = $qs['name']; " ^
+"        }; " ^
+"        if (-not $clientName) { " ^
+"            $json = '{\"success\":false,\"message\":\"Nome do cliente nao informado.\"}'; " ^
+"            $buf = [System.Text.Encoding]::UTF8.GetBytes($json); " ^
+"            $res.StatusCode = 400; " ^
+"            $res.ContentType = 'application/json'; " ^
+"            $res.OutputStream.Write($buf, 0, $buf.Length); " ^
+"            $res.Close(); " ^
+"            continue; " ^
+"        }; " ^
+"        $baseDir = 'I:\Meu Drive\00. MSCA\00. CLIENTES'; " ^
+"        if (-not (Test-Path $baseDir)) { " ^
+"            $drives = @('I', 'J', 'G', 'H', 'D', 'C'); " ^
+"            foreach ($d in $drives) { " ^
+"                $cand = \"$($d):\Meu Drive\00. MSCA\00. CLIENTES\"; " ^
+"                if (Test-Path $cand) { $baseDir = $cand; break; }; " ^
+"            }; " ^
+"        }; " ^
+"        if (-not (Test-Path $baseDir)) { " ^
+"            $json = '{\"success\":false,\"message\":\"Diretorio do Google Drive nao encontrado nesta maquina.\"}'; " ^
+"            $buf = [System.Text.Encoding]::UTF8.GetBytes($json); " ^
+"            $res.StatusCode = 404; " ^
+"            $res.ContentType = 'application/json'; " ^
+"            $res.OutputStream.Write($buf, 0, $buf.Length); " ^
+"            $res.Close(); " ^
+"            continue; " ^
+"        }; " ^
+"        $folderUpper = $clientName.Trim().ToUpper(); " ^
+"        $clientPath = Join-Path $baseDir $folderUpper; " ^
+"        if (-not (Test-Path $clientPath)) { " ^
+"            New-Item -ItemType Directory -Path $clientPath -Force | Out-Null; " ^
+"        }; " ^
+"        $subs = @('01. SOCIETÁRIO', '02. FISCAL', '03. DER.PESSOAL'); " ^
+"        foreach ($s in $subs) { " ^
+"            $subPath = Join-Path $clientPath $s; " ^
+"            if (-not (Test-Path $subPath)) { " ^
+"                New-Item -ItemType Directory -Path $subPath -Force | Out-Null; " ^
+"            }; " ^
+"        }; " ^
+"        Write-Host \"[MSCA] Pasta criada/verificada: $clientPath com 3 subpastas padrao.\" -ForegroundColor Green; " ^
+"        $json = ('{\"success\":true,\"folderName\":' + ($folderUpper | ConvertTo-Json) + ',\"folderPath\":' + ($clientPath | ConvertTo-Json) + '}'); " ^
+"        $buf = [System.Text.Encoding]::UTF8.GetBytes($json); " ^
+"        $res.ContentType = 'application/json'; " ^
+"        $res.OutputStream.Write($buf, 0, $buf.Length); " ^
+"        $res.Close(); " ^
+"        continue; " ^
+"    }; " ^
 "    $res.StatusCode = 404; " ^
 "    $res.Close(); " ^
 "}"
