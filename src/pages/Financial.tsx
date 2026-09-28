@@ -262,80 +262,49 @@ export const Financial: React.FC = () => {
       });
   }, [expenses, selectedYear, selectedCompetencia, bancoFilter, statusFilter]);
 
-  // Totais Calculados para os Cards de Resumo (Reflete os filtros ativos de Ano/Competência/Banco/Cliente, ou padrão mês corrente)
+  // Totais Calculados para os Cards de Resumo (Estritamente fixados na competência do Mês Corrente)
   const currentMonthTotals = useMemo(() => {
-    // Se o usuário selecionou Ano ou Competência ou Banco ou Cliente específico, os cards acompanham os filtros
-    const hasFilter = selectedYear !== 'Todos' || selectedCompetencia !== 'Todas' || bancoFilter !== 'Todos' || clientFilter !== 'Todos';
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
 
-    if (hasFilter) {
-      const totalRecebido = filteredEntries
-        .filter((e) => e.status === 'RECEBIDO')
-        .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
+    // Filtra lançamentos de entrada pertencentes ao mês corrente
+    const currentMonthEntries = entries.filter((e) => {
+      if (!e.competencia) return false;
+      const { month, year } = parseCompetencia(e.competencia);
+      return month === currentMonth && year === currentYear;
+    });
 
-      const totalAReceber = filteredEntries
-        .filter((e) => e.status === 'À RECEBER')
-        .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
+    // Filtra lançamentos de despesa pertencentes ao mês corrente
+    const currentMonthExpenses = expenses.filter((e) => {
+      if (!e.competencia) return false;
+      const { month, year } = parseCompetencia(e.competencia);
+      return month === currentMonth && year === currentYear;
+    });
 
-      const aReceberCount = filteredEntries
-        .filter((e) => e.status === 'À RECEBER').length;
-
-      const totalPago = filteredExpenses
-        .filter((e) => e.status === 'Pago' || e.status === 'Descontado' || e.status === 'PAGO')
-        .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
-
-      const pagoCount = filteredExpenses
-        .filter((e) => e.status === 'Pago' || e.status === 'Descontado' || e.status === 'PAGO').length;
-
-      const totalAPagar = filteredExpenses
-        .filter((e) => e.status === 'A pagar' || e.status === 'À PAGAR')
-        .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
-
-      const aPagarCount = filteredExpenses
-        .filter((e) => e.status === 'A pagar' || e.status === 'À PAGAR').length;
-
-      const saldoLiquido = totalRecebido - totalPago;
-
-      let label = 'Filtro Ativo';
-      if (selectedCompetencia !== 'Todas') label = selectedCompetencia;
-      else if (selectedYear !== 'Todos') label = `Ano ${selectedYear}`;
-
-      return {
-        totalRecebido,
-        totalAReceber,
-        aReceberCount,
-        totalPago,
-        pagoCount,
-        totalAPagar,
-        aPagarCount,
-        saldoLiquido,
-        monthLabel: label,
-      };
-    }
-
-    // Padrão geral quando nenhum filtro está ativo (Mostra totais consolidados de toda a base)
-    const totalRecebido = entries
+    const totalRecebido = currentMonthEntries
       .filter((e) => e.status === 'RECEBIDO')
       .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
 
-    const totalAReceber = entries
+    const totalAReceber = currentMonthEntries
       .filter((e) => e.status === 'À RECEBER')
       .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
 
-    const aReceberCount = entries
+    const aReceberCount = currentMonthEntries
       .filter((e) => e.status === 'À RECEBER').length;
 
-    const totalPago = expenses
+    const totalPago = currentMonthExpenses
       .filter((e) => e.status === 'Pago' || e.status === 'Descontado' || e.status === 'PAGO')
       .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
 
-    const pagoCount = expenses
+    const pagoCount = currentMonthExpenses
       .filter((e) => e.status === 'Pago' || e.status === 'Descontado' || e.status === 'PAGO').length;
 
-    const totalAPagar = expenses
+    const totalAPagar = currentMonthExpenses
       .filter((e) => e.status === 'A pagar' || e.status === 'À PAGAR')
       .reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
 
-    const aPagarCount = expenses
+    const aPagarCount = currentMonthExpenses
       .filter((e) => e.status === 'A pagar' || e.status === 'À PAGAR').length;
 
     const saldoLiquido = totalRecebido - totalPago;
@@ -349,9 +318,9 @@ export const Financial: React.FC = () => {
       totalAPagar,
       aPagarCount,
       saldoLiquido,
-      monthLabel: 'Total Geral',
+      monthLabel: formatCompetencia(currentMonth, currentYear, true),
     };
-  }, [entries, expenses, filteredEntries, filteredExpenses, selectedYear, selectedCompetencia, bancoFilter, clientFilter]);
+  }, [entries, expenses]);
 
   // Totais Calculados para a visualização atual (filtros ativos da tabela)
   const totals = useMemo(() => {
@@ -400,12 +369,28 @@ export const Financial: React.FC = () => {
       });
     }
 
-    const evolucaoMap = new Map<string, { comp: string; receita: number; despesa: number }>();
+    const evolucaoMap = new Map<
+      string,
+      {
+        comp: string;
+        receitaRecebida: number;
+        receitaAReceber: number;
+        despesaPaga: number;
+        despesaAPagar: number;
+        totalReceita: number;
+        totalDespesa: number;
+      }
+    >();
+
     last6MonthsSlots.forEach((slot) => {
       evolucaoMap.set(`${slot.year}-${slot.month}`, {
         comp: slot.label,
-        receita: 0,
-        despesa: 0,
+        receitaRecebida: 0,
+        receitaAReceber: 0,
+        despesaPaga: 0,
+        despesaAPagar: 0,
+        totalReceita: 0,
+        totalDespesa: 0,
       });
     });
 
@@ -416,8 +401,13 @@ export const Financial: React.FC = () => {
       const slotKey = `${year}-${month}`;
       const current = evolucaoMap.get(slotKey);
       if (current) {
-        if (e.status === 'RECEBIDO' || e.status === 'À RECEBER') {
-          current.receita += Number(e.valor || 0);
+        const val = Number(e.valor || 0);
+        if (e.status === 'RECEBIDO') {
+          current.receitaRecebida += val;
+          current.totalReceita += val;
+        } else if (e.status === 'À RECEBER') {
+          current.receitaAReceber += val;
+          current.totalReceita += val;
         }
       }
     });
@@ -429,18 +419,35 @@ export const Financial: React.FC = () => {
       const slotKey = `${year}-${month}`;
       const current = evolucaoMap.get(slotKey);
       if (current) {
-        current.despesa += Number(ex.valor || 0);
+        const val = Number(ex.valor || 0);
+        if (ex.status === 'Pago' || ex.status === 'Descontado' || ex.status === 'PAGO') {
+          current.despesaPaga += val;
+          current.totalDespesa += val;
+        } else if (ex.status === 'A pagar' || ex.status === 'À PAGAR') {
+          current.despesaAPagar += val;
+          current.totalDespesa += val;
+        }
       }
     });
 
     // Lista final estritamente na ordem cronológica crescente dos últimos 6 meses (do mês -6 até o mês -1)
     const evolucaoList = last6MonthsSlots.map((slot) => {
       const data = evolucaoMap.get(`${slot.year}-${slot.month}`);
-      return data || { comp: slot.label, receita: 0, despesa: 0 };
+      return (
+        data || {
+          comp: slot.label,
+          receitaRecebida: 0,
+          receitaAReceber: 0,
+          despesaPaga: 0,
+          despesaAPagar: 0,
+          totalReceita: 0,
+          totalDespesa: 0,
+        }
+      );
     });
 
     const maxEvolucao = Math.max(
-      ...evolucaoList.map((item) => Math.max(item.receita, item.despesa)),
+      ...evolucaoList.map((item) => Math.max(item.totalReceita, item.totalDespesa)),
       1
     );
 
@@ -973,14 +980,26 @@ export const Financial: React.FC = () => {
                   <p className="text-[10px] text-gray-400">Comparativo dos últimos 6 meses</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-3 text-[10px]">
-                <span className="flex items-center space-x-1">
-                  <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500 inline-block"></span>
-                  <span className="text-gray-600 font-medium">Receita</span>
+              <div className="flex flex-wrap items-center gap-3 text-[10px]">
+                {/* Receita Recebida (Sólida) */}
+                <span className="flex items-center space-x-1" title="Receita liquidada / recebida">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500 inline-block shadow-2xs"></span>
+                  <span className="text-gray-700 font-medium">Recebido</span>
                 </span>
-                <span className="flex items-center space-x-1">
-                  <span className="w-2.5 h-2.5 rounded-xs bg-[#C5A059] inline-block"></span>
-                  <span className="text-gray-600 font-medium">Despesa</span>
+                {/* Receita A Receber (Vazada) */}
+                <span className="flex items-center space-x-1" title="Receita pendente / a receber">
+                  <span className="w-2.5 h-2.5 rounded-xs border-2 border-dashed border-emerald-500 bg-emerald-50 inline-block"></span>
+                  <span className="text-gray-600 font-medium">A Receber</span>
+                </span>
+                {/* Despesa Paga (Sólida) */}
+                <span className="flex items-center space-x-1" title="Despesa liquidada / paga">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-[#C5A059] inline-block shadow-2xs"></span>
+                  <span className="text-gray-700 font-medium">Pago</span>
+                </span>
+                {/* Despesa A Pagar (Vazada) */}
+                <span className="flex items-center space-x-1" title="Despesa pendente / a pagar">
+                  <span className="w-2.5 h-2.5 rounded-xs border-2 border-dashed border-[#C5A059] bg-amber-50 inline-block"></span>
+                  <span className="text-gray-600 font-medium">A Pagar</span>
                 </span>
               </div>
             </div>
@@ -994,31 +1013,87 @@ export const Financial: React.FC = () => {
               ) : (
                 <div className="h-48 flex items-end justify-between gap-2 sm:gap-4 pt-6 px-1 border-b border-gray-100">
                   {analyticsData.evolucaoList.map((item, idx) => {
-                    const hReceita = Math.max(item.receita > 0 ? 8 : 0, Math.round((item.receita / analyticsData.maxEvolucao) * 100));
-                    const hDespesa = Math.max(item.despesa > 0 ? 8 : 0, Math.round((item.despesa / analyticsData.maxEvolucao) * 100));
+                    const hReceitaTotal = Math.max(
+                      item.totalReceita > 0 ? 8 : 0,
+                      Math.round((item.totalReceita / analyticsData.maxEvolucao) * 100)
+                    );
+                    const pctRecebido =
+                      item.totalReceita > 0 ? (item.receitaRecebida / item.totalReceita) * 100 : 0;
+                    const pctAReceber =
+                      item.totalReceita > 0 ? (item.receitaAReceber / item.totalReceita) * 100 : 0;
+
+                    const hDespesaTotal = Math.max(
+                      item.totalDespesa > 0 ? 8 : 0,
+                      Math.round((item.totalDespesa / analyticsData.maxEvolucao) * 100)
+                    );
+                    const pctPago =
+                      item.totalDespesa > 0 ? (item.despesaPaga / item.totalDespesa) * 100 : 0;
+                    const pctAPagar =
+                      item.totalDespesa > 0 ? (item.despesaAPagar / item.totalDespesa) * 100 : 0;
 
                     return (
                       <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
-                        {/* Tooltip com valores ao passar o mouse */}
-                        <div className="text-[9px] font-semibold text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity mb-1 text-center whitespace-nowrap pointer-events-none">
-                          <span className="text-emerald-700 block">{formatCurrency(item.receita)}</span>
-                          <span className="text-[#C5A059] block">{formatCurrency(item.despesa)}</span>
+                        {/* Tooltip detalhado com valores ao passar o mouse */}
+                        <div className="text-[9px] font-semibold text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity mb-1 text-center whitespace-nowrap pointer-events-none bg-white p-1 rounded border border-gray-100 shadow-md z-10">
+                          <span className="text-emerald-700 block font-bold">
+                            Rec: {formatCurrency(item.totalReceita)}
+                          </span>
+                          <span className="text-emerald-600 block text-[8px]">
+                            • Rec.: {formatCurrency(item.receitaRecebida)} | À Rec.: {formatCurrency(item.receitaAReceber)}
+                          </span>
+                          <span className="text-[#A67C2E] block font-bold mt-0.5">
+                            Desp: {formatCurrency(item.totalDespesa)}
+                          </span>
+                          <span className="text-amber-700 block text-[8px]">
+                            • Paga: {formatCurrency(item.despesaPaga)} | À Pagar: {formatCurrency(item.despesaAPagar)}
+                          </span>
                         </div>
 
                         {/* Par de colunas lado a lado */}
                         <div className="w-full flex items-end justify-center gap-1 sm:gap-1.5 h-36">
-                          {/* Coluna Receita */}
+                          {/* Coluna Receita: Sólida (Recebido) na base + Vazada (A Receber) no topo */}
                           <div
-                            style={{ height: `${hReceita}%` }}
-                            className="w-full max-w-[18px] bg-emerald-500 rounded-t-sm transition-all duration-500 hover:bg-emerald-600 cursor-pointer shadow-xs"
-                            title={`Receita (${item.comp}): ${formatCurrency(item.receita)}`}
-                          />
-                          {/* Coluna Despesa */}
+                            style={{ height: `${hReceitaTotal}%` }}
+                            className="w-full max-w-[18px] flex flex-col-reverse rounded-t-sm overflow-hidden transition-all duration-500 cursor-pointer shadow-xs"
+                            title={`Receita (${item.comp}) Total: ${formatCurrency(item.totalReceita)} | Recebido: ${formatCurrency(item.receitaRecebida)} | A Receber: ${formatCurrency(item.receitaAReceber)}`}
+                          >
+                            {/* Parte Sólida (Recebido) */}
+                            {pctRecebido > 0 && (
+                              <div
+                                style={{ height: `${pctRecebido}%` }}
+                                className="w-full bg-emerald-500 hover:bg-emerald-600 transition-colors"
+                              />
+                            )}
+                            {/* Parte Vazada (A Receber) */}
+                            {pctAReceber > 0 && (
+                              <div
+                                style={{ height: `${pctAReceber}%` }}
+                                className="w-full bg-emerald-50 border-2 border-dashed border-emerald-500 hover:bg-emerald-100/70 transition-colors"
+                              />
+                            )}
+                          </div>
+
+                          {/* Coluna Despesa: Sólida (Pago) na base + Vazada (A Pagar) no topo */}
                           <div
-                            style={{ height: `${hDespesa}%` }}
-                            className="w-full max-w-[18px] bg-[#C5A059] rounded-t-sm transition-all duration-500 hover:bg-[#b08e4c] cursor-pointer shadow-xs"
-                            title={`Despesa (${item.comp}): ${formatCurrency(item.despesa)}`}
-                          />
+                            style={{ height: `${hDespesaTotal}%` }}
+                            className="w-full max-w-[18px] flex flex-col-reverse rounded-t-sm overflow-hidden transition-all duration-500 cursor-pointer shadow-xs"
+                            title={`Despesa (${item.comp}) Total: ${formatCurrency(item.totalDespesa)} | Pago: ${formatCurrency(item.despesaPaga)} | A Pagar: ${formatCurrency(item.despesaAPagar)}`}
+                          >
+                            {/* Parte Sólida (Pago) */}
+                            {pctPago > 0 && (
+                              <div
+                                style={{ height: `${pctPago}%` }}
+                                className="w-full bg-[#C5A059] hover:bg-[#b08e4c] transition-colors"
+                              />
+                            )}
+                            {/* Parte Vazada (A Pagar) */}
+                            {pctAPagar > 0 && (
+                              <div
+                                style={{ height: `${pctAPagar}%` }}
+                                className="w-full bg-amber-50 border-2 border-dashed border-[#C5A059] hover:bg-amber-100/70 transition-colors"
+                              />
+                            )}
+                          </div>
                         </div>
 
                         {/* Legenda do Mês/Competência */}
