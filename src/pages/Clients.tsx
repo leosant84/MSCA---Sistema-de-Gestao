@@ -357,20 +357,21 @@ export const Clients: React.FC = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/60 border-b border-slate-200/60 text-[11px] font-bold text-stone-400 uppercase tracking-wider">
-                <th className="py-4 px-5">Nº Domínio / SIEG</th>
-                <th className="py-4 px-5">Razão Social & Localidade</th>
-                <th className="py-4 px-5">CNPJ & Regime</th>
-                <th className="py-4 px-5">Cód. Acesso</th>
-                <th className="py-4 px-5">Portais Fixos</th>
-                <th className="py-4 px-5">Sistemas Extras</th>
-                <th className="py-4 px-5 text-center">Status</th>
-                <th className="py-4 px-5 text-right">Ações</th>
+                <th className="py-4 px-3 text-center w-12">Pasta</th>
+                <th className="py-4 px-4 whitespace-nowrap">Domínio</th>
+                <th className="py-4 px-6 min-w-[280px]">Razão Social</th>
+                <th className="py-4 px-4 whitespace-nowrap">CNPJ</th>
+                <th className="py-4 px-4 whitespace-nowrap">Regime</th>
+                <th className="py-4 px-4 whitespace-nowrap">Cód. Acesso</th>
+                <th className="py-4 px-4">Portais</th>
+                <th className="py-4 px-4 text-center">Status</th>
+                <th className="py-4 px-4 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-xs text-gray-700">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-gray-400">
+                  <td colSpan={9} className="py-12 text-center text-gray-400">
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <div className="w-6 h-6 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin"></div>
                       <span className="text-xs">Carregando dados dos clientes...</span>
@@ -379,7 +380,7 @@ export const Clients: React.FC = () => {
                 </tr>
               ) : filteredClients.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-gray-400">
+                  <td colSpan={9} className="py-12 text-center text-gray-400">
                     <Building className="w-8 h-8 text-gray-300 mx-auto mb-2" />
                     <span>Nenhum cliente localizado para esta busca.</span>
                   </td>
@@ -387,95 +388,71 @@ export const Clients: React.FC = () => {
               ) : (
                 filteredClients.map((c) => (
                   <tr key={c.id} className="hover:bg-amber-50/30 transition-colors">
-                    {/* Nº & SIEG */}
-                    <td className="py-4 px-5 whitespace-nowrap">
-                      <div className="flex items-center space-x-2.5">
-                        {isAdmin ? (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenFolder(c)}
-                            title={`Abrir pasta do cliente no Google Drive: G:\\Meu Drive\\00. MSCA\\00. CLIENTES\\${c.razao_social}`}
-                            className="p-2 rounded-2xl bg-amber-500/10 text-[#C5A059] hover:bg-[#C5A059] hover:text-white transition-all cursor-pointer group flex items-center justify-center shadow-2xs"
-                          >
-                            <FolderOpen className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                          </button>
-                        ) : (
-                          <div className="p-2 rounded-2xl bg-slate-100 text-stone-400 flex items-center justify-center">
-                            <FolderOpen className="w-4 h-4" />
-                          </div>
-                        )}
-                        <div>
-                          <div className="text-sm font-bold text-stone-800">
-                            {c.numero_pasta || '-'}
-                          </div>
-                          <div className="text-[10px] text-stone-400 flex items-center space-x-1">
-                            <span>SIEG:</span>
-                            <span
-                              className={`font-semibold px-1 py-0.2 rounded text-[9px] ${
-                                c.sieg === 'Sim'
-                                  ? 'text-emerald-700 font-bold'
-                                  : 'text-stone-400'
-                              }`}
-                            >
-                              {c.sieg === 'Sim' ? 'Sim' : 'Não'}
-                            </span>
-                          </div>
+                    {/* Pastinha com o link */}
+                    <td className="py-4 px-3 text-center whitespace-nowrap">
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenFolder(c)}
+                          title={`Abrir pasta do cliente no Google Drive: G:\\Meu Drive\\00. MSCA\\00. CLIENTES\\${c.razao_social}`}
+                          className="p-2 inline-flex rounded-xl bg-amber-500/10 text-[#C5A059] hover:bg-[#C5A059] hover:text-white transition-all cursor-pointer group items-center justify-center shadow-2xs"
+                        >
+                          <FolderOpen className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                        </button>
+                      ) : (
+                        <div className="p-2 inline-flex rounded-xl bg-slate-100 text-stone-400 items-center justify-center">
+                          <FolderOpen className="w-4 h-4" />
                         </div>
-                      </div>
+                      )}
                     </td>
 
-                    {/* Razão Social & Localidade */}
-                    <td className="py-4 px-5">
-                      <div className="flex items-center flex-wrap gap-1.5">
-                        <span className="font-bold text-stone-900 leading-snug">
+                    {/* Domínio */}
+                    <td className="py-4 px-4 whitespace-nowrap">
+                      <span className="text-sm font-bold text-stone-800">
+                        {c.numero_pasta || '-'}
+                      </span>
+                    </td>
+
+                    {/* Razão Social */}
+                    <td className="py-4 px-6">
+                      <div className="flex items-center flex-wrap gap-2">
+                        <span className="font-bold text-stone-900 text-sm leading-relaxed">
                           {c.razao_social}
                         </span>
-
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenFolder(c)}
-                            title={`Abrir pasta no Windows Explorer`}
-                            className="text-stone-300 hover:text-amber-600 p-0.5 rounded hover:bg-amber-50 transition-colors"
-                          >
-                            <FolderOpen className="w-3.5 h-3.5" />
-                          </button>
-                        )}
 
                         {c.parcelamento_ativo && (
                           <span
                             title="Cliente possui parcelamento ativo"
-                            className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300/80 shadow-2xs"
+                            className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300/80 shadow-2xs"
                           >
                             <Receipt className="w-3 h-3 text-[#C5A059]" />
                             <span>Parcelamento Ativo</span>
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] font-semibold text-stone-400 uppercase tracking-wide mt-0.5">
-                        {c.localidade || 'Localidade não informada'}
-                      </div>
                     </td>
 
-                    {/* CNPJ & Regime */}
-                    <td className="py-4 px-5 whitespace-nowrap">
-                      <div>
-                        <CnpjCopyButton cnpj={c.cnpj} />
-                      </div>
-                      <div className="text-[10px] mt-1.5 flex items-center space-x-1">
-                        <span className="px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 font-semibold tracking-wide">
+                    {/* CNPJ */}
+                    <td className="py-4 px-4 whitespace-nowrap">
+                      <CnpjCopyButton cnpj={c.cnpj} />
+                    </td>
+
+                    {/* Regime */}
+                    <td className="py-4 px-4 whitespace-nowrap">
+                      <div className="flex flex-col items-start gap-1">
+                        <span className="px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 font-semibold tracking-wide text-[11px] border border-blue-100">
                           {c.regime_tributario || 'Não def.'}
                         </span>
                         {c.fator_r === 'Sim' && (
-                          <span className="px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 font-semibold">
+                          <span className="px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 font-semibold text-[10px] border border-emerald-100">
                             Fator R
                           </span>
                         )}
                       </div>
                     </td>
 
-                    {/* Código de Acesso Simples */}
-                    <td className="py-4 px-5 whitespace-nowrap">
+                    {/* Cód. Acesso */}
+                    <td className="py-4 px-4 whitespace-nowrap">
                       {c.codigo_acesso_simples ? (
                         <div className="inline-flex items-center space-x-1.5 font-mono text-xs bg-amber-50/50 px-2.5 py-1 rounded-xl border border-amber-200/60 text-stone-800 shadow-xs">
                           <Key className="w-3 h-3 text-[#C5A059]" />
@@ -486,9 +463,9 @@ export const Clients: React.FC = () => {
                       )}
                     </td>
 
-                    {/* Portais Fixos (Prefeitura & Posto Fiscal) */}
-                    <td className="py-4 px-5">
-                      <div className="space-y-1.5 min-w-[140px]">
+                    {/* Portais (Prefeitura, Posto Fiscal e Sistemas Extras) */}
+                    <td className="py-4 px-4">
+                      <div className="space-y-1.5 min-w-[150px]">
                         <CredentialSnippet
                           label="Prefeitura"
                           login={c.login_prefeitura}
@@ -499,25 +476,15 @@ export const Clients: React.FC = () => {
                           login={c.login_posto_fiscal}
                           senha={c.senha_posto_fiscal}
                         />
+                        {c.client_credentials && c.client_credentials.map((cred) => (
+                          <CredentialSnippet
+                            key={cred.id}
+                            label={cred.sistema_nome}
+                            login={cred.login}
+                            senha={cred.senha}
+                          />
+                        ))}
                       </div>
-                    </td>
-
-                    {/* Sistemas Extras */}
-                    <td className="py-4 px-5">
-                      {c.client_credentials && c.client_credentials.length > 0 ? (
-                        <div className="space-y-1.5 min-w-[130px]">
-                          {c.client_credentials.map((cred) => (
-                            <CredentialSnippet
-                              key={cred.id}
-                              label={cred.sistema_nome}
-                              login={cred.login}
-                              senha={cred.senha}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-gray-300 text-xs">-</span>
-                      )}
                     </td>
 
                     {/* Status */}

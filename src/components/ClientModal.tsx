@@ -207,51 +207,23 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       let clientId = clientToEdit?.id;
 
       if (clientToEdit) {
-        // Atualização com fallback caso a coluna parcelamento_ativo ainda não tenha sido criada no Supabase
-        let updateRes = await supabase
+        // Atualização
+        const { error } = await supabase
           .from('clients')
           .update(payload)
           .eq('id', clientToEdit.id);
 
-        // Se o erro for de coluna inexistente no banco (PGRST204 ou erro em parcelamento_ativo)
-        if (updateRes.error && updateRes.error.message?.includes('parcelamento_ativo')) {
-          const { parcelamento_ativo, ...payloadWithoutCol } = payload;
-          void parcelamento_ativo;
-          updateRes = await supabase
-            .from('clients')
-            .update(payloadWithoutCol)
-            .eq('id', clientToEdit.id);
-          
-          if (!updateRes.error) {
-            toast('Dados salvos! Para salvar "Parcelamento Ativo", adicione a coluna no banco Supabase.', 'info');
-          }
-        }
-
-        if (updateRes.error) throw updateRes.error;
+        if (error) throw error;
       } else {
-        // Inserção com fallback
-        let insertRes = await supabase
+        // Inserção
+        const { data, error } = await supabase
           .from('clients')
           .insert([payload])
           .select('id')
           .single();
 
-        if (insertRes.error && insertRes.error.message?.includes('parcelamento_ativo')) {
-          const { parcelamento_ativo, ...payloadWithoutCol } = payload;
-          void parcelamento_ativo;
-          insertRes = await supabase
-            .from('clients')
-            .insert([payloadWithoutCol])
-            .select('id')
-            .single();
-
-          if (!insertRes.error) {
-            toast('Cliente salvo! Para salvar "Parcelamento Ativo", adicione a coluna no banco Supabase.', 'info');
-          }
-        }
-
-        if (insertRes.error) throw insertRes.error;
-        clientId = insertRes.data.id;
+        if (error) throw error;
+        clientId = data.id;
       }
 
       // Sincronização de credenciais adicionais
@@ -283,14 +255,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       onSuccess();
       onClose();
     } catch (err: unknown) {
-      console.error('Erro detalhado ao salvar cliente:', err);
-      let msg = 'Falha ao salvar dados do cliente.';
-      if (err && typeof err === 'object') {
-        const anyErr = err as { message?: string; details?: string };
-        msg = anyErr.message || anyErr.details || msg;
-      } else if (err instanceof Error) {
-        msg = err.message;
-      }
+      const msg = err instanceof Error ? err.message : 'Falha ao salvar dados do cliente.';
       toast(msg, 'error');
     } finally {
       setSubmitting(false);
