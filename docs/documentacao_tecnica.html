@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Documentação Técnica de Arquitetura & Engenharia - MSCA Sistema de Gestão</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+    @page {
+      size: A4;
+      margin: 18mm 16mm 20mm 16mm;
+      @bottom-right {
+        content: "Página " counter(page);
+        font-family: 'Inter', sans-serif;
+        font-size: 8pt;
+        color: #64748B;
+      }
+      @bottom-left {
+        content: "MSCA Sistema de Gestão • Documentação Técnica";
+        font-family: 'Inter', sans-serif;
+        font-size: 8pt;
+        color: #64748B;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #1E293B;
+      line-height: 1.55;
+      font-size: 10pt;
+      margin: 0;
+      padding: 0;
+      background: #FFFFFF;
+    }
+
+    h1, h2, h3, h4 {
+      color: #0F172A;
+      font-weight: 700;
+      margin-top: 1.6em;
+      margin-bottom: 0.5em;
+      letter-spacing: -0.02em;
+    }
+
+    h1 { font-size: 20pt; line-height: 1.2; }
+    h2 { 
+      font-size: 13.5pt; 
+      border-bottom: 1.5px solid #E2E8F0; 
+      padding-bottom: 5px; 
+      margin-top: 1.8em;
+      color: #0F172A;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    h3 { font-size: 11pt; color: #1E293B; margin-top: 1.2em; }
+    p { margin: 0.5em 0 0.8em 0; color: #334155; }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    .avoid-break {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    /* CAPA */
+    .cover-page {
+      height: 90vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      page-break-after: always;
+      padding: 30px 10px;
+    }
+
+    .brand-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #F8FAFC;
+      border: 1px solid #CBD5E1;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 9pt;
+      font-weight: 600;
+      color: #334155;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .cover-title {
+      font-size: 30pt;
+      font-weight: 800;
+      color: #0F172A;
+      line-height: 1.15;
+      margin: 25px 0 15px 0;
+      letter-spacing: -0.03em;
+    }
+
+    .cover-title span {
+      color: #C5A059;
+    }
+
+    .cover-subtitle {
+      font-size: 13pt;
+      color: #475569;
+      font-weight: 400;
+      line-height: 1.5;
+      max-width: 650px;
+    }
+
+    .cover-meta {
+      border-top: 2px solid #F1F5F9;
+      padding-top: 20px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 15px;
+    }
+
+    .meta-item {
+      font-size: 8.5pt;
+    }
+
+    .meta-label {
+      color: #64748B;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 3px;
+    }
+
+    .meta-value {
+      font-size: 10pt;
+      font-weight: 600;
+      color: #0F172A;
+    }
+
+    /* BADGES & PILLS */
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 7.5pt;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .badge-primary { background: #EEF2FF; color: #4338CA; border: 1px solid #C7D2FE; }
+    .badge-gold { background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; }
+    .badge-emerald { background: #ECFDF5; color: #065F46; border: 1px solid #A7F3D0; }
+    .badge-rose { background: #FFF1F2; color: #9F1239; border: 1px solid #FECDD3; }
+
+    /* CARDS & GRIDS */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin: 10px 0;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin: 10px 0;
+    }
+
+    .card {
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+
+    .card-title {
+      font-weight: 700;
+      font-size: 9.5pt;
+      color: #0F172A;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .card p {
+      font-size: 8.5pt;
+      margin: 0;
+      line-height: 1.45;
+      color: #475569;
+    }
+
+    /* TABELAS */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 16px 0;
+      font-size: 8.5pt;
+    }
+
+    th {
+      background: #0F172A;
+      color: #FFFFFF;
+      text-align: left;
+      padding: 8px 10px;
+      font-weight: 600;
+      font-size: 8pt;
+      letter-spacing: 0.03em;
+    }
+
+    td {
+      padding: 7px 10px;
+      border-bottom: 1px solid #E2E8F0;
+      color: #334155;
+      vertical-align: top;
+    }
+
+    tr:nth-child(even) td {
+      background: #F8FAFC;
+    }
+
+    /* CODE & TERMINAL */
+    code, pre {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    code {
+      font-size: 8pt;
+      background: #F1F5F9;
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: #0F172A;
+      border: 1px solid #E2E8F0;
+    }
+
+    pre {
+      background: #0F172A;
+      color: #F8FAFC;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 7.5pt;
+      line-height: 1.45;
+      overflow-x: auto;
+      margin: 8px 0;
+    }
+
+    .note-box {
+      background: #F0FDF4;
+      border-left: 3.5px solid #10B981;
+      padding: 10px 14px;
+      margin: 12px 0;
+      border-radius: 0 6px 6px 0;
+    }
+
+    .note-box p {
+      color: #065F46;
+      font-size: 8.5pt;
+      margin: 0;
+    }
+
+    .warning-box {
+      background: #FEF2F2;
+      border-left: 3.5px solid #EF4444;
+      padding: 10px 14px;
+      margin: 12px 0;
+      border-radius: 0 6px 6px 0;
+    }
+
+    .warning-box p {
+      color: #991B1B;
+      font-size: 8.5pt;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- CAPA -->
+  <div class="cover-page">
+    <div>
+      <div class="brand-badge">MS Contadores Associados • Engenharia de Software</div>
+      <h1 class="cover-title">Documentação Técnica de Arquitetura & Sistema<br><span>MSCA Sistema de Gestão</span></h1>
+      <p class="cover-subtitle">Especificação detalhada de stack tecnológica, modelo de dados relacional, controle de concorrência, políticas de segurança RBAC e RLS, e esteiras de automação de backup em nuvem.</p>
+    </div>
+
+    <div class="cover-meta">
+      <div class="meta-item">
+        <div class="meta-label">Versão</div>
+        <div class="meta-value">2.4.0 (Enterprise)</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Data de Emissão</div>
+        <div class="meta-value">28/09/2026</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Status</div>
+        <div class="meta-value">Homologado em Produção</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Repositório</div>
+        <div class="meta-value">GitHub / Vercel</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SEÇÃO 1: VISÃO GERAL DA ARQUITETURA -->
+  <h2>1. Visão Geral da Arquitetura de Software</h2>
+  <p>O <strong>MSCA Sistema de Gestão</strong> adota o padrão de arquitetura moderna <em>JAMstack & Serverless BaaS</em> (Backend-as-a-Service), projetado para alta escalabilidade horizontal, latência reduzida no front-end e segurança corporativa em múltiplas camadas.</p>
+
+  <div class="grid-3 avoid-break">
+    <div class="card">
+      <div class="card-title">Front-End SPA <span class="badge badge-primary">React 19</span></div>
+      <p>Desenvolvido em TypeScript estrito, estruturado com componentes desacoplados, roteamento via React Router DOM v7 e bundle ultra-otimizado através do Vite v8.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Backend & Storage <span class="badge badge-emerald">PostgreSQL 15</span></div>
+      <p>Hospedado na infraestrutura Supabase AWS, provendo banco de dados PostgreSQL com Foreign Keys, triggers transacionais e Storage integrado.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Automação Cloud <span class="badge badge-gold">GitHub Actions</span></div>
+      <p>Rotinas agendadas (Cron) para backups diários automatizados e exportação para o Google Drive sem dependência de máquinas locais.</p>
+    </div>
+  </div>
+
+  <h3>Diagrama de Comunicação do Ecossistema</h3>
+  <pre>
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                             DISPOSITIVOS CLIENTE                            │
+│                  Navegador Web (Desktop / Tablet / Mobile)                  │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │ HTTPS / TLS 1.3
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           EDGE CDN & HOSPEDAGEM (Vercel)                    │
+│        Build de Produção SPA • React 19 • Tailwind CSS 4 • Lucide Icons      │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │ REST API / RLS Engine
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           SUPABASE CLOUD INFRASTRUCTURE                     │
+│  ┌───────────────────────┐  ┌──────────────────────┐  ┌──────────────────┐  │
+│  │     Supabase Auth     │  │  PostgreSQL Engine   │  │ Audit Trigger    │  │
+│  │ JWT + RBAC (Admin/Col)│  │ Relacional + RLS     │  │ log_client_change│  │
+│  └───────────────────────┘  └──────────────────────┘  └──────────────────┘  │
+└──────────────────────────────────────▲──────────────────────────────────────┘
+                                       │ OAuth 2.0 / Service Role
+                                       │
+┌──────────────────────────────────────┴──────────────────────────────────────┐
+│                  PIPELINE DE AUTOMATIZAÇÃO EM NUVEM (Cron)                  │
+│       GitHub Actions (Node.js 22) ──► Gera .XLSX ──► Upload Google Drive    │
+└─────────────────────────────────────────────────────────────────────────────┘
+  </pre>
+
+  <!-- SEÇÃO 2: STACK TECNOLÓGICA -->
+  <h2>2. Stack Tecnológica e Bibliotecas Principais</h2>
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th style="width: 25%;">Tecnologia / Camada</th>
+        <th style="width: 20%;">Versão</th>
+        <th>Finalidade & Racional de Decisão</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>React & React DOM</strong></td>
+        <td>19.2.8</td>
+        <td>Core da interface reativa. Renderização de alta performance, Context API para gerenciamento de estado global de sessão e toasts.</td>
+      </tr>
+      <tr>
+        <td><strong>TypeScript</strong></td>
+        <td>6.0.2</td>
+        <td>Tipagem estática estrita em 100% dos módulos, prevenindo erros em runtime e garantindo contratos de dados consistentes.</td>
+      </tr>
+      <tr>
+        <td><strong>Vite & Rolldown</strong></td>
+        <td>8.3.1</td>
+        <td>Empacotador moderno com Hot Module Replacement instantâneo e compilação de produção com tree-shaking avançado.</td>
+      </tr>
+      <tr>
+        <td><strong>Tailwind CSS</strong></td>
+        <td>4.3.3</td>
+        <td>Design system utilitário de última geração, garantindo responsividade mobile-first, paleta corporativa MSCA e zero overhead de CSS.</td>
+      </tr>
+      <tr>
+        <td><strong>Supabase JS SDK</strong></td>
+        <td>2.117.2</td>
+        <td>Cliente unificado para autenticação JWT segura, consultas tipadas ao banco de dados e execução de mutations.</td>
+      </tr>
+      <tr>
+        <td><strong>ExcelJS & SheetJS</strong></td>
+        <td>4.4.0 / 0.18.5</td>
+        <td>Geração dinâmica e estilizada de planilhas complexas com abas múltiplas, congelamento de painéis, formatação monetária e de datas.</td>
+      </tr>
+      <tr>
+        <td><strong>Google APIs (googleapis)</strong></td>
+        <td>182.0.0</td>
+        <td>Integração serverless OAuth2/Service Account para upload automatizado de artefatos de backup diretamente para o Google Drive.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="page-break"></div>
+
+  <!-- SEÇÃO 3: MODELAGEM DE DADOS -->
+  <h2>3. Modelagem de Dados Relacional (Schema PostgreSQL)</h2>
+  <p>O banco de dados foi estruturado com integridade referencial estrita, índices de busca em colunas de alta cardinalidade e restrições de unicidade.</p>
+
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th>Tabela</th>
+        <th>Descrição</th>
+        <th>Campos Críticos & Chaves</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>clients</code></td>
+        <td>Cadastro central de clientes contábeis (empresas e pessoas físicas).</td>
+        <td>
+          <code>id</code> (PK, UUID), <code>razao_social</code> (NOT NULL), <code>cnpj</code> (UNIQUE), <code>cpf</code>, <code>status</code> (Ativo/Inativo),
+          <code>regime_tributario</code>, <code>fator_r</code>, <code>codigo_acesso_simples</code>, <code>created_at</code>.
+        </td>
+      </tr>
+      <tr>
+        <td><code>client_credentials</code></td>
+        <td>Cofre de credenciais e senhas fiscais vinculadas ao cliente.</td>
+        <td>
+          <code>id</code> (PK, UUID), <code>client_id</code> (FK -> clients.id ON DELETE CASCADE), <code>sistema_nome</code> (e-CAC, Prefeitura, etc),
+          <code>login</code>, <code>senha</code> (criptografada), <code>created_at</code>.
+        </td>
+      </tr>
+      <tr>
+        <td><code>financial_entries</code></td>
+        <td>Lançamentos de contas a receber e honorários contábeis.</td>
+        <td>
+          <code>id</code> (PK, UUID), <code>competencia</code> (ex: out/26), <code>client_id</code> (FK -> clients.id), <code>valor</code> (NUMERIC),
+          <code>status</code> (À RECEBER, RECEBIDO, PERMUTA), <code>banco</code>, <code>data_recebimento</code>.
+        </td>
+      </tr>
+      <tr>
+        <td><code>financial_expenses</code></td>
+        <td>Lançamentos de saídas, obrigações e despesas operacionais.</td>
+        <td>
+          <code>id</code> (PK, UUID), <code>data_pagamento_previsao</code> (DATE), <code>competencia</code>, <code>descricao_pagamento</code>,
+          <code>conta_contabil</code>, <code>valor</code>, <code>status</code> (A pagar, Pago, Descontado), <code>banco</code>.
+        </td>
+      </tr>
+      <tr>
+        <td><code>profiles</code></td>
+        <td>Perfis de usuário estendidos da tabela <code>auth.users</code>.</td>
+        <td>
+          <code>id</code> (PK, UUID -> auth.users.id ON DELETE CASCADE), <code>email</code> (NOT NULL), <code>full_name</code>,
+          <code>role</code> (ENUM: 'admin' | 'colaborador'), <code>created_at</code>.
+        </td>
+      </tr>
+      <tr>
+        <td><code>audit_logs</code></td>
+        <td>Trilha de auditoria indelével de todas as alterações críticas.</td>
+        <td>
+          <code>id</code> (PK, UUID), <code>user_id</code> (UUID), <code>user_email</code>, <code>action</code> (INSERT/UPDATE/DELETE),
+          <code>entity</code> (CLIENT/FINANCIAL/SECURITY), <code>changes</code> (JSONB diff), <code>created_at</code>.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SEÇÃO 4: SEGURANÇA E RBAC -->
+  <h2>4. Segurança, Autenticação e Controle de Acesso (RBAC & RLS)</h2>
+  <p>A segurança do sistema é implementada em duas camadas complementares: no front-end (guards de rota) e no próprio banco de dados (Row Level Security do PostgreSQL).</p>
+
+  <div class="grid-2 avoid-break">
+    <div class="card">
+      <div class="card-title">Role: Colaborador Operacional <span class="badge badge-emerald">Restrito</span></div>
+      <p>• Acesso ao módulo de <strong>Clientes</strong> e consulta de dados cadastrais.<br>
+         • Visualização de credenciais operacionais para rotinas contábeis.<br>
+         • Acesso direto à pasta de arquivos do cliente no Google Drive.<br>
+         <span style="color:#DC2626; font-weight:600;">✗ Bloqueado:</span> Não acessa módulo Financeiro nem Auditoria.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Role: Administrador Geral <span class="badge badge-gold">Acesso Total</span></div>
+      <p>• Gestão completa de clientes, credenciais e usuários.<br>
+         • Acesso exclusivo ao <strong>Módulo Financeiro</strong> (Entradas, Saídas, DRE, Agenda).<br>
+         • Acesso exclusivo à <strong>Auditoria Completa</strong> de logs e rastreamento de IP.<br>
+         • Disparo de rotinas em lote, projeções recorrentes e relatórios analíticos.</p>
+    </div>
+  </div>
+
+  <div class="note-box avoid-break">
+    <p><strong>Políticas de Row Level Security (RLS):</strong> Mesmo que um usuário mal-intencionado tente enviar requisições diretas via API ou Postman, as tabelas financeiras (<code>financial_entries</code> e <code>financial_expenses</code>) e de logs (<code>audit_logs</code>) rejeitam qualquer operação que não pertença a um usuário autenticado com <code>role = 'admin'</code>.</p>
+  </div>
+
+  <!-- SEÇÃO 5: ROTINAS EM LOTE E CONCORRÊNCIA -->
+  <h2>5. Motor de Projeções Recorrentes e Processamento em Lote</h2>
+  <p>O sistema possui um algoritmo proprietário de geração de recebíveis futuros em lote, permitindo projetar até 12 meses de contratos de clientes ativos com prevenção contra duplicidade:</p>
+
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th style="width: 30%;">Etapa</th>
+        <th>Comportamento Técnico</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1. Varredura de Base</strong></td>
+        <td>Filtra todos os clientes com <code>status = 'Ativo'</code> que possuam valor de honorário contratual cadastrado.</td>
+      </tr>
+      <tr>
+        <td><strong>2. Sequenciamento Temporal</strong></td>
+        <td>Gera a cadeia ordenada de competências utilizando <code>generateCompetenciaSequence(initialComp, count)</code>, tratando viradas de ano automaticamente.</td>
+      </tr>
+      <tr>
+        <td><strong>3. Detecção de Conflitos</strong></td>
+        <td>Verifica a existência prévia de lançamentos para a tupla <code>(client_id, competencia)</code> evitando geração duplicada.</td>
+      </tr>
+      <tr>
+        <td><strong>4. Inserção Transacional</strong></td>
+        <td>Persiste os novos lançamentos com status inicial <code>À RECEBER</code> e vinculação automática com a conta bancária padrão.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="page-break"></div>
+
+  <!-- SEÇÃO 6: PIPELINE DE BACKUP EM NUVEM -->
+  <h2>6. Pipeline de Backup Diário em Nuvem (GitHub Actions)</h2>
+  <p>A rotina de backup é 100% autônoma, operando sem necessidade de servidores dedicados ou computadores ligados no escritório.</p>
+
+  <div class="card avoid-break" style="margin-bottom: 12px;">
+    <div class="card-title">Especificação do Workflow (<code>.github/workflows/daily_backup.yml</code>)</div>
+    <p>• <strong>Gatilho Cron:</strong> Disparado diariamente às <code>03:00 UTC</code> (equivalente a <code>00:00 Horário de Brasília</code>).<br>
+       • <strong>Gatilho Manual:</strong> Suporte a <code>workflow_dispatch</code> para acionamento sob demanda pelo painel do GitHub.<br>
+       • <strong>Ambiente:</strong> Runner Linux Ubuntu Latest com runtime Node.js v22.<br>
+       • <strong>Segurança:</strong> Todas as chaves do Supabase e tokens OAuth2 do Google Drive são injetados em tempo de execução via <em>GitHub Actions Encrypted Secrets</em>.</p>
+  </div>
+
+  <h3>Algoritmo de Extração com Paginação</h3>
+  <pre>
+async function fetchAll(table, selectQuery = '*', orderCol = 'created_at', ascending = false) {
+  let allRows = [];
+  let from = 0;
+  const PAGE_SIZE = 1000;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(selectQuery)
+      .order(orderCol, { ascending })
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (error) break;
+    if (data && data.length > 0) allRows = allRows.concat(data);
+    if (!data || data.length < PAGE_SIZE) hasMore = false;
+    else from += PAGE_SIZE;
+  }
+  return allRows;
+}
+  </pre>
+
+  <!-- SEÇÃO 7: PROTOCOLO DE AUDITORIA -->
+  <h2>7. Trilha de Auditoria e Conformidade</h2>
+  <p>Em conformidade com boas práticas de governança e segurança da informação, todas as ações sensíveis realizadas no sistema disparam registros imutáveis:</p>
+
+  <div class="grid-2 avoid-break">
+    <div class="card">
+      <div class="card-title">Eventos Rastreados</div>
+      <p>• Criação, edição e exclusão de clientes.<br>
+         • Criação, edição e exclusão de credenciais de acesso.<br>
+         • Liquidação, baixa em lote ou exclusão de lançamentos financeiros.<br>
+         • Tentativas de acesso não autorizado e troca de senhas.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Metadados Registrados</div>
+      <p>• ID e e-mail do operador responsável.<br>
+         • Endereço IP e User-Agent da requisição.<br>
+         • Timestamp exato (UTC e horário de Brasília).<br>
+         • Diff estruturado em JSON comparando os valores anteriores e atuais.</p>
+    </div>
+  </div>
+
+  <div style="margin-top: 30px; text-align: center; font-size: 8pt; color: #94A3B8; border-top: 1px solid #E2E8F0; padding-top: 10px;">
+    Documento elaborado por Antigravity AI Engineering • Sistema de Gestão MSCA • Todos os direitos reservados.
+  </div>
+
+</body>
+</html>

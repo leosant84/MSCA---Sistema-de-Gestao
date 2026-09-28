@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Apresentação Comercial & Manual de Funcionalidades - MSCA Sistema de Gestão</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+    @page {
+      size: A4;
+      margin: 18mm 16mm 20mm 16mm;
+      @bottom-right {
+        content: "Página " counter(page);
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 8pt;
+        color: #94A3B8;
+      }
+      @bottom-left {
+        content: "MSCA Sistema de Gestão • Solução Comercial Corporativa";
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 8pt;
+        color: #94A3B8;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif;
+      color: #1E293B;
+      line-height: 1.6;
+      font-size: 10pt;
+      margin: 0;
+      padding: 0;
+      background: #FFFFFF;
+    }
+
+    h1, h2, h3, h4 {
+      color: #0F172A;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    h1 { font-size: 26pt; line-height: 1.15; }
+    h2 { 
+      font-size: 14pt; 
+      color: #0F172A; 
+      margin-top: 1.8em; 
+      margin-bottom: 0.6em;
+      border-bottom: 2px solid #E2E8F0;
+      padding-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    h3 { font-size: 11pt; color: #1E293B; margin-top: 1.2em; font-weight: 700; }
+    p { margin: 0.5em 0 0.8em 0; color: #475569; }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    .avoid-break {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    /* CAPA COMERCIAL */
+    .cover-commercial {
+      height: 92vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      page-break-after: always;
+      padding: 40px 15px;
+      background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+      border: 1px solid #E2E8F0;
+      border-radius: 16px;
+    }
+
+    .badge-hero {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #0F172A;
+      color: #FFFFFF;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 8.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .cover-h1 {
+      font-size: 32pt;
+      font-weight: 800;
+      color: #0F172A;
+      line-height: 1.12;
+      margin: 20px 0 16px 0;
+    }
+
+    .cover-h1 span {
+      background: linear-gradient(135deg, #C5A059 0%, #D4AF37 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .cover-desc {
+      font-size: 12.5pt;
+      color: #475569;
+      line-height: 1.55;
+      max-width: 600px;
+    }
+
+    .value-pillars {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin-top: 30px;
+    }
+
+    .pillar-card {
+      background: #FFFFFF;
+      border: 1.5px solid #E2E8F0;
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+
+    .pillar-num {
+      font-size: 18pt;
+      font-weight: 800;
+      color: #C5A059;
+      margin-bottom: 4px;
+    }
+
+    .pillar-title {
+      font-size: 10pt;
+      font-weight: 700;
+      color: #0F172A;
+      margin-bottom: 4px;
+    }
+
+    .pillar-desc {
+      font-size: 8pt;
+      color: #64748B;
+      line-height: 1.4;
+      margin: 0;
+    }
+
+    .cover-footer {
+      border-top: 1.5px solid #E2E8F0;
+      padding-top: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      font-size: 9pt;
+      color: #64748B;
+    }
+
+    /* CARDS & HIGHLIGHTS */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin: 12px 0;
+    }
+
+    .feature-card {
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 10px;
+      padding: 14px 16px;
+      border-left: 4px solid #C5A059;
+    }
+
+    .feature-title {
+      font-size: 10.5pt;
+      font-weight: 700;
+      color: #0F172A;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .feature-desc {
+      font-size: 8.5pt;
+      color: #475569;
+      margin: 0;
+      line-height: 1.5;
+    }
+
+    /* BADGES */
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 7.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-gold { background: #FEF3C7; color: #92400E; }
+    .badge-emerald { background: #ECFDF5; color: #065F46; }
+    .badge-blue { background: #EFF6FF; color: #1E40AF; }
+
+    /* TABELAS */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 8.5pt;
+    }
+
+    th {
+      background: #0F172A;
+      color: #FFFFFF;
+      text-align: left;
+      padding: 9px 12px;
+      font-weight: 700;
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #E2E8F0;
+      color: #334155;
+      vertical-align: middle;
+    }
+
+    tr:nth-child(even) td {
+      background: #F8FAFC;
+    }
+
+    .callout-box {
+      background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+      color: #FFFFFF;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 18px 0;
+    }
+
+    .callout-box h3 {
+      color: #C5A059;
+      font-size: 13pt;
+      margin-top: 0;
+      margin-bottom: 8px;
+    }
+
+    .callout-box p {
+      color: #CBD5E1;
+      font-size: 9pt;
+      line-height: 1.5;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- CAPA COMERCIAL -->
+  <div class="cover-commercial">
+    <div>
+      <div class="badge-hero">Solução Corporativa para Escritórios Contábeis</div>
+      <h1 class="cover-h1">Acelere a Produtividade e o Controle Financeiro com o<br><span>MSCA Sistema de Gestão</span></h1>
+      <p class="cover-desc">Uma plataforma unificada, moderna e em nuvem desenvolvida especialmente para escritórios de contabilidade que buscam alta performance, segurança de senhas fiscais e gestão financeira sem retrabalho.</p>
+      
+      <div class="value-pillars">
+        <div class="pillar-card">
+          <div class="pillar-num">+85%</div>
+          <div class="pillar-title">Agilidade Operacional</div>
+          <p class="pillar-desc">Cofre de senhas centralizado e integração direta com a pasta Google Drive do cliente em 1 clique.</p>
+        </div>
+        <div class="pillar-card">
+          <div class="pillar-num">100%</div>
+          <div class="pillar-title">Autonomia Cloud</div>
+          <p class="pillar-desc">Backups automatizados e relatórios em tempo real sem depender de computadores locais ligados.</p>
+        </div>
+        <div class="pillar-card">
+          <div class="pillar-num">Zero</div>
+          <div class="pillar-title">Inadimplência Oculta</div>
+          <p class="pillar-desc">Visão clara de títulos em atraso, evolução mensal de receitas e projeção recorrente de contratos.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="cover-footer">
+      <div>
+        <strong>MS Contadores Associados</strong> • Tecnologia & Inovação Contábil
+      </div>
+      <div>
+        Proposta Comercial & Catálogo de Recursos • 2026
+      </div>
+    </div>
+  </div>
+
+  <!-- SEÇÃO 1: OS DESAFIOS RESOLVIDOS -->
+  <h2>1. Por Que o Seu Escritório Precisa do MSCA?</h2>
+  <p>Escritórios de contabilidade frequentemente perdem horas produtivas e sofrem com desorganização em planilhas desconexas, atrasos na emissão de guias por falta de senhas municipais e descontrole sobre quais clientes já pagaram seus honorários. O MSCA foi projetado desde o primeiro dia para eliminar essas dores:</p>
+
+  <div class="grid-2 avoid-break">
+    <div class="feature-card" style="border-left-color: #EF4444;">
+      <div class="feature-title">O Cenário Tradicional (Retrabalho)</div>
+      <p class="feature-desc">
+        • Senhas fiscais espalhadas em cadernos, blocos de notas ou planilhas inseguras.<br>
+        • Dificuldade para saber quem está devendo honorários de meses anteriores.<br>
+        • Perda de tempo localizando pastas de documentos de clientes na rede.<br>
+        • Medo constante de perda de dados ou queima de computadores no escritório.
+      </p>
+    </div>
+    <div class="feature-card" style="border-left-color: #10B981;">
+      <div class="feature-title">Com o MSCA Sistema de Gestão</div>
+      <p class="feature-desc">
+        • Cofre seguro com revelação de senhas sob demanda e rastreamento de acessos.<br>
+        • Dashboard com taxa de inadimplência instantânea e ranking de devedores.<br>
+        • Botão inteligente que abre direto a pasta de documentos do cliente no Google Drive.<br>
+        • Backups diários em nuvem salvos diretamente na nuvem todos os dias.
+      </p>
+    </div>
+  </div>
+
+  <!-- SEÇÃO 2: PRINCIPAIS MÓDULOS E FUNCIONALIDADES -->
+  <h2>2. Catálogo Completo de Funcionalidades</h2>
+
+  <h3>Módulo 1: Gestão Inteligente de Clientes & Cofre de Senhas</h3>
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th style="width: 25%;">Recurso</th>
+        <th style="width: 45%;">Descrição e Benefício</th>
+        <th style="width: 30%;">Impacto no Negócio</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Cadastro Completo 360°</strong></td>
+        <td>Armazena Razão Social, CNPJ/CPF, Início de Atividades, Regime Tributário, Código do Simples, Fator R, Nº de Pasta e Localidade.</td>
+        <td>Fim do desencontro de informações fiscais entre sócios e colaboradores.</td>
+      </tr>
+      <tr>
+        <td><strong>Cofre de Credenciais e Senhas</strong></td>
+        <td>Guarda logins e senhas de prefeituras, postos fiscais, e-CAC, gov.br e sistemas de emissão com botão de cópia instantânea (1 clique).</td>
+        <td>Agilidade máxima para protocolar guias e declarações diárias.</td>
+      </tr>
+      <tr>
+        <td><strong>Integração com Google Drive</strong></td>
+        <td>Acesso imediato à pasta de arquivos do cliente com detecção inteligente de vínculos e abertura nativa.</td>
+        <td>Redução de 90% no tempo gasto procurando pastas de clientes.</td>
+      </tr>
+      <tr>
+        <td><strong>Exportação Inteligente</strong></td>
+        <td>Exportação de relatórios em Excel estilizado com filtros ativos de clientes ativos, inativos ou por regime.</td>
+        <td>Relatórios rápidos para auditorias e reuniões de alinhamento.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="page-break"></div>
+
+  <h3>Módulo 2: Centro Financeiro & Controle de Honorários</h3>
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th style="width: 25%;">Recurso</th>
+        <th style="width: 45%;">Descrição e Benefício</th>
+        <th style="width: 30%;">Impacto no Negócio</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Projeção em Lote (Recorrência)</strong></td>
+        <td>Gera com 1 clique todos os honorários dos próximos 12 meses de todos os clientes ativos, calculando o fluxo futuro.</td>
+        <td>Economia de dezenas de horas de digitação manual todo início de mês.</td>
+      </tr>
+      <tr>
+        <td><strong>Painel Analítico de Inadimplência</strong></td>
+        <td>Indica o valor total em atraso, taxa de inadimplência percentual e Top 5 clientes devedores de meses anteriores.</td>
+        <td>Ação preventiva de cobrança antes que o prejuízo se acumule.</td>
+      </tr>
+      <tr>
+        <td><strong>Gráficos de Evolução (Receita x Despesa)</strong></td>
+        <td>Barras empilhadas comparando Recebido + A Receber versus Pago + A Pagar nos últimos 6 meses, além de rosca de despesas.</td>
+        <td>Visibilidade financeira estratégica para tomada de decisão dos sócios.</td>
+      </tr>
+      <tr>
+        <td><strong>Agenda Financeira Inteligente</strong></td>
+        <td>Exibe na abertura do sistema a próxima data de obrigações de saída com o total exato a ser pago no dia.</td>
+        <td>Fim de multas e juros por esquecimento de contas do escritório.</td>
+      </tr>
+      <tr>
+        <td><strong>Liquidação Rápida & em Lote</strong></td>
+        <td>Baixa de pagamentos e recebimentos em 1 clique direto na tabela, com seleção múltipla para conciliação em lote.</td>
+        <td>Fechamento financeiro diário e semanal em minutos.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SEÇÃO 3: SEGURANÇA E AUDITORIA -->
+  <h2>3. Segurança Corporativa e Auditoria Total</h2>
+  <p>Projetado para escritórios que levam a sério a conformidade e a segurança das informações dos seus clientes:</p>
+
+  <div class="grid-2 avoid-break">
+    <div class="feature-card">
+      <div class="feature-title">Perfis de Acesso (RBAC) <span class="badge badge-blue">Controle</span></div>
+      <p class="feature-desc">
+        • <strong>Colaborador:</strong> Acessa o cadastro de clientes, suas senhas e pastas para executar o trabalho operacional. Fica totalmente bloqueado de ver faturamento, despesas e auditoria.<br>
+        • <strong>Administrador:</strong> Gestão plena com acesso irrestrito ao faturamento, retiradas e configurações.
+      </p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-title">Trilha de Auditoria Indelével <span class="badge badge-gold">Conformidade</span></div>
+      <p class="feature-desc">
+        • Registra quem criou, editou ou excluiu qualquer cliente, credencial ou lançamento financeiro.<br>
+        • Grava o IP, data/hora exata e mostra o <em>"antes e depois"</em> de cada dado alterado.<br>
+        • Evita fraudes internas e vazamento de informações.
+      </p>
+    </div>
+  </div>
+
+  <!-- SEÇÃO 4: BACKUP E AUTONOMIA EM NUVEM -->
+  <h2>4. Autonomia em Nuvem & Proteção de Dados 24/7</h2>
+
+  <div class="callout-box avoid-break">
+    <h3>Backup Diário 100% Automático no Google Drive</h3>
+    <p>O sistema conta com esteira de nuvem gerenciada via <strong>GitHub Actions</strong>. Todas as madrugadas, uma rotina autônoma acorda na nuvem, extrai todos os clientes, senhas, lançamentos financeiros e logs de auditoria, gera uma planilha Excel corporativa completa e a envia diretamente para a pasta do Google Drive do escritório.<br><br>
+    <strong>Vantagem decisiva:</strong> Ninguém no escritório precisa deixar computadores ligados ou se preocupar com pen-drives e HDs externos. O backup roda faça chuva ou faça sol.</p>
+  </div>
+
+  <!-- SEÇÃO 5: RESUMO DE BENEFÍCIOS -->
+  <h2>5. Por Que Adotar o MSCA Hoje?</h2>
+  <table class="avoid-break">
+    <thead>
+      <tr>
+        <th>Critério</th>
+        <th>Sistemas Genéricos de Mercado</th>
+        <th style="background: #C5A059; color: #0F172A;">MSCA Sistema de Gestão</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Foco em Escritórios Contábeis</strong></td>
+        <td>Genérico para comércio e serviços variados.</td>
+        <td><strong>100% sob medida</strong> para rotinas contábeis, honorários e senhas fiscais.</td>
+      </tr>
+      <tr>
+        <td><strong>Armazenamento de Senhas Fiscais</strong></td>
+        <td>Inexistente ou requer campos de texto soltos.</td>
+        <td><strong>Cofre integrado</strong> por cliente com cópia em 1 clique e histórico.</td>
+      </tr>
+      <tr>
+        <td><strong>Acesso a Pastas no Drive</strong></td>
+        <td>Exige abrir o Google Drive e navegar pasta por pasta.</td>
+        <td><strong>Botão direto</strong> dentro da ficha de cada cliente.</td>
+      </tr>
+      <tr>
+        <td><strong>Auditoria de Alterações</strong></td>
+        <td>Rara ou cobrada em planos corporativos caros.</td>
+        <td><strong>Trilha completa</strong> com log de IP e histórico detalhado.</td>
+      </tr>
+      <tr>
+        <td><strong>Custo de Servidor Local</strong></td>
+        <td>Exige máquina dedicada ou servidor caro.</td>
+        <td><strong>Zero custo de infraestrutura local:</strong> 100% em Nuvem.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div style="margin-top: 35px; text-align: center; font-size: 8.5pt; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 15px;">
+    <strong>MSCA Sistema de Gestão</strong> • Desenvolvido para simplificar, organizar e potencializar resultados contábeis.
+  </div>
+
+</body>
+</html>
