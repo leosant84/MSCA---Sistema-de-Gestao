@@ -24,7 +24,7 @@ import {
   ArrowDownLeft,
   FileSpreadsheet
 } from 'lucide-react';
-import { getEntryDueDate, parseCompetencia, formatCompetencia, isEntryOverdue } from '../utils/competencia';
+import { parseCompetencia, formatCompetencia, isEntryOverdue } from '../utils/competencia';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../contexts/ToastContext';
 import { FinancialEntryModal } from '../components/FinancialEntryModal';
@@ -53,9 +53,12 @@ export const Financial: React.FC = () => {
     return formatCompetencia(now.getMonth(), now.getFullYear(), true);
   }, []);
 
-  // Filtros Globais
+  // Filtros Globais: Por padrão já entra filtrado no Mês Corrente
   const [selectedYear, setSelectedYear] = useState<string>('Todos');
-  const [selectedCompetencia, setSelectedCompetencia] = useState<string>('Todas');
+  const [selectedCompetencia, setSelectedCompetencia] = useState<string>(() => {
+    const now = new Date();
+    return formatCompetencia(now.getMonth(), now.getFullYear(), true);
+  });
   const [bancoFilter, setBancoFilter] = useState<string>('Todos');
   const [statusFilter, setStatusFilter] = useState<string>('Todos');
   const [clientFilter, setClientFilter] = useState<string>('Todos');
@@ -231,7 +234,7 @@ export const Financial: React.FC = () => {
       });
   }, [entries, entryViewFilter, selectedYear, selectedCompetencia, bancoFilter, clientFilter, statusFilter]);
 
-  // Filtragem e Ordenação Crescente de Saídas por Competência
+  // Filtragem e Ordenação Crescente de Saídas por Data de Pagamento / Previsão
   const filteredExpenses = useMemo(() => {
     return expenses
       .filter((e) => {
@@ -250,15 +253,20 @@ export const Financial: React.FC = () => {
         return matchYear && matchComp && matchBanco && matchStatus;
       })
       .sort((a, b) => {
-        // Ordenação crescente por competência (ano e mês)
+        // Ordenação prioritária por Data de Pagamento / Previsão (crescente)
+        const dateA = a.data_pagamento_previsao || '9999-99-99';
+        const dateB = b.data_pagamento_previsao || '9999-99-99';
+        if (dateA !== dateB) return dateA.localeCompare(dateB);
+
+        // Desempate por competência (ano e mês)
         const compA = parseCompetencia(a.competencia || '');
         const compB = parseCompetencia(b.competencia || '');
         const keyA = compA.year * 100 + compA.month;
         const keyB = compB.year * 100 + compB.month;
         if (keyA !== keyB) return keyA - keyB;
 
-        // Desempate por data de pagamento ou descrição
-        return (a.data_pagamento_previsao || '').localeCompare(b.data_pagamento_previsao || '');
+        // Desempate final por descrição do pagamento
+        return (a.descricao_pagamento || '').localeCompare(b.descricao_pagamento || '');
       });
   }, [expenses, selectedYear, selectedCompetencia, bancoFilter, statusFilter]);
 
@@ -537,53 +545,29 @@ export const Financial: React.FC = () => {
     };
   }, [entries, expenses]);
 
-  // Agenda de Próximos Compromissos Financeiros (A Pagar e A Receber) - Apenas próximas datas a partir de hoje
+  // Agenda de Próximos Compromissos Financeiros: Apenas a PRÓXIMA data de obrigações de saída
   const agendaCommitments = useMemo(() => {
     interface AgendaItem {
       id: string;
-      tipo: 'RECEBER' | 'PAGAR';
+      tipo: 'PAGAR';
       titulo: string;
       detalhe: string;
       dataObj: Date;
       dataFormatted: string;
+      dateKey: string;
       valor: number;
       status: string;
       diasDiferenca: number;
     }
 
-    const items: AgendaItem[] = [];
     const now = new Date();
     const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    // 1. Recebíveis pendentes futuros (não vencidos/não antigos)
-    entries
-      .filter((e) => e.status === 'À RECEBER')
-      .forEach((e) => {
-        const dueDate = getEntryDueDate(e.competencia, e.observacao);
-        // Desconsidera datas passadas / antigas
-        if (dueDate.getTime() < todayMidnight.getTime()) return;
+    // 1. Coleta todas as saídas futuras pendentes (status 'A pagar' e data >= hoje)
+    const futureExpenses: AgendaItem[] = [];
 
-        const diffDays = Math.ceil((dueDate.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24));
-        const dayStr = String(dueDate.getDate()).padStart(2, '0');
-        const monthStr = String(dueDate.getMonth() + 1).padStart(2, '0');
-        const yearStr = dueDate.getFullYear();
-
-        items.push({
-          id: `entry-${e.id}`,
-          tipo: 'RECEBER',
-          titulo: e.client?.razao_social || e.cliente_nome_avulso || 'Recebimento de Cliente',
-          detalhe: `${e.conta_contabil} • Comp: ${e.competencia}`,
-          dataObj: dueDate,
-          dataFormatted: `${dayStr}/${monthStr}/${yearStr}`,
-          valor: Number(e.valor || 0),
-          status: e.status,
-          diasDiferenca: diffDays,
-        });
-      });
-
-    // 2. Pagamentos a pagar (saídas) futuros (não vencidos/não antigos)
     expenses
-      .filter((ex) => ex.status === 'A pagar')
+      .filter((ex) => ex.status === 'A pagar' || ex.status === 'À PAGAR')
       .forEach((ex) => {
         let dueDate = new Date();
         if (ex.data_pagamento_previsao) {
@@ -599,43 +583,53 @@ export const Financial: React.FC = () => {
         const dayStr = String(dueDate.getDate()).padStart(2, '0');
         const monthStr = String(dueDate.getMonth() + 1).padStart(2, '0');
         const yearStr = dueDate.getFullYear();
+        const dateKey = `${yearStr}-${monthStr}-${dayStr}`;
 
-        items.push({
+        futureExpenses.push({
           id: `expense-${ex.id}`,
           tipo: 'PAGAR',
           titulo: ex.descricao_pagamento,
           detalhe: `${ex.conta_contabil} • Banco: ${ex.banco}`,
           dataObj: dueDate,
           dataFormatted: `${dayStr}/${monthStr}/${yearStr}`,
+          dateKey,
           valor: Number(ex.valor || 0),
           status: ex.status,
           diasDiferenca: diffDays,
         });
       });
 
-    // Ordena do compromisso mais próximo em diante (cronológico ascendente)
-    items.sort((a, b) => a.dataObj.getTime() - b.dataObj.getTime());
+    // Ordena as obrigações de saída da mais próxima para frente
+    futureExpenses.sort((a, b) => a.dataObj.getTime() - b.dataObj.getTime());
 
-    // Pega somente as próximas 5 datas/compromissos
-    const next5Items = items.slice(0, 5);
+    // Identifica a data mais próxima
+    if (futureExpenses.length === 0) {
+      return {
+        items: [],
+        totalCount: 0,
+        totalPagarAgenda: 0,
+        proximaData: null as string | null,
+        diasDiferenca: 0,
+      };
+    }
 
-    // Totais dos próximos 5 compromissos da agenda
-    const totalReceberAgenda = next5Items
-      .filter((i) => i.tipo === 'RECEBER')
-      .reduce((acc, curr) => acc + curr.valor, 0);
+    const proximaDataKey = futureExpenses[0].dateKey;
+    const proximaDataFormatted = futureExpenses[0].dataFormatted;
+    const diasDiferenca = futureExpenses[0].diasDiferenca;
 
-    const totalPagarAgenda = next5Items
-      .filter((i) => i.tipo === 'PAGAR')
-      .reduce((acc, curr) => acc + curr.valor, 0);
+    // Filtra todas as obrigações que vencem exatamente nessa data mais próxima
+    const nearestDateExpenses = futureExpenses.filter((item) => item.dateKey === proximaDataKey);
+
+    const totalPagarAgenda = nearestDateExpenses.reduce((acc, curr) => acc + curr.valor, 0);
 
     return {
-      items: next5Items,
-      totalCount: next5Items.length,
-      totalReceberAgenda,
+      items: nearestDateExpenses,
+      totalCount: nearestDateExpenses.length,
       totalPagarAgenda,
-      saldoPrevisto: totalReceberAgenda - totalPagarAgenda,
+      proximaData: proximaDataFormatted,
+      diasDiferenca,
     };
-  }, [entries, expenses]);
+  }, [expenses]);
 
   // Lista de anos disponíveis com base em todas as competências
   const availableYears = useMemo(() => {
@@ -1389,95 +1383,73 @@ export const Financial: React.FC = () => {
               <div>
                 <h3 className="text-sm font-bold text-gray-900 flex items-center space-x-2">
                   <span>Agenda Financeira</span>
-                  <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                    {agendaCommitments.totalCount} próximo(s)
+                  <span className="text-[10px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                    {agendaCommitments.totalCount} obrigação(ões) na próxima data
                   </span>
                 </h3>
                 <p className="text-[11px] text-gray-400">
-                  Próximas 5 datas de compromissos a pagar e a receber
+                  {agendaCommitments.proximaData ? (
+                    <>
+                      Próximo vencimento de saídas em <strong className="text-gray-700">{agendaCommitments.proximaData}</strong> ({agendaCommitments.diasDiferenca === 0 ? 'Hoje' : `em ${agendaCommitments.diasDiferenca} dia(s)`})
+                    </>
+                  ) : (
+                    'Nenhuma obrigação de saída pendente'
+                  )}
                 </p>
               </div>
             </div>
 
-            {/* Balanço Rápido da Agenda */}
+            {/* Totalizador da Próxima Data */}
             <div className="flex items-center space-x-4 text-xs">
-              <div className="flex items-center space-x-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span className="text-gray-500">A Receber:</span>
-                <span className="font-bold text-emerald-700">
-                  {formatCurrency(agendaCommitments.totalReceberAgenda)}
-                </span>
-              </div>
-              <div className="flex items-center space-x-1.5">
+              <div className="flex items-center space-x-1.5 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-100">
                 <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                <span className="text-gray-500">A Pagar:</span>
-                <span className="font-bold text-rose-700">
+                <span className="text-gray-600 font-medium">Total a Pagar na Data:</span>
+                <span className="font-bold text-rose-700 font-mono text-sm">
                   {formatCurrency(agendaCommitments.totalPagarAgenda)}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Lista de Itens da Agenda */}
+          {/* Lista de Itens da Agenda (Obrigações de Saída da Próxima Data) */}
           <div className="mt-3.5 divide-y divide-gray-100">
             {agendaCommitments.items.length === 0 ? (
               <div className="py-8 text-center text-xs text-gray-400">
-                Nenhum compromisso financeiro futuro na agenda.
+                Nenhuma obrigação financeira futura a pagar localizada.
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
-                {agendaCommitments.items.map((item) => {
-                  const isReceber = item.tipo === 'RECEBER';
-                  return (
-                    <div
-                      key={item.id}
-                      className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
-                        isReceber
-                          ? 'bg-emerald-50/30 border-emerald-100 hover:bg-emerald-50/60'
-                          : 'bg-slate-50/50 border-slate-200/70 hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-3 truncate">
-                        <div
-                          className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                            isReceber
-                              ? 'bg-emerald-100/80 text-emerald-700'
-                              : 'bg-rose-100/80 text-rose-700'
-                          }`}
-                        >
-                          {isReceber ? (
-                            <ArrowDownLeft className="w-4 h-4" />
-                          ) : (
-                            <ArrowUpRight className="w-4 h-4" />
-                          )}
-                        </div>
-                        <div className="truncate">
-                          <div className="flex items-center space-x-1.5">
-                            <span className="text-xs font-bold text-gray-900 truncate" title={item.titulo}>
-                              {item.titulo}
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-gray-500 truncate mt-0.5">
-                            {item.detalhe}
-                          </div>
-                        </div>
+                {agendaCommitments.items.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-3 rounded-xl border flex items-center justify-between transition-all bg-rose-50/20 border-rose-100/80 hover:bg-rose-50/50"
+                  >
+                    <div className="flex items-center space-x-3 truncate">
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-rose-100/80 text-rose-700">
+                        <ArrowUpRight className="w-4 h-4" />
                       </div>
-
-                      <div className="text-right shrink-0 ml-3">
-                        <div
-                          className={`text-xs font-bold font-mono ${
-                            isReceber ? 'text-emerald-700' : 'text-rose-700'
-                          }`}
-                        >
-                          {isReceber ? '+' : '-'} {formatCurrency(item.valor)}
+                      <div className="truncate">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="text-xs font-bold text-gray-900 truncate" title={item.titulo}>
+                            {item.titulo}
+                          </span>
                         </div>
-                        <div className="text-[10px] font-medium text-gray-400 mt-0.5">
-                          Venc: <strong className="text-gray-700">{item.dataFormatted}</strong>
+                        <div className="text-[10px] text-gray-500 truncate mt-0.5">
+                          {item.detalhe}
                         </div>
                       </div>
                     </div>
-                  );
-                })}
+
+                    <div className="text-right shrink-0 ml-3">
+                      <div className="text-xs font-bold font-mono text-rose-700">
+                        - {formatCurrency(item.valor)}
+                      </div>
+                      <div className="text-[10px] font-medium text-gray-400 mt-0.5">
+                        Venc: <strong className="text-gray-700">{item.dataFormatted}</strong>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

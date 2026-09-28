@@ -390,20 +390,14 @@ export const Clients: React.FC = () => {
                   <tr key={c.id} className="hover:bg-amber-50/30 transition-colors">
                     {/* Pastinha com o link */}
                     <td className="py-2.5 px-2 text-center whitespace-nowrap">
-                      {isAdmin ? (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenFolder(c)}
-                          title={`Abrir pasta do cliente no Google Drive: G:\\Meu Drive\\00. MSCA\\00. CLIENTES\\${c.razao_social}`}
-                          className="p-1.5 inline-flex rounded-lg bg-amber-500/10 text-[#C5A059] hover:bg-[#C5A059] hover:text-white transition-all cursor-pointer group items-center justify-center shadow-2xs"
-                        >
-                          <FolderOpen className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
-                        </button>
-                      ) : (
-                        <div className="p-1.5 inline-flex rounded-lg bg-slate-100 text-stone-400 items-center justify-center">
-                          <FolderOpen className="w-3.5 h-3.5" />
-                        </div>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenFolder(c)}
+                        title={`Abrir pasta do cliente no Google Drive: ${getDriveBasePath()}\\${c.razao_social}`}
+                        className="p-1.5 inline-flex rounded-lg bg-amber-500/10 text-[#C5A059] hover:bg-[#C5A059] hover:text-white transition-all cursor-pointer group items-center justify-center shadow-2xs"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                      </button>
                     </td>
 
                     {/* Domínio */}
