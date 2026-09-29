@@ -180,6 +180,20 @@ export const Financial: React.FC = () => {
     return dateStr;
   };
 
+  // Padronização e exibição uniforme de Banco / Forma de Pagamento
+  const formatBanco = (bancoStr?: string | null) => {
+    if (!bancoStr) return null;
+    const clean = bancoStr.trim();
+    const lower = clean.toLowerCase();
+    if (lower === 'itau' || lower === 'itaú' || lower.startsWith('itaú (c/c)') || lower.startsWith('itau (c/c)')) {
+      return 'Itaú (c/c)';
+    }
+    if (lower === 'cora' || lower.startsWith('cora (c/c)')) {
+      return 'Cora (c/c)';
+    }
+    return clean;
+  };
+
   // Contagem de pendentes para badge e filtro
   const pendingCount = useMemo(() => {
     return entries.filter((e) => {
@@ -188,15 +202,15 @@ export const Financial: React.FC = () => {
     }).length;
   }, [entries]);
 
-  // Lista de bancos / formas de pagamento presentes nas saídas (garantindo que qualquer variação apareça no filtro)
+  // Lista de bancos / formas de pagamento presentes nas saídas (garantindo que qualquer variação apareça normalizada no filtro)
   const availableExpenseBancos = useMemo(() => {
     const set = new Set<string>();
     // Adiciona métodos padrão
     EXPENSE_PAYMENT_METHODS.forEach((m) => set.add(m));
-    // Adiciona métodos existentes na base de dados
+    // Adiciona métodos existentes na base de dados normalizados
     expenses.forEach((ex) => {
-      const b = (ex.banco || '').trim();
-      if (b) set.add(b);
+      const normalized = formatBanco(ex.banco);
+      if (normalized) set.add(normalized);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [expenses]);
@@ -699,7 +713,7 @@ export const Financial: React.FC = () => {
           id: `expense-${ex.id}`,
           tipo: 'PAGAR',
           titulo: ex.descricao_pagamento,
-          detalhe: `${ex.conta_contabil} • Banco: ${ex.banco}`,
+          detalhe: `${ex.conta_contabil} • Banco: ${formatBanco(ex.banco) || ex.banco}`,
           dataObj: dueDate,
           dataFormatted: `${dayStr}/${monthStr}/${yearStr}`,
           dateKey,
@@ -2172,7 +2186,7 @@ export const Financial: React.FC = () => {
 
                         {/* Banco */}
                         <td className="py-3.5 px-4 whitespace-nowrap font-medium text-gray-800">
-                          {e.banco || <span className="text-gray-300 italic text-[11px]">-</span>}
+                          {formatBanco(e.banco) || <span className="text-gray-300 italic text-[11px]">-</span>}
                         </td>
 
                         {/* Observação com Tooltip */}
@@ -2357,7 +2371,7 @@ export const Financial: React.FC = () => {
 
                       {/* Banco */}
                       <td className="py-3.5 px-4 whitespace-nowrap font-medium text-gray-800">
-                        {exp.banco}
+                        {formatBanco(exp.banco) || exp.banco}
                       </td>
 
                       {/* Ações */}

@@ -37,6 +37,22 @@ function formatDate(dateStr?: string | null): string {
   return clean;
 }
 
+/**
+ * Normaliza exibição de banco para Itaú (c/c) e Cora (c/c)
+ */
+function normalizeBanco(bancoStr?: string | null): string {
+  if (!bancoStr) return '';
+  const clean = bancoStr.trim();
+  const lower = clean.toLowerCase();
+  if (lower === 'itau' || lower === 'itaú' || lower.startsWith('itaú (c/c)') || lower.startsWith('itau (c/c)')) {
+    return 'Itaú (c/c)';
+  }
+  if (lower === 'cora' || lower.startsWith('cora (c/c)')) {
+    return 'Cora (c/c)';
+  }
+  return clean;
+}
+
 export interface ClientExportFieldOption {
   key: string;
   label: string;
@@ -144,7 +160,7 @@ export function exportFinancialEntriesToExcel(
       'Conta Contábil / Categoria': e.conta_contabil || '',
       'Valor (R$)': Number(e.valor || 0),
       'Status': e.status || '',
-      'Banco': e.banco || '',
+      'Banco': normalizeBanco(e.banco),
       'Data Recebimento': formatDate(e.data_recebimento),
       'Observação': e.observacao || '',
     };
@@ -185,7 +201,7 @@ export function exportFinancialExpensesToExcel(
       'Conta Contábil / Categoria': e.conta_contabil || '',
       'Valor (R$)': Number(e.valor || 0),
       'Status': e.status || '',
-      'Banco': e.banco || '',
+      'Banco': normalizeBanco(e.banco),
       'Previsão / Pagamento': formatDate(e.data_pagamento_previsao),
       'Observação': e.observacao || '',
     };
