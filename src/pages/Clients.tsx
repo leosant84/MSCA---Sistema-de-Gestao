@@ -197,25 +197,25 @@ export const Clients: React.FC = () => {
     const cleanNumbersQuery = searchQuery.replace(/\D/g, '');
 
     const filtered = clients.filter((c) => {
-      // 1. Filtro de Status
-      if (statusFilter !== 'Todos') {
-        const clientStatusNorm = (c.status || '').trim().toUpperCase();
-        const filterStatusNorm = statusFilter.trim().toUpperCase();
-
-        if (filterStatusNorm === 'INADIMPLENTE') {
-          const hasOverdue = overdueClientsMap.has(c.id);
-          const isMarkedInadimplente = clientStatusNorm === 'INADIMPLENTE' || clientStatusNorm.includes('INADIMPLENTE');
-          if (!hasOverdue && !isMarkedInadimplente) return false;
-        } else if (filterStatusNorm === 'INATIVA' || filterStatusNorm === 'INATIVO') {
-          if (!clientStatusNorm.startsWith('INATIV')) {
+        if (statusFilter === '__FINANCEIRO_ATRASO__') {
+          // Filtra todos os clientes que possuem valores a receber vencidos, independentemente do status (ativo, inativo, etc.)
+          if (!overdueClientsMap.has(c.id)) {
             return false;
           }
-        } else {
-          if (clientStatusNorm !== filterStatusNorm) {
-            return false;
+        } else if (statusFilter !== 'Todos') {
+          const clientStatusNorm = (c.status || '').trim().toUpperCase();
+          const filterStatusNorm = statusFilter.trim().toUpperCase();
+
+          if (filterStatusNorm === 'INATIVA' || filterStatusNorm === 'INATIVO') {
+            if (!clientStatusNorm.startsWith('INATIV')) {
+              return false;
+            }
+          } else {
+            if (clientStatusNorm !== filterStatusNorm) {
+              return false;
+            }
           }
         }
-      }
 
       // 2. Campo de Busca Geral (se preenchido)
       if (q) {
@@ -386,10 +386,10 @@ export const Clients: React.FC = () => {
           </div>
           <button
             type="button"
-            onClick={() => setStatusFilter(statusFilter === 'INATIVA' ? 'Todos' : 'INATIVA')}
+            onClick={() => setStatusFilter(statusFilter === '__FINANCEIRO_ATRASO__' ? 'Todos' : '__FINANCEIRO_ATRASO__')}
             className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-amber-100/80 text-stone-700 hover:text-amber-900 border border-stone-200/80 text-[11px] font-medium transition-colors shrink-0 cursor-pointer"
           >
-            {statusFilter === 'INATIVA' ? 'Ver Todos os Clientes' : 'Filtrar Inativas'}
+            {statusFilter === '__FINANCEIRO_ATRASO__' ? 'Ver Todos os Clientes' : 'Filtrar Inadimplentes'}
           </button>
         </div>
       )}
