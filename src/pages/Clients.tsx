@@ -204,10 +204,10 @@ export const Clients: React.FC = () => {
 
         if (filterStatusNorm === 'INADIMPLENTE') {
           const hasOverdue = overdueClientsMap.has(c.id);
-          const isMarkedInadimplente = clientStatusNorm === 'INADIMPLENTE';
+          const isMarkedInadimplente = clientStatusNorm === 'INADIMPLENTE' || clientStatusNorm.includes('INADIMPLENTE');
           if (!hasOverdue && !isMarkedInadimplente) return false;
         } else if (filterStatusNorm === 'INATIVA' || filterStatusNorm === 'INATIVO') {
-          if (clientStatusNorm !== 'INATIVA' && clientStatusNorm !== 'INATIVO') {
+          if (!clientStatusNorm.startsWith('INATIV')) {
             return false;
           }
         } else {
@@ -735,8 +735,8 @@ export const Clients: React.FC = () => {
                           className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide shadow-2xs ${
                             (c.status || '').toUpperCase() === 'ATIVO'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
-                              : (c.status || '').toUpperCase() === 'INADIMPLENTE'
-                              ? 'bg-rose-50 text-rose-700 border border-rose-200/80'
+                              : (c.status || '').toUpperCase().includes('INADIMPLENTE')
+                              ? 'bg-rose-50 text-rose-700 border border-rose-300 font-bold'
                               : (c.status || '').toUpperCase() === 'TRANSFERIDO'
                               ? 'bg-blue-50 text-blue-700 border border-blue-200/80'
                               : (c.status || '').toUpperCase() === 'BAIXADA'

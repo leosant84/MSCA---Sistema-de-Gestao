@@ -168,6 +168,10 @@ export const Apuracao: React.FC = () => {
   // Clientes filtrados para a aba ativa
   const tabClients = useMemo(() => {
     return clients.filter((c) => {
+      // 0. Apenas clientes ATIVOS participam do setor de apuração
+      const statusNorm = (c.status || '').trim().toUpperCase();
+      if (statusNorm !== 'ATIVO') return false;
+
       // 1. Filtrar pelo regime/tipo de serviço da aba
       // Prioriza tipo_servico; fallback para regime_tributario
       const clientRegime = c.tipo_servico || c.regime_tributario || 'Simples Nacional';
