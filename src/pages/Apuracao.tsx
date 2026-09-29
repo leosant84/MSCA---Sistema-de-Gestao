@@ -18,6 +18,7 @@ import {
   FISCAL_OBLIGATIONS,
   FISCAL_REGIME_OPTIONS,
 } from '../constants/fiscalObligations';
+import { APURACAO_CLIENT_IDS } from '../constants/apuracaoScope';
 import type { FiscalRegimeType } from '../constants/fiscalObligations';
 import type { Client, FiscalRecord } from '../types';
 
@@ -173,18 +174,9 @@ export const Apuracao: React.FC = () => {
       const statusNorm = (c.status || '').trim().toUpperCase();
       if (statusNorm !== 'ATIVO') return false;
 
-      // 1. Filtrar pelo regime/tipo de serviço da aba
-      // Prioriza tipo_servico; fallback para regime_tributario
-      const clientRegime = c.tipo_servico || c.regime_tributario || 'Simples Nacional';
-
-      let matchRegime = false;
-      if (activeTab === 'Simples Nacional') {
-        matchRegime = clientRegime === 'Simples Nacional' || clientRegime === 'MEI';
-      } else if (activeTab === 'Lucro Presumido') {
-        matchRegime = clientRegime === 'Lucro Presumido' || clientRegime === 'Lucro Real';
-      } else if (activeTab === 'Folha de Pagamento') {
-        matchRegime = clientRegime === 'Folha de Pagamento';
-      }
+      // 1. Filtrar pelo escopo oficial da aba (166 Simples Nacional, 18 Lucro Presumido, 7 Folha de Pagamento)
+      const scopeSet = APURACAO_CLIENT_IDS[activeTab];
+      const matchRegime = scopeSet ? scopeSet.has(c.id) : false;
 
       if (!matchRegime) return false;
 
@@ -472,11 +464,11 @@ export const Apuracao: React.FC = () => {
           {FISCAL_REGIME_OPTIONS.map((regime) => {
             const isActive = activeTab === regime.value;
             // Contagem de clientes naquele regime
+            const scopeSet = APURACAO_CLIENT_IDS[regime.value];
             const count = clients.filter((c) => {
-              const r = c.tipo_servico || c.regime_tributario || 'Simples Nacional';
-              if (regime.value === 'Simples Nacional') return r === 'Simples Nacional' || r === 'MEI';
-              if (regime.value === 'Lucro Presumido') return r === 'Lucro Presumido' || r === 'Lucro Real';
-              return r === 'Folha de Pagamento';
+              const statusNorm = (c.status || '').trim().toUpperCase();
+              if (statusNorm !== 'ATIVO') return false;
+              return scopeSet ? scopeSet.has(c.id) : false;
             }).length;
 
             return (
