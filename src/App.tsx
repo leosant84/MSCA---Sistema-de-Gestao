@@ -5,6 +5,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { MainLayout } from './components/MainLayout';
 import { Login } from './pages/Login';
 import { Clients } from './pages/Clients';
+import { Apuracao } from './pages/Apuracao';
 import { Financial } from './pages/Financial';
 import { AuditLogs } from './pages/AuditLogs';
 import { Settings } from './pages/Settings';
@@ -29,6 +30,7 @@ export function App() {
             >
               <Route index element={<Navigate to="/clientes" replace />} />
               <Route path="clientes" element={<Clients />} />
+              <Route path="apuracao" element={<Apuracao />} />
 
               {/* Rota exclusiva para Admin com RBAC */}
               <Route

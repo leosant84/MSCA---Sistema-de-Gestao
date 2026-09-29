@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Users, DollarSign, LogOut, ShieldCheck, UserCheck, ShieldAlert, Settings as SettingsIcon } from 'lucide-react';
+import { Users, DollarSign, LogOut, ShieldCheck, UserCheck, ShieldAlert, Settings as SettingsIcon, Calculator } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export const TopNavbar: React.FC = () => {
@@ -45,6 +45,20 @@ export const TopNavbar: React.FC = () => {
             >
               <Users className="w-4 h-4 shrink-0" />
               <span>Clientes</span>
+            </NavLink>
+
+            <NavLink
+              to="/apuracao"
+              className={({ isActive }) =>
+                `inline-flex items-center space-x-2 px-3.5 py-2 rounded-2xl text-xs font-semibold transition-all whitespace-nowrap ${
+                  isActive
+                    ? 'bg-gradient-to-r from-[#C5A059] to-[#D4B26F] text-white shadow-md shadow-[#C5A059]/25 scale-[1.02]'
+                    : 'text-stone-600 hover:bg-slate-100/90 hover:text-stone-900'
+                }`
+              }
+            >
+              <Calculator className="w-4 h-4 shrink-0" />
+              <span>Apuração</span>
             </NavLink>
 
             {isAdmin && (

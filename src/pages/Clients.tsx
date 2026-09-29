@@ -662,14 +662,18 @@ export const Clients: React.FC = () => {
                           )}
                         </div>
 
-                        {/* Regime Tributário discreto abaixo do nome */}
-                        {c.regime_tributario ? (
-                          <div className="flex items-center space-x-1 text-[10px] text-stone-500 font-medium">
+                        {/* Regime Tributário / Tipo de Serviço discreto abaixo do nome */}
+                        {c.tipo_servico || c.regime_tributario ? (
+                          <div className="flex items-center flex-wrap gap-1 text-[10px] text-stone-500 font-medium">
                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500/70"></span>
-                            <span className="tracking-tight text-stone-600 bg-stone-50 px-1.5 py-0.2 rounded border border-stone-200/60">
-                              {c.regime_tributario}
-                              {c.puro_ou_hibrido ? ` • ${c.puro_ou_hibrido}` : ''}
+                            <span className="tracking-tight text-stone-700 bg-amber-50/60 px-1.5 py-0.2 rounded border border-amber-200/60 font-semibold">
+                              {c.tipo_servico || c.regime_tributario}
                             </span>
+                            {c.puro_ou_hibrido && (
+                              <span className="text-[9px] text-stone-500 bg-stone-50 px-1 rounded border border-stone-200">
+                                {c.puro_ou_hibrido}
+                              </span>
+                            )}
                           </div>
                         ) : (
                           <span className="text-[10px] text-stone-400 italic">Regime não def.</span>

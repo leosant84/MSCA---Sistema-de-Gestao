@@ -37,9 +37,23 @@ export interface Client {
   login_posto_fiscal?: string | null;
   senha_posto_fiscal?: string | null;
   parcelamento_ativo?: boolean | null;
+  tipo_servico?: string | null;
+  obrigacoes_habilitadas?: string[] | null;
   created_at?: string;
   updated_at?: string;
   client_credentials?: ClientCredential[];
+}
+
+export interface FiscalRecord {
+  id: string;
+  client_id: string;
+  competencia: string;
+  regime: string;
+  obrigacao: string;
+  valor: string;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface FinancialCategory {

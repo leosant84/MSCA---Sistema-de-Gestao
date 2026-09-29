@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, Shield, Globe, Building } from 'lucide-react';
+import { X, Plus, Trash2, Shield, Globe, Building, CheckSquare, ListChecks } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { createClientFoldersInDrive } from '../services/googleDriveService';
+import { FISCAL_OBLIGATIONS, FISCAL_REGIME_OPTIONS } from '../constants/fiscalObligations';
+import type { FiscalRegimeType } from '../constants/fiscalObligations';
 import type { Client } from '../types';
 
 interface ClientModalProps {
@@ -93,6 +95,10 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     login_posto_fiscal: clientToEdit?.login_posto_fiscal || '',
     senha_posto_fiscal: clientToEdit?.senha_posto_fiscal || '',
     parcelamento_ativo: Boolean(clientToEdit?.parcelamento_ativo),
+    tipo_servico: (clientToEdit?.tipo_servico as FiscalRegimeType) || 
+      (clientToEdit?.regime_tributario === 'Lucro Presumido' ? 'Lucro Presumido' : 'Simples Nacional'),
+    obrigacoes_habilitadas: (clientToEdit?.obrigacoes_habilitadas as string[]) || 
+      FISCAL_OBLIGATIONS[(clientToEdit?.regime_tributario === 'Lucro Presumido' ? 'Lucro Presumido' : 'Simples Nacional') as FiscalRegimeType] || [],
   });
 
   // Flag para controlar se o Posto Fiscal foi adicionado/habilitado
@@ -144,6 +150,44 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     setFormData((prev) => ({
       ...prev,
       [name]: value,
+    }));
+  };
+
+  const handleRegimeServiceChange = (newRegime: FiscalRegimeType) => {
+    const defaultObligations = FISCAL_OBLIGATIONS[newRegime] || [];
+    setFormData((prev) => ({
+      ...prev,
+      tipo_servico: newRegime,
+      // Se for Simples ou Lucro Presumido, sincroniza também o regime_tributario caso aplicável
+      regime_tributario: newRegime === 'Folha de Pagamento' ? prev.regime_tributario : newRegime,
+      obrigacoes_habilitadas: defaultObligations,
+    }));
+  };
+
+  const handleToggleObligation = (obligation: string) => {
+    setFormData((prev) => {
+      const current = prev.obrigacoes_habilitadas || [];
+      const exists = current.includes(obligation);
+      const updated = exists ? current.filter((o) => o !== obligation) : [...current, obligation];
+      return {
+        ...prev,
+        obrigacoes_habilitadas: updated,
+      };
+    });
+  };
+
+  const handleSelectAllObligations = () => {
+    const all = FISCAL_OBLIGATIONS[formData.tipo_servico as FiscalRegimeType] || [];
+    setFormData((prev) => ({
+      ...prev,
+      obrigacoes_habilitadas: all,
+    }));
+  };
+
+  const handleClearAllObligations = () => {
+    setFormData((prev) => ({
+      ...prev,
+      obrigacoes_habilitadas: [],
     }));
   };
 
@@ -235,6 +279,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         login_posto_fiscal: hasPostoFiscal ? (formData.login_posto_fiscal.trim() || null) : null,
         senha_posto_fiscal: hasPostoFiscal ? (formData.senha_posto_fiscal.trim() || null) : null,
         parcelamento_ativo: Boolean(formData.parcelamento_ativo),
+        tipo_servico: formData.tipo_servico || 'Simples Nacional',
+        obrigacoes_habilitadas: formData.obrigacoes_habilitadas || [],
       };
 
       let clientId = clientToEdit?.id;
@@ -583,6 +629,100 @@ export const ClientModal: React.FC<ClientModalProps> = ({
                     <span className="text-[10px] text-stone-500">Possui parcelamento de débitos ativo</span>
                   </div>
                 </label>
+              </div>
+            </div>
+
+            {/* Subseção: Regime / Escopo e Obrigações Habilitadas para Apuração */}
+            <div className="mt-4 p-4 rounded-2xl bg-amber-50/30 border border-amber-200/70 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-amber-200/60 pb-2.5">
+                <div className="flex items-center space-x-2">
+                  <ListChecks className="w-4 h-4 text-[#C5A059]" />
+                  <span className="text-xs font-bold text-gray-800">
+                    Rotina de Apuração Mensal & Obrigações
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={handleSelectAllObligations}
+                    className="text-[10px] font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200 transition-colors cursor-pointer"
+                  >
+                    Marcar Todas
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearAllObligations}
+                    className="text-[10px] font-semibold text-stone-600 hover:text-stone-800 bg-stone-100 hover:bg-stone-200 px-2 py-0.5 rounded border border-stone-200 transition-colors cursor-pointer"
+                  >
+                    Desmarcar Todas
+                  </button>
+                </div>
+              </div>
+
+              {/* Seletor de Regime / Tipo de Serviço */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                  Regime / Tipo de Serviço para Apuração *
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {FISCAL_REGIME_OPTIONS.map((regime) => {
+                    const isSelected = formData.tipo_servico === regime.value;
+                    return (
+                      <button
+                        key={regime.value}
+                        type="button"
+                        onClick={() => handleRegimeServiceChange(regime.value)}
+                        className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#C5A059] text-white border-[#C5A059] shadow-xs'
+                            : 'bg-white text-gray-700 border-gray-200 hover:border-[#C5A059] hover:bg-amber-50/40'
+                        }`}
+                      >
+                        <span>{regime.label}</span>
+                        {isSelected && <CheckSquare className="w-3.5 h-3.5 text-white" />}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">
+                  Selecione o regime para exibir o checklist de obrigações aplicáveis a este cliente.
+                </p>
+              </div>
+
+              {/* Checklist de Obrigações Habilitadas */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-bold text-gray-700">
+                    Obrigações Ativas no Módulo de Apuração:
+                  </span>
+                  <span className="text-[10px] font-semibold text-stone-500">
+                    {formData.obrigacoes_habilitadas?.length || 0} de {FISCAL_OBLIGATIONS[formData.tipo_servico as FiscalRegimeType]?.length || 0} ativas
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                  {FISCAL_OBLIGATIONS[formData.tipo_servico as FiscalRegimeType]?.map((obrigacao) => {
+                    const isChecked = formData.obrigacoes_habilitadas?.includes(obrigacao);
+                    return (
+                      <label
+                        key={obrigacao}
+                        className={`flex items-center space-x-2 p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
+                          isChecked
+                            ? 'bg-emerald-50/70 border-emerald-300 text-emerald-900 font-semibold'
+                            : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleToggleObligation(obrigacao)}
+                          className="w-3.5 h-3.5 text-[#C5A059] rounded border-gray-300 focus:ring-[#C5A059] cursor-pointer"
+                        />
+                        <span className="truncate" title={obrigacao}>{obrigacao}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
