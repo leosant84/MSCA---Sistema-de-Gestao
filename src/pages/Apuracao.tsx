@@ -19,6 +19,8 @@ import {
   FISCAL_REGIME_OPTIONS,
 } from '../constants/fiscalObligations';
 import { APURACAO_CLIENT_IDS } from '../constants/apuracaoScope';
+import { RawCnpjCopyButton } from '../components/RawCnpjCopyButton';
+import { PortalsDropdown } from '../components/PortalsDropdown';
 import type { FiscalRegimeType } from '../constants/fiscalObligations';
 import type { Client, FiscalRecord } from '../types';
 
@@ -60,10 +62,13 @@ export const Apuracao: React.FC = () => {
   const fetchApuracaoData = useCallback(async () => {
     setLoading(true);
     try {
-      // Busca apenas clientes ativos para a rotina de apuração
+      // Busca apenas clientes ativos para a rotina de apuração (com credenciais dos portais)
       const { data: clientsData, error: clientErr } = await supabase
         .from('clients')
-        .select('*')
+        .select(`
+          *,
+          client_credentials (*)
+        `)
         .ilike('status', 'ATIVO')
         .order('razao_social', { ascending: true });
 
@@ -518,8 +523,11 @@ export const Apuracao: React.FC = () => {
                 <th className="py-3 px-3.5 sticky left-0 z-20 bg-stone-50 shadow-[1px_0_0_0_#E5E7EB] w-[260px] min-w-[260px] max-w-[260px]">
                   Razão Social / Cliente
                 </th>
-                <th className="py-3 px-3 sticky left-[260px] z-20 bg-stone-50 shadow-[1px_0_0_0_#E5E7EB] w-[150px] min-w-[150px] max-w-[150px] whitespace-nowrap">
+                <th className="py-3 px-3 sticky left-[260px] z-20 bg-stone-50 shadow-[1px_0_0_0_#E5E7EB] w-[170px] min-w-[170px] max-w-[170px] whitespace-nowrap">
                   CNPJ
+                </th>
+                <th className="py-3 px-3 min-w-[100px] whitespace-nowrap">
+                  Portais
                 </th>
                 <th className="py-3 px-3 min-w-[130px] whitespace-nowrap">
                   Localidade
@@ -547,7 +555,7 @@ export const Apuracao: React.FC = () => {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={currentObligations.length + 4}
+                    colSpan={currentObligations.length + 5}
                     className="py-16 text-center text-gray-400"
                   >
                     <div className="flex flex-col items-center justify-center space-y-2">
@@ -559,7 +567,7 @@ export const Apuracao: React.FC = () => {
               ) : tabClients.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={currentObligations.length + 4}
+                    colSpan={currentObligations.length + 5}
                     className="py-16 text-center text-gray-400"
                   >
                     <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />
@@ -611,19 +619,23 @@ export const Apuracao: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Coluna 2 Fixa: CNPJ */}
-                      <td className="py-2.5 px-3 sticky left-[260px] z-10 bg-white shadow-[1px_0_0_0_#E5E7EB] w-[150px] min-w-[150px] max-w-[150px] font-mono text-[11px] text-gray-600 whitespace-nowrap">
-                        {client.cnpj ? (
-                          client.cnpj.replace(
-                            /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
-                            '$1.$2.$3/$4-$5'
-                          )
-                        ) : (
-                          client.cpf || '-'
-                        )}
+                      {/* Coluna 2 Fixa: CNPJ (sem máscara e com botão de copiar) */}
+                      <td className="py-2.5 px-3 sticky left-[260px] z-10 bg-white shadow-[1px_0_0_0_#E5E7EB] w-[170px] min-w-[170px] max-w-[170px] whitespace-nowrap">
+                        <RawCnpjCopyButton cnpj={client.cnpj || client.cpf} />
                       </td>
 
-                      {/* Coluna 3: Localidade */}
+                      {/* Coluna 3: Portais com logins e senhas */}
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        <PortalsDropdown
+                          loginPrefeitura={client.login_prefeitura}
+                          senhaPrefeitura={client.senha_prefeitura}
+                          loginPostoFiscal={client.login_posto_fiscal}
+                          senhaPostoFiscal={client.senha_posto_fiscal}
+                          extraCredentials={client.client_credentials}
+                        />
+                      </td>
+
+                      {/* Coluna 4: Localidade */}
                       <td className="py-2.5 px-3 text-[11px] text-gray-600 whitespace-nowrap">
                         {client.localidade || '-'}
                       </td>
