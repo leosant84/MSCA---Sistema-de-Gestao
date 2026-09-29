@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { Users, DollarSign, LogOut, ShieldCheck, UserCheck, ShieldAlert, Settings as SettingsIcon, Calculator } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { NotificationBell } from './NotificationBell';
 
 export const TopNavbar: React.FC = () => {
   const { profile, role, isAdmin, signOut } = useAuth();
@@ -130,8 +131,11 @@ export const TopNavbar: React.FC = () => {
             </NavLink>
           </nav>
 
-          {/* Lado Direito: Perfil do Usuário e Botão Sair */}
-          <div className="flex items-center space-x-3 shrink-0">
+          {/* Lado Direito: Notificações, Perfil do Usuário e Botão Sair */}
+          <div className="flex items-center space-x-2.5 shrink-0">
+            {/* Sininho de Notificações Global */}
+            <NotificationBell />
+
             {/* Chip de Usuário */}
             <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-2xl bg-white/90 border border-slate-200/70 shadow-2xs">
               <div className="w-7 h-7 rounded-xl bg-amber-50 text-[#C5A059] flex items-center justify-center border border-amber-200/60 shrink-0">

@@ -17,7 +17,6 @@ export const FISCAL_OBLIGATIONS: Record<FiscalRegimeType, string[]> = {
     'IMPORTAR DOMINIO',
     'GERAR OS DAS',
     'PARC.',
-    'ENVIO',
   ],
   'Lucro Presumido': [
     'GUIA DE ISS TOMADOS',
@@ -32,7 +31,6 @@ export const FISCAL_OBLIGATIONS: Record<FiscalRegimeType, string[]> = {
     'REINF',
     'DCTFweb',
     'PARCELAM. ATIVO',
-    'ENVIO',
     'DCTF',
     'EFD CONTR.',
     'EFD ICMS',
@@ -45,6 +43,5 @@ export const FISCAL_OBLIGATIONS: Record<FiscalRegimeType, string[]> = {
     'CONTR. ASSISTENCIAL',
     'RECIBO VALE TRANSPORTE',
     'RECIBO CESTA BÁSICA',
-    'ENVIO PARA O CLIENTE',
   ],
 };

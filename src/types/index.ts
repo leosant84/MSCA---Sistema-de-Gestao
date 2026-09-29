@@ -56,6 +56,47 @@ export interface FiscalRecord {
   updated_at?: string;
 }
 
+export type ApuracaoValidationStatus = 'PENDING' | 'APPROVED' | 'NEEDS_REVIEW';
+
+export interface ClientApuracaoValidation {
+  id: string;
+  client_id: string;
+  competencia: string;
+  regime: string;
+  status: ApuracaoValidationStatus;
+  reviewed_by?: string | null;
+  reviewed_by_name?: string | null;
+  reviewed_at?: string | null;
+  review_notes?: string | null;
+  pending_obligations?: string[] | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type NotificationType =
+  | 'APURACAO_100_PERCENT'
+  | 'APURACAO_NEEDS_REVIEW'
+  | 'APURACAO_APPROVED'
+  | 'GENERAL';
+
+export interface AppNotification {
+  id: string;
+  recipient_id?: string | null; // Se nulo, pode ser para todos os ADMs ou broadcast
+  recipient_role?: UserRole | null; // 'admin' ou 'colaborador'
+  sender_id?: string | null;
+  sender_name?: string | null;
+  title: string;
+  message: string;
+  type: NotificationType;
+  client_id?: string | null;
+  client_name?: string | null;
+  competencia?: string | null;
+  regime?: string | null;
+  read: boolean;
+  link?: string | null;
+  created_at: string;
+}
+
 export interface FinancialCategory {
   id: string;
   nome: string;

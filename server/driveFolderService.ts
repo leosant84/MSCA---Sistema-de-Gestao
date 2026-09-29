@@ -61,8 +61,8 @@ export async function createDriveClientFolders(razaoSocial: string) {
   // 3. Cria as 3 subpastas padrão:
   // 01. SOCIETÁRIO
   // 02. FISCAL
-  // 03. DEP. PESSOAL
-  const subfolders = ['01. SOCIETÁRIO', '02. FISCAL', '03. DEP. PESSOAL'];
+  // 03. DER.PESSOAL
+  const subfolders = ['01. SOCIETÁRIO', '02. FISCAL', '03. DER.PESSOAL'];
   const createdSubfolders: string[] = [];
 
   for (const sub of subfolders) {

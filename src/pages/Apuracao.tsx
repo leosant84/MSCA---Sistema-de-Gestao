@@ -1,18 +1,16 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Calculator,
   CheckCircle2,
-  AlertCircle,
-  Search,
   RefreshCw,
   Calendar,
   Building,
-  CheckSquare,
   TrendingUp,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
+  Layers,
+  Sparkles,
+  ChevronRight,
 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -22,64 +20,71 @@ import {
   FISCAL_REGIME_OPTIONS,
 } from '../constants/fiscalObligations';
 import { APURACAO_CLIENT_IDS } from '../constants/apuracaoScope';
-import { RawCnpjCopyButton } from '../components/RawCnpjCopyButton';
-import { PortalsDropdown } from '../components/PortalsDropdown';
+import { ApuracaoDrilldownModal } from '../components/ApuracaoDrilldownModal';
+import { ApuracaoValidationModal } from '../components/ApuracaoValidationModal';
+import { notificationService } from '../services/notificationService';
 import type { FiscalRegimeType } from '../constants/fiscalObligations';
 import type { Client, FiscalRecord } from '../types';
 
+const MONTH_NAMES_SHORT = [
+  'JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN',
+  'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'
+];
+
 export const Apuracao: React.FC = () => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
 
   // Estados principais
-  const [activeTab, setActiveTab] = useState<FiscalRegimeType>('Simples Nacional');
+  const [activeTab, setActiveTab] = useState<FiscalRegimeType>(() => {
+    const regParam = searchParams.get('regime');
+    if (regParam && FISCAL_REGIME_OPTIONS.some((r) => r.value === regParam)) {
+      return regParam as FiscalRegimeType;
+    }
+    return 'Simples Nacional';
+  });
+
   const [loading, setLoading] = useState(true);
-  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear());
 
   // Dados
   const [clients, setClients] = useState<Client[]>([]);
 
-  // Filtros de Período (Mês e Ano de Competência)
-  const [cardMonth, setCardMonth] = useState<number>(() => new Date().getMonth());
-  const [cardYear, setCardYear] = useState<number>(() => new Date().getFullYear());
-
-  // Competência formatada ex: "set/26"
-  const selectedCompetencia = useMemo(() => {
-    return formatCompetencia(cardMonth, cardYear, true);
-  }, [cardMonth, cardYear]);
-
-  // Busca textual de cliente
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // Cache local em memória de valores digitados para feedback imediato e debounce de gravação
+  // Cache de valores gravados no formato `client_id::obrigacao::competencia`
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
 
-  // Ordenação das colunas
-  type SortField = 'razao_social' | 'numero_pasta' | 'cnpj' | 'localidade' | 'progresso' | string;
-  const [sortField, setSortField] = useState<SortField>('razao_social');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  // Modal de Drilldown (ao clicar na apuração)
+  const [drilldownModalOpen, setDrilldownModalOpen] = useState(false);
+  const [selectedObligation, setSelectedObligation] = useState<string>('');
+  const [selectedCompForDrilldown, setSelectedCompForDrilldown] = useState<string>('');
 
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
-    }
-  };
+  // Modal de Validação ADM
+  const [validationModalOpen, setValidationModalOpen] = useState(false);
+  const [clientToValidate, setClientToValidate] = useState<Client | null>(null);
+  const [compToValidate, setCompToValidate] = useState<string>('');
 
-  // Lista de anos disponíveis no seletor
+  // Lista de Anos disponíveis
   const availableYears = useMemo(() => {
     const current = new Date().getFullYear();
-    const years = [current - 2, current - 1, current, current + 1];
-    return years.sort((a, b) => b - a);
+    return [current - 1, current, current + 1];
   }, []);
 
-  // 1. Carrega Clientes e Registros de Apuração
+  // Lista de competências do ano selecionado (12 meses: JAN/YY a DEZ/YY)
+  const yearCompetencias = useMemo(() => {
+    return MONTH_NAMES_SHORT.map((_, idx) => formatCompetencia(idx, selectedYear, true));
+  }, [selectedYear]);
+
+  // Lista de obrigações da aba ativa (sem etapa 'ENVIO')
+  const currentObligations = useMemo(() => {
+    return FISCAL_OBLIGATIONS[activeTab] || [];
+  }, [activeTab]);
+
+  // Carrega Clientes e Registros do Ano Selecionado
   const fetchApuracaoData = useCallback(async () => {
     setLoading(true);
     try {
-      // Busca apenas clientes ativos para a rotina de apuração (com credenciais dos portais)
+      // 1. Busca todos os clientes ativos
       const { data: clientsData, error: clientErr } = await supabase
         .from('clients')
         .select(`
@@ -90,53 +95,88 @@ export const Apuracao: React.FC = () => {
         .order('razao_social', { ascending: true });
 
       if (clientErr) throw clientErr;
-      setClients(clientsData as Client[]);
+      const loadedClients = (clientsData || []) as Client[];
+      setClients(loadedClients);
 
-      // Busca os registros de apuração para a competência selecionada
+      // 2. Busca registros fiscais das 12 competências do ano selecionado
+      const shortYearStr = String(selectedYear).slice(-2);
       const { data: recordsData, error: recErr } = await supabase
         .from('fiscal_records')
         .select('*')
-        .eq('competencia', selectedCompetencia);
+        .like('competencia', `%/${shortYearStr}`);
 
       if (recErr) throw recErr;
       const recList = (recordsData || []) as FiscalRecord[];
 
-      // Sincroniza os inputValues
-      const initialMap: Record<string, string> = {};
+      const map: Record<string, string> = {};
       recList.forEach((r) => {
-        const key = `${r.client_id}::${r.obrigacao}`;
-        initialMap[key] = r.valor || '';
+        const key = `${r.client_id}::${r.obrigacao}::${r.competencia}`;
+        map[key] = r.valor || '';
       });
-      setInputValues(initialMap);
+      setInputValues(map);
+
+      // Checagem de link de validação vindo por query param
+      const valClientParam = searchParams.get('client_id');
+      const valCompParam = searchParams.get('comp');
+      const shouldValidate = searchParams.get('validate') === 'true';
+
+      if (shouldValidate && valClientParam && valCompParam) {
+        const found = loadedClients.find((c) => c.id === valClientParam);
+        if (found) {
+          setClientToValidate(found);
+          setCompToValidate(valCompParam);
+          setValidationModalOpen(true);
+        }
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao carregar apuração fiscal';
+      const msg = err instanceof Error ? err.message : 'Falha ao carregar registros de apuração';
       toast(msg, 'error');
     } finally {
       setLoading(false);
     }
-  }, [selectedCompetencia, toast]);
+  }, [selectedYear, searchParams, toast]);
 
   useEffect(() => {
     fetchApuracaoData();
   }, [fetchApuracaoData]);
 
-  // Salvar uma célula de apuração no Supabase
-  const saveRecord = useCallback(
-    async (client: Client, obrigacao: string, val: string) => {
-      const key = `${client.id}::${obrigacao}`;
-      const cleanVal = val.trim();
-      const isOk = cleanVal.toUpperCase() === 'OK';
-      const status = isOk ? 'OK' : cleanVal ? 'OBS' : 'PENDENTE';
+  // Auxiliar: checa se obrigação está habilitada para o cliente
+  const isObligationEnabled = useCallback((client: Client, obrigacao: string) => {
+    if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
+      return client.obrigacoes_habilitadas.includes(obrigacao);
+    }
+    return true;
+  }, []);
 
-      setSavingKey(key);
+  // Clientes pertencentes ao escopo da aba ativa
+  const tabClients = useMemo(() => {
+    const scopeSet = APURACAO_CLIENT_IDS[activeTab];
+    return clients.filter((c) => {
+      const statusNorm = (c.status || '').trim().toUpperCase();
+      if (statusNorm !== 'ATIVO') return false;
+      return scopeSet ? scopeSet.has(c.id) : false;
+    });
+  }, [clients, activeTab]);
+
+  // Salvar alteração de status de apuração (chamado pelo modal de drilldown)
+  const handleStatusChange = useCallback(
+    async (client: Client, obrigacao: string, newValue: string) => {
+      const competencia = selectedCompForDrilldown;
+      const key = `${client.id}::${obrigacao}::${competencia}`;
+
+      // Atualização otimista no estado local
+      setInputValues((prev) => ({ ...prev, [key]: newValue }));
 
       try {
+        const isOk = newValue.trim().toUpperCase() === 'OK';
+        const status = isOk ? 'OK' : newValue.trim() ? 'OBS' : 'PENDENTE';
+
         const payload = {
           client_id: client.id,
-          competencia: selectedCompetencia,
+          competencia,
           regime: activeTab,
           obrigacao,
-          valor: cleanVal,
+          valor: newValue.trim(),
           status,
           updated_by: user?.id || null,
           updated_at: new Date().toISOString(),
@@ -149,390 +189,214 @@ export const Apuracao: React.FC = () => {
           .single();
 
         if (error) throw error;
-        setSavingKey(null);
-      } catch (err: unknown) {
+
+        // Se marcou como OK, verificar se o cliente atingiu 100% no mês
+        if (isOk) {
+          const clientEnabledObligations = currentObligations.filter((ob) =>
+            isObligationEnabled(client, ob)
+          );
+
+          // Verificar se todas as obrigações habilitadas estão OK (considerando a nova)
+          const isAllOk = clientEnabledObligations.every((ob) => {
+            if (ob === obrigacao) return true;
+            const obKey = `${client.id}::${ob}::${competencia}`;
+            const val = inputValues[obKey] || '';
+            return val.trim().toUpperCase() === 'OK';
+          });
+
+          if (isAllOk) {
+            // Disparar notificação para ADM validar
+            await notificationService.notifyAdmin100Percent({
+              client_id: client.id,
+              client_name: client.razao_social,
+              competencia,
+              regime: activeTab,
+              operator_id: user?.id,
+              operator_name: profile?.full_name || 'Analista',
+            });
+            toast(
+              `Cliente ${client.razao_social} atingiu 100% no mês! Notificação enviada ao ADM para homologação.`,
+              'success',
+              'Validação Enviada'
+            );
+          }
+        }
+      } catch (err) {
         console.error('Erro ao salvar apuração:', err);
-        setSavingKey(null);
-        toast('Não foi possível salvar o registro de apuração.', 'error', 'Erro ao salvar');
+        toast('Erro ao sincronizar apuração com o servidor.', 'error');
       }
     },
-    [activeTab, selectedCompetencia, user?.id, toast]
+    [selectedCompForDrilldown, activeTab, user?.id, profile?.full_name, currentObligations, isObligationEnabled, inputValues, toast]
   );
 
-  // Debounce timeout ref para persistência automática
-  const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-
-  const handleCellChange = (client: Client, obrigacao: string, newValue: string) => {
-    const key = `${client.id}::${obrigacao}`;
-    setInputValues((prev) => ({ ...prev, [key]: newValue }));
-
-    // Limpa timer anterior para esta célula
-    if (debounceTimers.current[key]) {
-      clearTimeout(debounceTimers.current[key]);
-    }
-
-    // Salva automaticamente com debounce de 600ms
-    debounceTimers.current[key] = setTimeout(() => {
-      saveRecord(client, obrigacao, newValue);
-      delete debounceTimers.current[key];
-    }, 600);
-  };
-
-  const handleCellBlur = (client: Client, obrigacao: string) => {
-    const key = `${client.id}::${obrigacao}`;
-    // Se ainda houver timeout pendente, cancela e salva imediatamente no blur
-    if (debounceTimers.current[key]) {
-      clearTimeout(debounceTimers.current[key]);
-      delete debounceTimers.current[key];
-      const val = inputValues[key] ?? '';
-      saveRecord(client, obrigacao, val);
-    }
-  };
-
-  // Lista de obrigações da aba ativa
-  const currentObligations = useMemo(() => {
-    return FISCAL_OBLIGATIONS[activeTab] || [];
-  }, [activeTab]);
-
-  // Função auxiliar para verificar se uma obrigação está habilitada para o cliente
-  const isObligationEnabled = useCallback((client: Client, obrigacao: string) => {
-    // Se o cliente tem a lista configurada, checa nela
-    if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
-      return client.obrigacoes_habilitadas.includes(obrigacao);
-    }
-    // Caso padrão (se ainda não cadastrado o checklist): todas habilitadas
-    return true;
-  }, []);
-
-  // Cálculo de Progresso por Cliente
-  const calculateClientProgress = useCallback(
-    (client: Client) => {
-      const enabledList = currentObligations.filter((ob) => isObligationEnabled(client, ob));
-      const totalEnabled = enabledList.length;
-
-      if (totalEnabled === 0) return { totalEnabled: 0, okCount: 0, percent: 100 };
+  // Calcula a porcentagem de conclusão de uma Obrigação em uma Competência específica
+  const getObligationMonthStats = useCallback(
+    (obrigacao: string, competencia: string) => {
+      // Clientes aplicáveis a esta obrigação
+      const applicable = tabClients.filter((c) => isObligationEnabled(c, obrigacao));
+      const total = applicable.length;
+      if (total === 0) return { total: 0, okCount: 0, percent: 100 };
 
       let okCount = 0;
-      enabledList.forEach((ob) => {
-        const key = `${client.id}::${ob}`;
-        const val = (inputValues[key] !== undefined ? inputValues[key] : '') || '';
+      applicable.forEach((c) => {
+        const key = `${c.id}::${obrigacao}::${competencia}`;
+        const val = inputValues[key] || '';
         if (val.trim().toUpperCase() === 'OK') {
           okCount++;
         }
       });
 
-      const percent = Math.round((okCount / totalEnabled) * 100);
-      return { totalEnabled, okCount, percent };
+      const percent = Math.round((okCount / total) * 100);
+      return { total, okCount, percent };
     },
-    [currentObligations, isObligationEnabled, inputValues]
+    [tabClients, isObligationEnabled, inputValues]
   );
 
-  // Clientes filtrados e ordenados para a aba ativa
-  const tabClients = useMemo(() => {
-    const filtered = clients.filter((c) => {
-      // 0. Apenas clientes ATIVOS participam do setor de apuração
-      const statusNorm = (c.status || '').trim().toUpperCase();
-      if (statusNorm !== 'ATIVO') return false;
+  // Calcula estatísticas gerais da competência mais recente / corrente
+  const currentMonthIdx = new Date().getMonth();
+  const currentMonthCompetencia = formatCompetencia(currentMonthIdx, selectedYear, true);
 
-      // 1. Filtrar pelo escopo oficial da aba (166 Simples Nacional, 18 Lucro Presumido, 7 Folha de Pagamento)
-      const scopeSet = APURACAO_CLIENT_IDS[activeTab];
-      const matchRegime = scopeSet ? scopeSet.has(c.id) : false;
-
-      if (!matchRegime) return false;
-
-      // 2. Filtro textual de busca
-      if (searchTerm.trim()) {
-        const term = searchTerm.toLowerCase();
-        const matchName = (c.razao_social || '').toLowerCase().includes(term);
-        const matchCnpj = (c.cnpj || '').includes(term);
-        const matchCity = (c.localidade || '').toLowerCase().includes(term);
-        const matchDominio = (c.numero_pasta || '').toLowerCase().includes(term);
-        return matchName || matchCnpj || matchCity || matchDominio;
-      }
-
-      return true;
+  const overallCurrentMonthProgress = useMemo(() => {
+    if (currentObligations.length === 0) return 0;
+    let sumPercent = 0;
+    currentObligations.forEach((ob) => {
+      const stats = getObligationMonthStats(ob, currentMonthCompetencia);
+      sumPercent += stats.percent;
     });
+    return Math.round(sumPercent / currentObligations.length);
+  }, [currentObligations, getObligationMonthStats, currentMonthCompetencia]);
 
-    // Ordenação dinâmica pela coluna selecionada
-    return filtered.sort((a, b) => {
-      let comparison = 0;
-
-      switch (sortField) {
-        case 'numero_pasta': {
-          const pastaA = (a.numero_pasta || '').trim();
-          const pastaB = (b.numero_pasta || '').trim();
-          comparison = pastaA.localeCompare(pastaB, undefined, { numeric: true, sensitivity: 'base' });
-          break;
-        }
-        case 'razao_social': {
-          const nameA = (a.razao_social || '').trim();
-          const nameB = (b.razao_social || '').trim();
-          comparison = nameA.localeCompare(nameB, 'pt-BR', { sensitivity: 'base' });
-          break;
-        }
-        case 'cnpj': {
-          const cnpjA = (a.cnpj || a.cpf || '').replace(/\D/g, '');
-          const cnpjB = (b.cnpj || b.cpf || '').replace(/\D/g, '');
-          comparison = cnpjA.localeCompare(cnpjB);
-          break;
-        }
-        case 'localidade': {
-          const locA = (a.localidade || '').trim();
-          const locB = (b.localidade || '').trim();
-          comparison = locA.localeCompare(locB, 'pt-BR', { sensitivity: 'base' });
-          break;
-        }
-        case 'progresso': {
-          const progA = calculateClientProgress(a).percent;
-          const progB = calculateClientProgress(b).percent;
-          comparison = progA - progB;
-          break;
-        }
-        default: {
-          // Ordenação por uma obrigação dinâmica específica
-          const valA = (inputValues[`${a.id}::${sortField}`] || '').trim();
-          const valB = (inputValues[`${b.id}::${sortField}`] || '').trim();
-          comparison = valA.localeCompare(valB, 'pt-BR', { sensitivity: 'base' });
-          break;
-        }
-      }
-
-      return sortDirection === 'asc' ? comparison : -comparison;
-    });
-  }, [clients, activeTab, searchTerm, sortField, sortDirection, calculateClientProgress, inputValues]);
-
-  // Totais Gerais do Dashboard no topo da página
-  const dashboardStats = useMemo(() => {
-    let totalClientsCount = tabClients.length;
-    let totalCompletedClients = 0;
-    let sumPercentages = 0;
-
-    tabClients.forEach((c) => {
-      const { percent } = calculateClientProgress(c);
-      if (percent === 100) totalCompletedClients++;
-      sumPercentages += percent;
-    });
-
-    const averageProgress = totalClientsCount > 0 ? Math.round(sumPercentages / totalClientsCount) : 0;
-
-    return {
-      totalClientsCount,
-      totalCompletedClients,
-      pendingClients: totalClientsCount - totalCompletedClients,
-      averageProgress,
-    };
-  }, [tabClients, calculateClientProgress]);
-
-  // Ação rápida: Marcar todos os campos habilitados do cliente como "OK"
-  const handleMarkAllClientOk = async (client: Client) => {
-    const enabledList = currentObligations.filter((ob) => isObligationEnabled(client, ob));
-    if (enabledList.length === 0) return;
-
-    if (!window.confirm(`Deseja marcar todas as ${enabledList.length} obrigações de "${client.razao_social}" como "OK"?`)) {
-      return;
-    }
-
-    const updates: Record<string, string> = {};
-    for (const ob of enabledList) {
-      const key = `${client.id}::${ob}`;
-      updates[key] = 'OK';
-    }
-    setInputValues((prev) => ({ ...prev, ...updates }));
-
-    // Persiste em lote no banco
-    try {
-      const payloads = enabledList.map((ob) => ({
-        client_id: client.id,
-        competencia: selectedCompetencia,
-        regime: activeTab,
-        obrigacao: ob,
-        valor: 'OK',
-        status: 'OK',
-        updated_by: user?.id || null,
-        updated_at: new Date().toISOString(),
-      }));
-
-      const { error } = await supabase
-        .from('fiscal_records')
-        .upsert(payloads, { onConflict: 'client_id,competencia,obrigacao' })
-        .select();
-
-      if (error) throw error;
-
-      toast(`Todas as obrigações de "${client.razao_social}" foram marcadas como OK!`, 'success');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha ao salvar em lote.';
-      toast(msg, 'error');
-    }
+  // Abrir Modal de Drilldown para uma apuração
+  const handleOpenDrilldown = (obrigacao: string, comp: string) => {
+    setSelectedObligation(obrigacao);
+    setSelectedCompForDrilldown(comp);
+    setDrilldownModalOpen(true);
   };
 
   return (
-    <div className="space-y-6">
-      {/* 1. CABEÇALHO */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-5">
+      {/* 1. CABEÇALHO DA PÁGINA */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center space-x-2">
-            <h1 className="text-2xl font-bold text-[#1E2022] tracking-tight flex items-center space-x-2">
-              <Calculator className="w-6 h-6 text-[#C5A059]" />
-              <span>Apuração Fiscal e Contábil</span>
-            </h1>
-            <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-amber-50 text-amber-800 border border-amber-200">
-              Rotina Mensal
+          <div className="flex items-center space-x-2 text-[11px] font-bold text-[#A67C2E] uppercase tracking-wider">
+            <span className="flex items-center space-x-1">
+              <Calculator className="w-3.5 h-3.5 text-[#C5A059]" />
+              <span>Rotina de Apuração Mensal</span>
+            </span>
+            <span>•</span>
+            <span className="bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+              Visão Consolidada por Mês
             </span>
           </div>
-          <p className="text-xs text-gray-500 mt-1">
-            Controle de obrigações tributárias, rotinas de fechamento e apuração mensal por cliente e regime
+          <h1 className="text-2xl font-bold text-stone-900 tracking-tight mt-0.5">
+            Apuração Fiscal e Contábil
+          </h1>
+          <p className="text-xs text-stone-500 mt-0.5">
+            Acompanhe o percentual de conclusão por tipo de apuração ao longo dos meses do ano. Clique em qualquer apuração para ver os clientes e atualizar o status.
           </p>
         </div>
 
-        {/* Botão de Atualizar */}
-        <div className="flex items-center space-x-3">
+        {/* Seletor de Ano e Atualização */}
+        <div className="flex items-center space-x-3 shrink-0">
+          <div className="flex items-center space-x-2 bg-white px-3 py-1.5 rounded-2xl border border-stone-200/80 shadow-2xs">
+            <Calendar className="w-4 h-4 text-[#C5A059]" />
+            <span className="text-xs text-stone-500 font-medium">Ano:</span>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="text-xs font-bold bg-transparent text-stone-800 focus:outline-none cursor-pointer"
+            >
+              {availableYears.map((yr) => (
+                <option key={yr} value={yr}>
+                  {yr}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
             type="button"
             onClick={fetchApuracaoData}
+            disabled={loading}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 border border-stone-200 rounded-2xl text-xs font-bold text-stone-700 bg-white hover:bg-stone-50 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
             title="Recarregar dados"
-            className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#C5A059]' : ''}`} />
-            <span>Atualizar</span>
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Atualizar</span>
           </button>
         </div>
       </div>
 
-      {/* 2. BARRA DE CONTROLES: FILTRO DE PERÍODO (MÊS / ANO) + CARDS RESUMO */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
-        {/* Card Seletor de Período */}
-        <div className="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center space-x-2 text-stone-700 mb-2">
-            <Calendar className="w-4 h-4 text-[#C5A059]" />
-            <span className="text-xs font-bold">Competência:</span>
-            <span className="text-xs font-mono font-extrabold text-[#C5A059] bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60">
-              {selectedCompetencia}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label htmlFor="comp-month" className="block text-[10px] font-semibold text-gray-500 mb-1">
-                Mês
-              </label>
-              <select
-                id="comp-month"
-                value={cardMonth}
-                onChange={(e) => setCardMonth(Number(e.target.value))}
-                className="w-full text-xs font-semibold bg-gray-50 hover:bg-gray-100 text-gray-800 border border-gray-200 rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-[#C5A059] focus:outline-none cursor-pointer"
-              >
-                {[
-                  { value: 0, label: '01 - Jan' },
-                  { value: 1, label: '02 - Fev' },
-                  { value: 2, label: '03 - Mar' },
-                  { value: 3, label: '04 - Abr' },
-                  { value: 4, label: '05 - Mai' },
-                  { value: 5, label: '06 - Jun' },
-                  { value: 6, label: '07 - Jul' },
-                  { value: 7, label: '08 - Ago' },
-                  { value: 8, label: '09 - Set' },
-                  { value: 9, label: '10 - Out' },
-                  { value: 10, label: '11 - Nov' },
-                  { value: 11, label: '12 - Dez' },
-                ].map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="comp-year" className="block text-[10px] font-semibold text-gray-500 mb-1">
-                Ano
-              </label>
-              <select
-                id="comp-year"
-                value={cardYear}
-                onChange={(e) => setCardYear(Number(e.target.value))}
-                className="w-full text-xs font-semibold bg-gray-50 hover:bg-gray-100 text-gray-800 border border-gray-200 rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-[#C5A059] focus:outline-none cursor-pointer"
-              >
-                {availableYears.map((yr) => (
-                  <option key={yr} value={yr}>
-                    {yr}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
+      {/* 2. CARDS DE RESUMO OPERACIONAL */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
         {/* Card 1: Total de Clientes no Regime */}
-        <div className="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-xs flex items-center justify-between">
+        <div className="bg-white p-4 rounded-3xl border border-stone-200/70 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
-              Clientes no Escopo
+            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
+              Clientes no Regime
             </span>
-            <div className="text-xl font-extrabold text-stone-800 mt-1">
-              {dashboardStats.totalClientsCount}
+            <div className="text-2xl font-extrabold text-stone-800 mt-0.5">
+              {tabClients.length}
             </div>
-            <div className="text-[10px] text-gray-500">
-              {activeTab}
+            <div className="text-[11px] text-stone-500 font-medium mt-0.5">
+              {activeTab} • Ativos
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shrink-0">
+          <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-2xs">
             <Building className="w-5 h-5" />
           </div>
         </div>
 
-        {/* Card 2: Clientes Concluídos 100% */}
-        <div className="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-xs flex items-center justify-between">
+        {/* Card 2: Total de Apurações do Regime */}
+        <div className="bg-white p-4 rounded-3xl border border-stone-200/70 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">
-              100% Apurados
+            <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">
+              Tipos de Apuração
             </span>
-            <div className="text-xl font-extrabold text-emerald-600 mt-1">
-              {dashboardStats.totalCompletedClients}
+            <div className="text-2xl font-extrabold text-stone-800 mt-0.5">
+              {currentObligations.length}
             </div>
-            <div className="text-[10px] text-gray-500">
-              {dashboardStats.pendingClients} cliente(s) pendente(s)
+            <div className="text-[11px] text-stone-500 font-medium mt-0.5">
+              Etapa Envio Desconsiderada
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shrink-0">
-            <CheckCircle2 className="w-5 h-5" />
+          <div className="w-11 h-11 rounded-2xl bg-amber-50 text-[#C5A059] flex items-center justify-center border border-amber-200/60 shadow-2xs">
+            <Layers className="w-5 h-5" />
           </div>
         </div>
 
-        {/* Card 3: Progresso Médio da Rotina */}
-        <div className="bg-white p-3.5 rounded-2xl border border-gray-200 shadow-xs flex items-center justify-between">
+        {/* Card 3: Progresso da Competência Corrente */}
+        <div className="bg-white p-4 rounded-3xl border border-stone-200/70 shadow-xs flex items-center justify-between">
           <div className="w-full mr-3">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                Progresso Geral
+              <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
+                Mês Corrente ({currentMonthCompetencia})
               </span>
-              <span className="text-xs font-extrabold text-[#C5A059]">
-                {dashboardStats.averageProgress}%
+              <span className="text-sm font-extrabold text-emerald-700">
+                {overallCurrentMonthProgress}%
               </span>
             </div>
-            <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
+            <div className="w-full bg-stone-100 h-2 rounded-full overflow-hidden">
               <div
-                style={{ width: `${dashboardStats.averageProgress}%` }}
-                className="bg-gradient-to-r from-[#C5A059] to-[#D4B26F] h-full rounded-full transition-all duration-500"
+                style={{ width: `${overallCurrentMonthProgress}%` }}
+                className="bg-emerald-600 h-full rounded-full transition-all duration-500"
               />
             </div>
-            <div className="text-[10px] text-gray-400 mt-1">
-              Média de apuração do mês
+            <div className="text-[10px] text-stone-400 mt-1">
+              Média consolidada do mês atual
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-amber-50 text-[#C5A059] flex items-center justify-center border border-amber-200 shrink-0">
+          <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200 shadow-2xs shrink-0">
             <TrendingUp className="w-5 h-5" />
           </div>
         </div>
       </div>
 
-      {/* 3. BARRA DE NAVEGAÇÃO POR ABAS (TABS) & BUSCA */}
-      <div className="bg-white p-3 rounded-2xl border border-gray-200 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        {/* Abas */}
-        <div className="flex items-center space-x-1.5 bg-gray-100 p-1 rounded-xl overflow-x-auto scrollbar-none">
+      {/* 3. BARRA DE SELEÇÃO DE REGIME (TABS) */}
+      <div className="bg-white p-2.5 rounded-3xl border border-stone-200/70 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center space-x-1.5 bg-stone-100/80 p-1 rounded-2xl overflow-x-auto scrollbar-none">
           {FISCAL_REGIME_OPTIONS.map((regime) => {
             const isActive = activeTab === regime.value;
-            // Contagem de clientes naquele regime
             const scopeSet = APURACAO_CLIENT_IDS[regime.value];
             const count = clients.filter((c) => {
               const statusNorm = (c.status || '').trim().toUpperCase();
@@ -545,16 +409,16 @@ export const Apuracao: React.FC = () => {
                 key={regime.value}
                 type="button"
                 onClick={() => setActiveTab(regime.value)}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap inline-flex items-center space-x-1.5 cursor-pointer ${
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap inline-flex items-center space-x-2 cursor-pointer ${
                   isActive
-                    ? 'bg-white text-[#1E2022] shadow-xs'
-                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200/50'
+                    ? 'bg-white text-stone-900 shadow-xs scale-[1.01]'
+                    : 'text-stone-500 hover:text-stone-900 hover:bg-stone-200/50'
                 }`}
               >
                 <span>{regime.label}</span>
                 <span
-                  className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                    isActive ? 'bg-amber-100 text-amber-900 font-extrabold' : 'bg-gray-200 text-gray-600'
+                  className={`text-[10px] font-mono px-2 py-0.2 rounded-full ${
+                    isActive ? 'bg-amber-100 text-amber-900 font-extrabold' : 'bg-stone-200 text-stone-600'
                   }`}
                 >
                   {count}
@@ -564,356 +428,183 @@ export const Apuracao: React.FC = () => {
           })}
         </div>
 
-        {/* Campo de Busca Rápida */}
-        <div className="relative min-w-[240px]">
-          <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por cliente, CNPJ ou cidade..."
-            className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 focus:bg-white border border-gray-200 rounded-xl focus:ring-1 focus:ring-[#C5A059] focus:outline-none transition-all"
-          />
+        <div className="text-xs text-stone-400 font-medium px-2">
+          <span>{tabClients.length} clientes ativos monitorados</span>
         </div>
       </div>
 
-      {/* 4. TABELA DINÂMICA DE APURAÇÃO (COM ROLAGEM HORIZONTAL E COLUNAS CONGELADAS) */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto relative">
-          <table className="w-full text-left border-collapse min-w-max">
-            <thead className="sticky top-16 z-20">
-              <tr className="bg-stone-50 border-b border-gray-200 text-[10px] font-bold text-gray-600 uppercase tracking-wider select-none shadow-xs">
-                {/* Colunas Fixas Congeladas à Esquerda e Topo */}
-                <th className="py-2 px-2.5 sticky top-16 left-0 z-30 bg-stone-50 shadow-[1px_0_0_0_#E5E7EB] w-[240px] min-w-[240px] max-w-[240px]">
-                  <button
-                    type="button"
-                    onClick={() => handleSort('razao_social')}
-                    className="flex items-center space-x-1 hover:text-[#C5A059] transition-colors cursor-pointer group text-left"
-                  >
-                    <span>Razão Social / Cliente</span>
-                    {sortField === 'razao_social' ? (
-                      sortDirection === 'asc' ? (
-                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
-                      ) : (
-                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
-                      )
-                    ) : (
-                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
-                    )}
-                  </button>
+      {/* 4. NOVA TABELA PRINCIPAL CONSOLIDADA (LINHAS = APURAÇÕES, COLUNAS = MESES) */}
+      <div className="bg-white rounded-3xl border border-stone-200/70 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto min-h-[380px]">
+          <table className="w-full text-left border-collapse">
+            <thead className="sticky top-0 z-20 bg-stone-100 shadow-xs">
+              <tr className="border-b border-stone-200 text-[11px] font-bold text-stone-600 uppercase tracking-wider select-none">
+                {/* Linha Fixa da Apuração */}
+                <th className="py-3 px-4 bg-stone-100 w-[240px] min-w-[240px] max-w-[260px] sticky left-0 z-30 shadow-[1px_0_0_0_#E5E7EB]">
+                  Tipo de Apuração
                 </th>
 
-                <th className="py-2 px-2 sticky top-16 left-[240px] z-30 bg-stone-50 shadow-[1px_0_0_0_#E5E7EB] w-[140px] min-w-[140px] max-w-[140px] whitespace-nowrap">
-                  <button
-                    type="button"
-                    onClick={() => handleSort('cnpj')}
-                    className="flex items-center space-x-1 hover:text-[#C5A059] transition-colors cursor-pointer group"
-                  >
-                    <span>CNPJ</span>
-                    {sortField === 'cnpj' ? (
-                      sortDirection === 'asc' ? (
-                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
-                      ) : (
-                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
-                      )
-                    ) : (
-                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
-                    )}
-                  </button>
-                </th>
+                {/* 12 Colunas de Meses (JAN a DEZ) */}
+                {MONTH_NAMES_SHORT.map((mShort, idx) => {
+                  const compStr = yearCompetencias[idx];
+                  const isCurrent = idx === currentMonthIdx && selectedYear === new Date().getFullYear();
 
-                <th className="py-2 px-1.5 min-w-[80px] whitespace-nowrap text-center bg-stone-50">
-                  Portais
-                </th>
-
-                <th className="py-2 px-2 min-w-[110px] whitespace-nowrap bg-stone-50">
-                  <button
-                    type="button"
-                    onClick={() => handleSort('localidade')}
-                    className="flex items-center space-x-1 hover:text-[#C5A059] transition-colors cursor-pointer group"
-                  >
-                    <span>Localidade</span>
-                    {sortField === 'localidade' ? (
-                      sortDirection === 'asc' ? (
-                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
-                      ) : (
-                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
-                      )
-                    ) : (
-                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
-                    )}
-                  </button>
-                </th>
-
-                {/* Colunas Dinâmicas: Uma para cada obrigação com ordenação */}
-                {currentObligations.map((obrigacao) => (
-                  <th
-                    key={obrigacao}
-                    className="py-1.5 px-1 text-center text-[9px] min-w-[95px] max-w-[120px] whitespace-normal leading-tight border-l border-gray-100 bg-stone-50"
-                    title={`Clique para ordenar por: ${obrigacao}`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => handleSort(obrigacao)}
-                      className="w-full flex flex-col items-center justify-center hover:text-[#C5A059] transition-colors cursor-pointer group"
+                  return (
+                    <th
+                      key={compStr}
+                      className={`py-3 px-2 text-center min-w-[76px] whitespace-nowrap bg-stone-100 ${
+                        isCurrent ? 'text-amber-800 font-extrabold' : 'text-stone-600'
+                      }`}
+                      title={`Competência ${compStr}`}
                     >
-                      <span className="line-clamp-2">{obrigacao}</span>
-                      {sortField === obrigacao ? (
-                        sortDirection === 'asc' ? (
-                          <ArrowUp className="w-2.5 h-2.5 text-[#C5A059] mt-0.5" />
-                        ) : (
-                          <ArrowDown className="w-2.5 h-2.5 text-[#C5A059] mt-0.5" />
-                        )
-                      ) : (
-                        <ArrowUpDown className="w-2.5 h-2.5 text-stone-300 group-hover:text-stone-400 mt-0.5" />
-                      )}
-                    </button>
-                  </th>
-                ))}
-
-                {/* Coluna Final: % Concluído com ordenação */}
-                <th className="py-2 px-2 text-center sticky top-16 right-0 z-30 bg-stone-50 shadow-[-1px_0_0_0_#E5E7EB] min-w-[105px]">
-                  <button
-                    type="button"
-                    onClick={() => handleSort('progresso')}
-                    className="w-full inline-flex items-center justify-center space-x-1 hover:text-[#C5A059] transition-colors cursor-pointer group"
-                  >
-                    <span>% Concluído</span>
-                    {sortField === 'progresso' ? (
-                      sortDirection === 'asc' ? (
-                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
-                      ) : (
-                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
-                      )
-                    ) : (
-                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
-                    )}
-                  </button>
-                </th>
+                      <div className="flex flex-col items-center justify-center">
+                        <span className="text-[11px]">{mShort}</span>
+                        <span className="text-[9px] text-stone-400 font-mono">
+                          {String(selectedYear).slice(-2)}
+                        </span>
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-gray-100 text-xs text-gray-700">
+            <tbody className="divide-y divide-stone-100 text-xs text-stone-700">
               {loading ? (
                 <tr>
-                  <td
-                    colSpan={currentObligations.length + 5}
-                    className="py-16 text-center text-gray-400"
-                  >
+                  <td colSpan={13} className="py-16 text-center text-stone-400">
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <div className="w-6 h-6 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin" />
-                      <span className="text-xs">Carregando rotina de apuração...</span>
+                      <span className="text-xs">Carregando matriz de apurações...</span>
                     </div>
                   </td>
                 </tr>
-              ) : tabClients.length === 0 ? (
+              ) : currentObligations.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={currentObligations.length + 5}
-                    className="py-16 text-center text-gray-400"
-                  >
-                    <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                    <span className="text-xs font-semibold">
-                      Nenhum cliente cadastrado no regime "{activeTab}"
-                      {searchTerm ? ' para o filtro informado' : ''}.
-                    </span>
+                  <td colSpan={13} className="py-12 text-center text-stone-400">
+                    Nenhuma apuração cadastrada para este regime.
                   </td>
                 </tr>
               ) : (
-                tabClients.map((client) => {
-                  const progress = calculateClientProgress(client);
-                  const is100 = progress.percent === 100;
+                currentObligations.map((obrigacao) => (
+                  <tr key={obrigacao} className="hover:bg-amber-50/20 transition-colors">
+                    {/* Nome da Apuração Clicável para Drilldown de Clientes */}
+                    <td className="py-3 px-4 sticky left-0 z-10 bg-white group-hover:bg-amber-50/20 shadow-[1px_0_0_0_#E5E7EB] w-[240px] min-w-[240px] max-w-[260px]">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDrilldown(obrigacao, currentMonthCompetencia)}
+                        className="text-left font-bold text-stone-900 hover:text-[#C5A059] transition-colors cursor-pointer group flex items-center justify-between w-full"
+                        title={`Clique para abrir a lista de clientes para: ${obrigacao}`}
+                      >
+                        <span className="truncate group-hover:underline underline-offset-2">
+                          {obrigacao}
+                        </span>
+                        <ChevronRight className="w-4 h-4 text-stone-300 group-hover:text-[#C5A059] group-hover:translate-x-0.5 transition-all shrink-0 ml-1" />
+                      </button>
+                    </td>
 
-                  return (
-                    <tr
-                      key={client.id}
-                      className={`hover:bg-amber-50/20 transition-colors ${
-                        is100 ? 'bg-emerald-50/15' : ''
-                      }`}
-                    >
-                      {/* Coluna 1 Fixa: Razão Social */}
-                      <td className="py-1.5 px-2.5 sticky left-0 z-10 bg-white group-hover:bg-amber-50/20 shadow-[1px_0_0_0_#E5E7EB] w-[240px] min-w-[240px] max-w-[240px]">
-                        <div className="flex items-center justify-between gap-1">
-                          <div className="min-w-0">
+                    {/* Células dos Meses com Porcentagem de Conclusão */}
+                    {MONTH_NAMES_SHORT.map((_, idx) => {
+                      const compStr = yearCompetencias[idx];
+                      const stats = getObligationMonthStats(obrigacao, compStr);
+                      const is100 = stats.percent === 100;
+                      const isZero = stats.percent === 0;
+
+                      return (
+                        <td
+                          key={compStr}
+                          onClick={() => handleOpenDrilldown(obrigacao, compStr)}
+                          className="py-2 px-1 text-center cursor-pointer hover:bg-amber-50/60 transition-colors"
+                          title={`${obrigacao} em ${compStr}: ${stats.percent}% (${stats.okCount}/${stats.total} clientes). Clique para abrir clientes.`}
+                        >
+                          <div className="flex flex-col items-center justify-center space-y-0.5">
+                            {/* Badge Porcentual */}
                             <span
-                              className="font-bold text-gray-900 truncate block text-[11px] leading-tight"
-                              title={client.razao_social}
-                            >
-                              {client.razao_social}
-                            </span>
-                            <div className="flex items-center space-x-1 text-[9px] text-gray-400">
-                              <span>Nº Domínio: {client.numero_pasta || '-'}</span>
-                              {client.parcelamento_ativo && (
-                                <span className="text-[#C5A059] font-bold">Parc. Ativo</span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Botão de Atalho para Marcar todos como OK */}
-                          <button
-                            type="button"
-                            onClick={() => handleMarkAllClientOk(client)}
-                            title="Marcar todas as obrigações deste cliente como OK"
-                            className="p-0.5 rounded hover:bg-emerald-100 text-gray-300 hover:text-emerald-700 transition-colors cursor-pointer shrink-0"
-                          >
-                            <CheckSquare className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </td>
-
-                      {/* Coluna 2 Fixa: CNPJ (sem máscara e com botão de copiar) */}
-                      <td className="py-1.5 px-2 sticky left-[240px] z-10 bg-white shadow-[1px_0_0_0_#E5E7EB] w-[140px] min-w-[140px] max-w-[140px] whitespace-nowrap">
-                        <RawCnpjCopyButton cnpj={client.cnpj || client.cpf} />
-                      </td>
-
-                      {/* Coluna 3: Portais com logins e senhas */}
-                      <td className="py-1.5 px-1.5 whitespace-nowrap text-center">
-                        <PortalsDropdown
-                          loginPrefeitura={client.login_prefeitura}
-                          senhaPrefeitura={client.senha_prefeitura}
-                          loginPostoFiscal={client.login_posto_fiscal}
-                          senhaPostoFiscal={client.senha_posto_fiscal}
-                          extraCredentials={client.client_credentials}
-                        />
-                      </td>
-
-                      {/* Coluna 4: Localidade */}
-                      <td className="py-1.5 px-2 text-[10px] text-gray-600 whitespace-nowrap truncate max-w-[130px]" title={client.localidade || '-'}>
-                        {client.localidade || '-'}
-                      </td>
-
-                      {/* Colunas Dinâmicas: Inputs de Obrigação */}
-                      {currentObligations.map((obrigacao) => {
-                        const key = `${client.id}::${obrigacao}`;
-                        const isEnabled = isObligationEnabled(client, obrigacao);
-                        const rawValue = inputValues[key] !== undefined ? inputValues[key] : '';
-                        const cleanValue = rawValue.trim();
-                        const isOk = cleanValue.toUpperCase() === 'OK';
-                        const isFilled = cleanValue.length > 0;
-                        const isSavingThis = savingKey === key;
-
-                        // 1. Obrigação NÃO habilitada para este cliente:
-                        // Mantém desabilitado, marca d'água cinza claro, sem permitir digitação
-                        if (!isEnabled) {
-                          return (
-                            <td
-                              key={obrigacao}
-                              className="py-1 px-1 text-center bg-gray-50/80 border-l border-gray-100"
-                              title="Obrigação não aplicável a este cliente"
-                            >
-                              <div className="w-full py-0.5 text-[9px] text-gray-300 font-mono select-none">
-                                N/A
-                              </div>
-                            </td>
-                          );
-                        }
-
-                        // 2. Obrigação HABILITADA:
-                        // Input inline com estilização condicional (Verde se OK, Vermelho se outro valor, Neutro se vazio)
-                        let inputStyle = 'bg-white border-gray-200 text-gray-800 focus:border-[#C5A059]';
-                        if (isOk) {
-                          inputStyle = 'bg-emerald-50 border-emerald-400 text-emerald-800 font-extrabold shadow-2xs';
-                        } else if (isFilled) {
-                          inputStyle = 'bg-rose-50 border-rose-300 text-rose-700 font-semibold';
-                        }
-
-                        return (
-                          <td
-                            key={obrigacao}
-                            className="py-1 px-1 text-center border-l border-gray-100 relative min-w-[95px] max-w-[120px]"
-                          >
-                            <input
-                              type="text"
-                              value={rawValue}
-                              onChange={(e) => handleCellChange(client, obrigacao, e.target.value)}
-                              onBlur={() => handleCellBlur(client, obrigacao)}
-                              placeholder="-"
-                              title={`Valor: "${rawValue}" | Digite "OK" para concluir`}
-                              className={`w-full text-center text-[10px] py-0.5 px-1 rounded border transition-all focus:outline-none focus:ring-1 focus:ring-[#C5A059] leading-tight ${inputStyle}`}
-                            />
-                            {isSavingThis && (
-                              <span className="absolute right-1.5 top-1.5 w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
-                            )}
-                          </td>
-                        );
-                      })}
-
-                      {/* Coluna Final Fixa: % Concluído com Barra de Progresso */}
-                      <td className="py-1 px-2 sticky right-0 z-10 bg-white shadow-[-1px_0_0_0_#E5E7EB] text-center min-w-[105px]">
-                        <div className="flex flex-col items-center justify-center space-y-0.5">
-                          <div className="flex items-center space-x-1">
-                            <span
-                              className={`text-[10px] font-black font-mono ${
+                              className={`inline-flex items-center space-x-0.5 px-2 py-0.5 rounded-lg text-[10px] font-bold tracking-tight shadow-2xs transition-transform hover:scale-105 ${
                                 is100
-                                  ? 'text-emerald-600'
-                                  : progress.percent > 0
-                                  ? 'text-[#C5A059]'
-                                  : 'text-gray-400'
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold'
+                                  : isZero
+                                  ? 'bg-stone-100 text-stone-400 border border-stone-200/80 font-normal'
+                                  : 'bg-amber-100 text-amber-900 border border-amber-300 font-bold'
                               }`}
                             >
-                              {progress.percent}%
+                              <span>{stats.percent}%</span>
+                              {is100 && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 shrink-0" />}
                             </span>
-                            {is100 && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
-                          </div>
 
-                          {/* Mini Barra de Progresso */}
-                          <div className="w-14 bg-gray-100 h-1 rounded-full overflow-hidden">
-                            <div
-                              style={{ width: `${progress.percent}%` }}
-                              className={`h-full rounded-full transition-all duration-300 ${
-                                is100 ? 'bg-emerald-500' : 'bg-[#C5A059]'
-                              }`}
-                            />
+                            {/* Contagem discreta */}
+                            <span className="text-[8px] font-mono text-stone-400">
+                              {stats.okCount}/{stats.total}
+                            </span>
                           </div>
-
-                          <span className="text-[8px] text-gray-400 font-mono">
-                            {progress.okCount}/{progress.totalEnabled}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
 
-        {/* Rodapé da Tabela com Legenda das Cores */}
-        <div className="p-3 bg-stone-50 border-t border-gray-200 flex flex-wrap items-center justify-between text-xs text-gray-500 gap-3">
-          <div className="flex items-center space-x-4">
+        {/* Rodapé da Matriz com Instruções e Legenda */}
+        <div className="p-4 px-6 bg-stone-50/80 border-t border-stone-200/70 flex flex-wrap items-center justify-between text-xs text-stone-500 gap-3 rounded-b-3xl">
+          <div className="flex items-center space-x-2">
+            <Sparkles className="w-4 h-4 text-[#C5A059]" />
             <span>
-              Total de Clientes no Regime: <strong className="text-gray-800">{tabClients.length}</strong>
-            </span>
-            <span className="border-l pl-3 border-gray-300">
-              Obrigações na Rotina: <strong className="text-gray-800">{currentObligations.length}</strong>
+              <strong>Dica de uso:</strong> Clique no nome de qualquer apuração ou na célula de qualquer mês para abrir a listagem completa de clientes e alterar o status.
             </span>
           </div>
 
-          {/* Legenda de Cores */}
-          <div className="flex items-center flex-wrap gap-3 text-[11px]">
-            <div className="flex items-center space-x-1">
-              <span className="w-3 h-3 rounded bg-emerald-100 border border-emerald-400"></span>
-              <span className="text-emerald-900 font-semibold">"OK" (Concluído)</span>
+          {/* Legenda de Conclusão */}
+          <div className="flex items-center space-x-3 text-[11px]">
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded-md bg-emerald-100 border border-emerald-400"></span>
+              <span className="font-semibold text-emerald-900">100% Concluído</span>
             </div>
-            <div className="flex items-center space-x-1">
-              <span className="w-3 h-3 rounded bg-rose-100 border border-rose-300"></span>
-              <span className="text-rose-700 font-semibold">Diferente de "OK" (Observação/Pendente)</span>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded-md bg-amber-100 border border-amber-300"></span>
+              <span className="font-semibold text-amber-900">Parcial</span>
             </div>
-            <div className="flex items-center space-x-1">
-              <span className="w-3 h-3 rounded bg-gray-100 border border-gray-300"></span>
-              <span className="text-gray-400">Vazio (Não iniciado)</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <span className="w-3 h-3 rounded bg-gray-50 border border-gray-200 text-[8px] flex items-center justify-center font-mono text-gray-400">
-                N/A
-              </span>
-              <span className="text-gray-400">Desabilitado (Não aplicável)</span>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-3 h-3 rounded-md bg-stone-100 border border-stone-300"></span>
+              <span className="text-stone-400">0% Pendente</span>
             </div>
           </div>
         </div>
       </div>
+
+      {/* 5. MODAL DE DRILLDOWN DE CLIENTES POR APURAÇÃO */}
+      {drilldownModalOpen && (
+        <ApuracaoDrilldownModal
+          isOpen={drilldownModalOpen}
+          onClose={() => setDrilldownModalOpen(false)}
+          obrigacaoName={selectedObligation}
+          regime={activeTab}
+          competencia={selectedCompForDrilldown}
+          clients={tabClients}
+          inputValues={inputValues}
+          onStatusChange={handleStatusChange}
+          isObligationEnabled={isObligationEnabled}
+        />
+      )}
+
+      {/* 6. MODAL DE VALIDAÇÃO DO ADM */}
+      {validationModalOpen && (
+        <ApuracaoValidationModal
+          isOpen={validationModalOpen}
+          onClose={() => setValidationModalOpen(false)}
+          client={clientToValidate}
+          competencia={compToValidate}
+          regime={activeTab}
+          obligations={currentObligations.filter((ob) =>
+            clientToValidate ? isObligationEnabled(clientToValidate, ob) : true
+          )}
+          onValidationSuccess={fetchApuracaoData}
+        />
+      )}
     </div>
   );
 };
+
 export default Apuracao;

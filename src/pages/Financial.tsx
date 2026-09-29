@@ -33,6 +33,7 @@ import { FinancialExpenseModal } from '../components/FinancialExpenseModal';
 import { SettleEntryModal } from '../components/SettleEntryModal';
 import { SettleExpenseModal } from '../components/SettleExpenseModal';
 import { BatchSettleModal } from '../components/BatchSettleModal';
+import { MultiSelectDropdown } from '../components/MultiSelectDropdown';
 import { EXPENSE_PAYMENT_METHODS } from '../constants/expenseCategories';
 import { exportFinancialEntriesToExcel, exportFinancialExpensesToExcel } from '../utils/excelExport';
 import type { FinancialEntry, FinancialExpense, FinancialEntryStatus } from '../types';
@@ -54,11 +55,11 @@ export const Financial: React.FC = () => {
     return formatCompetencia(now.getMonth(), now.getFullYear(), true);
   }, []);
 
-  // Filtros Globais: Por padrão já entra filtrado no Mês Corrente
+  // Filtros Globais: Por padrão já entra filtrado no Mês Corrente (Multi-Select)
   const [selectedYear, setSelectedYear] = useState<string>('Todos');
-  const [selectedCompetencia, setSelectedCompetencia] = useState<string>(() => {
+  const [selectedCompetencias, setSelectedCompetencias] = useState<string[]>(() => {
     const now = new Date();
-    return formatCompetencia(now.getMonth(), now.getFullYear(), true);
+    return [formatCompetencia(now.getMonth(), now.getFullYear(), true)];
   });
   const [bancoFilter, setBancoFilter] = useState<string>('Todos');
   const [statusFilter, setStatusFilter] = useState<string>('Todos');
@@ -232,7 +233,10 @@ export const Financial: React.FC = () => {
         const { year } = parseCompetencia(e.competencia || '');
         matchYear = String(year) === selectedYear;
       }
-      const matchComp = selectedCompetencia === 'Todas' || e.competencia === selectedCompetencia;
+      const matchComp =
+        selectedCompetencias.length === 0 ||
+        selectedCompetencias.includes('Todas') ||
+        selectedCompetencias.includes(e.competencia);
       
       const expBanco = (e.banco || '').trim().toLowerCase();
       const filterBanco = bancoFilter.trim().toLowerCase();
@@ -246,7 +250,7 @@ export const Financial: React.FC = () => {
       const isPending = normStatus === 'A PAGAR';
       return matchYear && matchComp && matchBanco && matchConta && isPending;
     }).length;
-  }, [expenses, selectedYear, selectedCompetencia, bancoFilter, contaContabilFilter]);
+  }, [expenses, selectedYear, selectedCompetencias, bancoFilter, contaContabilFilter]);
 
   // Lista de clientes únicos para filtro
   const uniqueClients = useMemo(() => {
@@ -271,7 +275,10 @@ export const Financial: React.FC = () => {
           matchYear = String(year) === selectedYear;
         }
 
-        const matchComp = selectedCompetencia === 'Todas' || e.competencia === selectedCompetencia;
+        const matchComp =
+          selectedCompetencias.length === 0 ||
+          selectedCompetencias.includes('Todas') ||
+          selectedCompetencias.includes(e.competencia);
         let matchBanco = true;
         if (bancoFilter !== 'Todos') {
           const entryBanco = (e.banco || '').trim().toLowerCase();
@@ -310,7 +317,7 @@ export const Financial: React.FC = () => {
         const nameB = b.client?.razao_social || b.cliente_nome_avulso || '';
         return nameA.localeCompare(nameB, 'pt-BR');
       });
-  }, [entries, entryViewFilter, selectedYear, selectedCompetencia, bancoFilter, clientFilter, statusFilter]);
+  }, [entries, entryViewFilter, selectedYear, selectedCompetencias, bancoFilter, clientFilter, statusFilter]);
 
   // Filtragem e Ordenação Crescente de Saídas por Data de Pagamento / Previsão
   const filteredExpenses = useMemo(() => {
@@ -322,7 +329,10 @@ export const Financial: React.FC = () => {
           matchYear = String(year) === selectedYear;
         }
 
-        const matchComp = selectedCompetencia === 'Todas' || e.competencia === selectedCompetencia;
+        const matchComp =
+          selectedCompetencias.length === 0 ||
+          selectedCompetencias.includes('Todas') ||
+          selectedCompetencias.includes(e.competencia);
 
         // Filtro Forma / Banco: robusto contra variações (ex: "Itaú" vs "Itaú (c/c)", espaços, maiúsculas/minúsculas)
         let matchBanco = true;
@@ -384,7 +394,7 @@ export const Financial: React.FC = () => {
         // Desempate final por descrição do pagamento
         return (a.descricao_pagamento || '').localeCompare(b.descricao_pagamento || '');
       });
-  }, [expenses, selectedYear, selectedCompetencia, bancoFilter, contaContabilFilter, statusFilter]);
+  }, [expenses, selectedYear, selectedCompetencias, bancoFilter, contaContabilFilter, statusFilter]);
 
   // Totais Calculados para os Cards de Resumo (Filtrados por cardMonth e cardYear)
   const currentMonthTotals = useMemo(() => {
@@ -1726,7 +1736,7 @@ export const Financial: React.FC = () => {
                 value={selectedYear}
                 onChange={(e) => {
                   setSelectedYear(e.target.value);
-                  setSelectedCompetencia('Todas');
+                  setSelectedCompetencias(['Todas']);
                 }}
                 className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-800 font-semibold focus:ring-1 focus:ring-[#C5A059]"
               >
@@ -1739,23 +1749,14 @@ export const Financial: React.FC = () => {
               </select>
             </div>
 
-            {/* Seletor de Competência */}
-            <div className="flex items-center space-x-1.5">
-              <Calendar className="w-3.5 h-3.5 text-gray-400" />
-              <span className="text-xs text-gray-500 font-medium">Competência:</span>
-              <select
-                value={selectedCompetencia}
-                onChange={(e) => setSelectedCompetencia(e.target.value)}
-                className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-800 font-mono font-medium focus:ring-1 focus:ring-[#C5A059]"
-              >
-                <option value="Todas">Todas as competências</option>
-                {availableCompetencias.map((comp) => (
-                  <option key={comp} value={comp}>
-                    {comp}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Seletor Multi-Select de Competências */}
+            <MultiSelectDropdown
+              label="Competência"
+              options={availableCompetencias}
+              selectedValues={selectedCompetencias}
+              onChange={setSelectedCompetencias}
+              allLabel="Todas"
+            />
 
             {/* Filtro Banco / Forma de Pagamento */}
             <div className="flex items-center space-x-1.5">
@@ -1832,8 +1833,11 @@ export const Financial: React.FC = () => {
                     toast('Nenhum recebimento encontrado com os filtros atuais.', 'info');
                     return;
                   }
+                  const compLabel = selectedCompetencias.includes('Todas') || selectedCompetencias.length === 0
+                    ? ''
+                    : selectedCompetencias.join('-');
                   const filterDesc = [
-                    selectedCompetencia !== 'Todas' ? selectedCompetencia : '',
+                    compLabel,
                     bancoFilter !== 'Todos' ? bancoFilter : '',
                     clientFilter !== 'Todos' ? clientFilter : '',
                     entryViewFilter !== 'TODOS' ? entryViewFilter : ''
@@ -1845,8 +1849,11 @@ export const Financial: React.FC = () => {
                     toast('Nenhuma saída encontrada com os filtros atuais.', 'info');
                     return;
                   }
+                  const compLabel = selectedCompetencias.includes('Todas') || selectedCompetencias.length === 0
+                    ? ''
+                    : selectedCompetencias.join('-');
                   const filterDesc = [
-                    selectedCompetencia !== 'Todas' ? selectedCompetencia : '',
+                    compLabel,
                     bancoFilter !== 'Todos' ? bancoFilter : '',
                     contaContabilFilter !== 'Todas' ? contaContabilFilter : '',
                     statusFilter !== 'Todos' ? statusFilter : ''
@@ -2431,7 +2438,11 @@ export const Financial: React.FC = () => {
           onClose={() => setIsEntryModalOpen(false)}
           onSuccess={fetchFinancialData}
           entryToEdit={selectedEntry}
-          defaultCompetencia={selectedCompetencia === 'Todas' ? currentMonthCompetencia : selectedCompetencia}
+          defaultCompetencia={
+            selectedCompetencias.length > 0 && selectedCompetencias[0] !== 'Todas'
+              ? selectedCompetencias[0]
+              : currentMonthCompetencia
+          }
         />
       )}
 
@@ -2442,7 +2453,11 @@ export const Financial: React.FC = () => {
           onClose={() => setIsExpenseModalOpen(false)}
           onSuccess={fetchFinancialData}
           expenseToEdit={selectedExpense}
-          defaultCompetencia={selectedCompetencia === 'Todas' ? currentMonthCompetencia : selectedCompetencia}
+          defaultCompetencia={
+            selectedCompetencias.length > 0 && selectedCompetencias[0] !== 'Todas'
+              ? selectedCompetencias[0]
+              : currentMonthCompetencia
+          }
         />
       )}
 
