@@ -59,10 +59,11 @@ export const Apuracao: React.FC = () => {
   const fetchApuracaoData = useCallback(async () => {
     setLoading(true);
     try {
-      // Busca clientes ativos ou com status normal
+      // Busca apenas clientes ativos para a rotina de apuração
       const { data: clientsData, error: clientErr } = await supabase
         .from('clients')
         .select('*')
+        .ilike('status', 'ATIVO')
         .order('razao_social', { ascending: true });
 
       if (clientErr) throw clientErr;
