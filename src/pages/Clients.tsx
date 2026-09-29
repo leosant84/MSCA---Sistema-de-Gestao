@@ -5,7 +5,6 @@ import {
   Building,
   Shield,
   RefreshCw,
-  FolderOpen,
   AlertTriangle,
   FileSpreadsheet,
   Receipt,
@@ -26,11 +25,10 @@ import { PortalsDropdown } from '../components/PortalsDropdown';
 import { ClientModal } from '../components/ClientModal';
 import { ExportClientsModal } from '../components/ExportClientsModal';
 import { isEntryOverdue } from '../utils/competencia';
-import { getDriveBasePath } from '../utils/driveConfig';
 import type { Client, FinancialEntry } from '../types';
 
 export const Clients: React.FC = () => {
-  const { user, isAdmin } = useAuth();
+  const { isAdmin } = useAuth();
   const { toast } = useToast();
   const location = useLocation();
 
@@ -68,49 +66,6 @@ export const Clients: React.FC = () => {
 
   // Referência para o atalho de teclado Ctrl+K
   const searchInputRef = useRef<HTMLInputElement>(null);
-
-  const handleOpenFolder = async (client: Client) => {
-    try {
-      const basePath = getDriveBasePath(user?.email);
-      const queryParams = new URLSearchParams({
-        name: client.razao_social,
-        folder: client.numero_pasta || '',
-        basePath: basePath,
-      });
-
-      let res: Response | null = null;
-
-      // 1. Tenta comunicar prioritariamente com a ponte local na porta 39871
-      try {
-        res = await fetch(`http://127.0.0.1:39871/api/open-folder?${queryParams.toString()}`);
-      } catch {
-        // 2. Se falhar, tenta rota relativa local (útil para desenvolvimento local vite)
-        try {
-          res = await fetch(`/api/open-folder?${queryParams.toString()}`);
-        } catch {
-          res = null;
-        }
-      }
-
-      if (!res) {
-        toast('O serviço local de pastas não está ativo. Inicie o "MSCA_Assistente_Pastas.bat" no seu computador.', 'error');
-        return;
-      }
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        toast(data.message || 'Não foi possível abrir a pasta no Google Drive.', 'error');
-      } else {
-        if (data.exactMatch) {
-          toast(`Pasta aberta: ${client.razao_social}`, 'success');
-        } else {
-          toast(`Diretório de clientes aberto (pasta específica não localizada)`, 'info');
-        }
-      }
-    } catch {
-      toast('O serviço local de pastas não está ativo. Inicie o "MSCA_Assistente_Pastas.bat" no seu computador.', 'error');
-    }
-  };
 
   const [financialEntries, setFinancialEntries] = useState<FinancialEntry[]>([]);
 
@@ -433,14 +388,12 @@ export const Clients: React.FC = () => {
 
       {/* Tabela de Clientes Estilo Card Flutuante */}
       <div className="bg-white/95 backdrop-blur-md rounded-3xl border border-slate-200/70 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto min-h-[300px]">
           <table className="w-full text-left border-collapse">
-            <thead>
+            <thead className="sticky top-16 z-20">
               {/* Linha Única do Cabeçalho: Títulos das Colunas com Setas de Ordenação */}
-              <tr className="bg-slate-50/80 border-b border-slate-200/60 text-[10px] font-bold text-stone-500 uppercase tracking-wider select-none">
-                <th className="py-2.5 px-2 text-center w-10">Pasta</th>
-
-                <th className="py-2.5 px-2.5 whitespace-nowrap">
+              <tr className="bg-slate-50 border-b border-slate-200/60 text-[10px] font-bold text-stone-500 uppercase tracking-wider select-none shadow-xs">
+                <th className="py-2.5 px-3 whitespace-nowrap">
                   <button
                     type="button"
                     onClick={() => handleSort('numero_pasta')}
@@ -540,6 +493,8 @@ export const Clients: React.FC = () => {
                   </button>
                 </th>
 
+                <th className="py-2.5 px-2.5">Portais</th>
+
                 <th className="py-2.5 px-2 text-center whitespace-nowrap">
                   <button
                     type="button"
@@ -559,8 +514,6 @@ export const Clients: React.FC = () => {
                     )}
                   </button>
                 </th>
-
-                <th className="py-2.5 px-2.5">Portais</th>
 
                 <th className="py-2.5 px-3 text-right whitespace-nowrap">
                   <div className="inline-flex items-center space-x-2 justify-end">
@@ -599,7 +552,7 @@ export const Clients: React.FC = () => {
             <tbody className="divide-y divide-gray-100 text-[11px] text-gray-700">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="py-10 text-center text-gray-400">
+                  <td colSpan={7} className="py-10 text-center text-gray-400">
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <div className="w-5 h-5 border-2 border-[#C5A059] border-t-transparent rounded-full animate-spin"></div>
                       <span className="text-[11px]">Carregando dados dos clientes...</span>
@@ -608,7 +561,7 @@ export const Clients: React.FC = () => {
                 </tr>
               ) : filteredClients.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-10 text-center text-gray-400">
+                  <td colSpan={7} className="py-10 text-center text-gray-400">
                     <Building className="w-7 h-7 text-gray-300 mx-auto mb-2" />
                     <span className="text-xs">Nenhum cliente localizado para esta busca.</span>
                   </td>
@@ -616,20 +569,8 @@ export const Clients: React.FC = () => {
               ) : (
                 filteredClients.map((c) => (
                   <tr key={c.id} className="hover:bg-amber-50/30 transition-colors">
-                    {/* Pastinha com o link */}
-                    <td className="py-2.5 px-2 text-center whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenFolder(c)}
-                        title={`Abrir pasta do cliente no Google Drive: ${getDriveBasePath()}\\${c.razao_social}`}
-                        className="p-1.5 inline-flex rounded-lg bg-amber-500/10 text-[#C5A059] hover:bg-[#C5A059] hover:text-white transition-all cursor-pointer group items-center justify-center shadow-2xs"
-                      >
-                        <FolderOpen className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
-                      </button>
-                    </td>
-
                     {/* Domínio */}
-                    <td className="py-2.5 px-2.5 whitespace-nowrap">
+                    <td className="py-2.5 px-3 whitespace-nowrap">
                       <span className="text-xs font-bold text-stone-800">
                         {c.numero_pasta || '-'}
                       </span>
@@ -700,6 +641,17 @@ export const Clients: React.FC = () => {
                       )}
                     </td>
 
+                    {/* Portais (Dropdown com setinha para copiar logins e senhas) */}
+                    <td className="py-2.5 px-2.5 whitespace-nowrap">
+                      <PortalsDropdown
+                        loginPrefeitura={c.login_prefeitura}
+                        senhaPrefeitura={c.senha_prefeitura}
+                        loginPostoFiscal={c.login_posto_fiscal}
+                        senhaPostoFiscal={c.senha_posto_fiscal}
+                        extraCredentials={c.client_credentials}
+                      />
+                    </td>
+
                     {/* Coluna Fator R */}
                     <td className="py-2.5 px-2.5 text-center whitespace-nowrap">
                       {c.fator_r === 'Sim' ? (
@@ -712,17 +664,6 @@ export const Clients: React.FC = () => {
                           Não
                         </span>
                       )}
-                    </td>
-
-                    {/* Portais (Dropdown com setinha para copiar logins e senhas) */}
-                    <td className="py-2.5 px-2.5 whitespace-nowrap">
-                      <PortalsDropdown
-                        loginPrefeitura={c.login_prefeitura}
-                        senhaPrefeitura={c.senha_prefeitura}
-                        loginPostoFiscal={c.login_posto_fiscal}
-                        senhaPostoFiscal={c.senha_posto_fiscal}
-                        extraCredentials={c.client_credentials}
-                      />
                     </td>
 
                     {/* Status */}

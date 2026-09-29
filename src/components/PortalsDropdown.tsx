@@ -26,9 +26,11 @@ export const PortalsDropdown: React.FC<PortalsDropdownProps> = ({
   extraCredentials,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [openUpwards, setOpenUpwards] = useState(false);
   const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
   const [copiedMap, setCopiedMap] = useState<Record<string, boolean>>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
   const portals: PortalItem[] = [];
@@ -87,6 +89,20 @@ export const PortalsDropdown: React.FC<PortalsDropdownProps> = ({
     setShowPasswordMap((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const handleToggle = () => {
+    if (!isOpen && dropdownRef.current) {
+      const rect = dropdownRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      // Se tiver menos de 300px abaixo e mais de 200px acima, abre para cima
+      if (spaceBelow < 300 && rect.top > 200) {
+        setOpenUpwards(true);
+      } else {
+        setOpenUpwards(false);
+      }
+    }
+    setIsOpen((prev) => !prev);
+  };
+
   if (portals.length === 0) {
     return <span className="text-gray-300 text-[11px]">-</span>;
   }
@@ -95,7 +111,7 @@ export const PortalsDropdown: React.FC<PortalsDropdownProps> = ({
     <div className="relative inline-block text-left" ref={dropdownRef}>
       <button
         type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
+        onClick={handleToggle}
         className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-lg border border-amber-200/80 bg-amber-50/60 hover:bg-amber-100/80 text-stone-800 text-[11px] font-semibold transition-all shadow-2xs cursor-pointer group"
       >
         <Globe className="w-3 h-3 text-[#C5A059]" />
@@ -111,7 +127,12 @@ export const PortalsDropdown: React.FC<PortalsDropdownProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 top-full mt-1.5 w-72 bg-white rounded-2xl shadow-xl border border-stone-200/80 py-2 px-2.5 z-50 animate-in fade-in zoom-in-95">
+        <div
+          ref={menuRef}
+          className={`absolute left-0 ${
+            openUpwards ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+          } w-72 bg-white rounded-2xl shadow-2xl border border-stone-200/80 py-2 px-2.5 z-50 animate-in fade-in zoom-in-95`}
+        >
           <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-stone-100 text-[10px] font-bold text-stone-400 uppercase tracking-wider">
             <span>Acessos aos Portais ({portals.length})</span>
           </div>

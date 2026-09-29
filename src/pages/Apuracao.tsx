@@ -581,10 +581,10 @@ export const Apuracao: React.FC = () => {
       <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto relative">
           <table className="w-full text-left border-collapse min-w-max">
-            <thead>
-              <tr className="bg-stone-50 border-b border-gray-200 text-[10px] font-bold text-gray-600 uppercase tracking-wider select-none">
-                {/* Colunas Fixas Congeladas à Esquerda */}
-                <th className="py-2 px-2.5 sticky left-0 z-20 bg-stone-50 shadow-[1px_0_0_0_#E5E7EB] w-[240px] min-w-[240px] max-w-[240px]">
+            <thead className="sticky top-16 z-20">
+              <tr className="bg-stone-50 border-b border-gray-200 text-[10px] font-bold text-gray-600 uppercase tracking-wider select-none shadow-xs">
+                {/* Colunas Fixas Congeladas à Esquerda e Topo */}
+                <th className="py-2 px-2.5 sticky top-16 left-0 z-30 bg-stone-50 shadow-[1px_0_0_0_#E5E7EB] w-[240px] min-w-[240px] max-w-[240px]">
                   <button
                     type="button"
                     onClick={() => handleSort('razao_social')}
@@ -603,7 +603,7 @@ export const Apuracao: React.FC = () => {
                   </button>
                 </th>
 
-                <th className="py-2 px-2 sticky left-[240px] z-20 bg-stone-50 shadow-[1px_0_0_0_#E5E7EB] w-[140px] min-w-[140px] max-w-[140px] whitespace-nowrap">
+                <th className="py-2 px-2 sticky top-16 left-[240px] z-30 bg-stone-50 shadow-[1px_0_0_0_#E5E7EB] w-[140px] min-w-[140px] max-w-[140px] whitespace-nowrap">
                   <button
                     type="button"
                     onClick={() => handleSort('cnpj')}
@@ -622,11 +622,11 @@ export const Apuracao: React.FC = () => {
                   </button>
                 </th>
 
-                <th className="py-2 px-1.5 min-w-[80px] whitespace-nowrap text-center">
+                <th className="py-2 px-1.5 min-w-[80px] whitespace-nowrap text-center bg-stone-50">
                   Portais
                 </th>
 
-                <th className="py-2 px-2 min-w-[110px] whitespace-nowrap">
+                <th className="py-2 px-2 min-w-[110px] whitespace-nowrap bg-stone-50">
                   <button
                     type="button"
                     onClick={() => handleSort('localidade')}
@@ -649,7 +649,7 @@ export const Apuracao: React.FC = () => {
                 {currentObligations.map((obrigacao) => (
                   <th
                     key={obrigacao}
-                    className="py-1.5 px-1 text-center text-[9px] min-w-[95px] max-w-[120px] whitespace-normal leading-tight border-l border-gray-100"
+                    className="py-1.5 px-1 text-center text-[9px] min-w-[95px] max-w-[120px] whitespace-normal leading-tight border-l border-gray-100 bg-stone-50"
                     title={`Clique para ordenar por: ${obrigacao}`}
                   >
                     <button
@@ -672,7 +672,7 @@ export const Apuracao: React.FC = () => {
                 ))}
 
                 {/* Coluna Final: % Concluído com ordenação */}
-                <th className="py-2 px-2 text-center sticky right-0 z-20 bg-stone-50 shadow-[-1px_0_0_0_#E5E7EB] min-w-[105px]">
+                <th className="py-2 px-2 text-center sticky top-16 right-0 z-30 bg-stone-50 shadow-[-1px_0_0_0_#E5E7EB] min-w-[105px]">
                   <button
                     type="button"
                     onClick={() => handleSort('progresso')}

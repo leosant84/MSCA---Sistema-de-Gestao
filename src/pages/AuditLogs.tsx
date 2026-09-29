@@ -354,17 +354,17 @@ export const AuditLogs: React.FC = () => {
       <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50/80 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                <th className="py-3 px-4">Data / Hora</th>
-                <th className="py-3 px-4">Usuário / Colaborador</th>
-                <th className="py-3 px-4 text-center">Ação</th>
-                <th className="py-3 px-4">Módulo</th>
-                <th className="py-3 px-4">Item Afetado</th>
-                <th className="py-3 px-4">Resumo das Alterações</th>
-                <th className="py-3 px-4 text-right">Detalhes</th>
-              </tr>
-            </thead>
+              <thead className="sticky top-16 z-20">
+                <tr className="bg-stone-50 border-b border-gray-200 text-[11px] font-semibold text-gray-600 uppercase tracking-wider shadow-xs">
+                  <th className="py-3 px-4 bg-stone-50">Data / Hora</th>
+                  <th className="py-3 px-4 bg-stone-50">Usuário / Colaborador</th>
+                  <th className="py-3 px-4 text-center bg-stone-50">Ação</th>
+                  <th className="py-3 px-4 bg-stone-50">Módulo</th>
+                  <th className="py-3 px-4 bg-stone-50">Item Afetado</th>
+                  <th className="py-3 px-4 bg-stone-50">Resumo das Alterações</th>
+                  <th className="py-3 px-4 text-right bg-stone-50">Detalhes</th>
+                </tr>
+              </thead>
             <tbody className="divide-y divide-gray-100 text-xs text-gray-700">
               {loading ? (
                 <tr>

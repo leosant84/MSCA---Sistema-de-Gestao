@@ -2011,9 +2011,9 @@ export const Financial: React.FC = () => {
         <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50/80 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                  <th className="py-3 px-3 w-8 text-center">
+              <thead className="sticky top-16 z-20">
+                <tr className="bg-stone-50 border-b border-gray-200 text-[11px] font-semibold text-gray-600 uppercase tracking-wider shadow-xs">
+                  <th className="py-3 px-3 w-8 text-center bg-stone-50">
                     <button
                       type="button"
                       onClick={handleSelectAllPendingVisible}
@@ -2028,15 +2028,15 @@ export const Financial: React.FC = () => {
                       )}
                     </button>
                   </th>
-                  <th className="py-3 px-4">Competência</th>
-                  <th className="py-3 px-4">Cliente</th>
-                  <th className="py-3 px-4">Conta Contábil</th>
-                  <th className="py-3 px-4">Valor</th>
-                  <th className="py-3 px-4 text-center">Status / Ação Rápida</th>
-                  <th className="py-3 px-4">Data Recebimento</th>
-                  <th className="py-3 px-4">Banco</th>
-                  <th className="py-3 px-4">Obs.</th>
-                  <th className="py-3 px-4 text-right">Ações</th>
+                  <th className="py-3 px-4 bg-stone-50">Competência</th>
+                  <th className="py-3 px-4 bg-stone-50">Cliente</th>
+                  <th className="py-3 px-4 bg-stone-50">Conta Contábil</th>
+                  <th className="py-3 px-4 bg-stone-50">Valor</th>
+                  <th className="py-3 px-4 text-center bg-stone-50">Status / Ação Rápida</th>
+                  <th className="py-3 px-4 bg-stone-50">Data Recebimento</th>
+                  <th className="py-3 px-4 bg-stone-50">Banco</th>
+                  <th className="py-3 px-4 bg-stone-50">Obs.</th>
+                  <th className="py-3 px-4 text-right bg-stone-50">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-xs text-gray-700">
@@ -2252,17 +2252,17 @@ export const Financial: React.FC = () => {
         <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50/80 border-b border-gray-200 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                  <th className="py-3 px-4">Data Pagamento / Previsão</th>
-                  <th className="py-3 px-4">Competência</th>
-                  <th className="py-3 px-4">Descrição do Pagamento</th>
-                  <th className="py-3 px-4">OBS.</th>
-                  <th className="py-3 px-4">Conta Contábil</th>
-                  <th className="py-3 px-4">Valor</th>
-                  <th className="py-3 px-4 text-center">Status / Ação Rápida</th>
-                  <th className="py-3 px-4">Banco</th>
-                  <th className="py-3 px-4 text-right">Ações</th>
+              <thead className="sticky top-16 z-20">
+                <tr className="bg-stone-50 border-b border-gray-200 text-[11px] font-semibold text-gray-600 uppercase tracking-wider shadow-xs">
+                  <th className="py-3 px-4 bg-stone-50">Data Pagamento / Previsão</th>
+                  <th className="py-3 px-4 bg-stone-50">Competência</th>
+                  <th className="py-3 px-4 bg-stone-50">Descrição do Pagamento</th>
+                  <th className="py-3 px-4 bg-stone-50">OBS.</th>
+                  <th className="py-3 px-4 bg-stone-50">Conta Contábil</th>
+                  <th className="py-3 px-4 bg-stone-50">Valor</th>
+                  <th className="py-3 px-4 text-center bg-stone-50">Status / Ação Rápida</th>
+                  <th className="py-3 px-4 bg-stone-50">Banco</th>
+                  <th className="py-3 px-4 text-right bg-stone-50">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-xs text-gray-700">

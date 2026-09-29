@@ -10,6 +10,7 @@ interface CnpjCopyButtonProps {
 export const CnpjCopyButton: React.FC<CnpjCopyButtonProps> = ({ cnpj, className = '' }) => {
   const [copiedFormat, setCopiedFormat] = useState<'masked' | 'raw' | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [openUpwards, setOpenUpwards] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -54,6 +55,20 @@ export const CnpjCopyButton: React.FC<CnpjCopyButtonProps> = ({ cnpj, className 
     }, 2000);
   };
 
+  const handleToggleDropdown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!dropdownOpen && dropdownRef.current) {
+      const rect = dropdownRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if (spaceBelow < 180 && rect.top > 120) {
+        setOpenUpwards(true);
+      } else {
+        setOpenUpwards(false);
+      }
+    }
+    setDropdownOpen((prev) => !prev);
+  };
+
   return (
     <div className={`relative inline-flex items-center group ${className}`} ref={dropdownRef}>
       {/* Botão Principal com clique duplo ou simples */}
@@ -75,10 +90,7 @@ export const CnpjCopyButton: React.FC<CnpjCopyButtonProps> = ({ cnpj, className 
       {/* Botão de Menu de Opções */}
       <button
         type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setDropdownOpen((prev) => !prev);
-        }}
+        onClick={handleToggleDropdown}
         aria-label="Opções de cópia do CNPJ"
         className="ml-0.5 p-1 text-gray-400 hover:text-[#C5A059] rounded hover:bg-gray-100 transition-colors"
       >
@@ -87,7 +99,11 @@ export const CnpjCopyButton: React.FC<CnpjCopyButtonProps> = ({ cnpj, className 
 
       {/* Dropdown Menu de Contexto */}
       {dropdownOpen && (
-        <div className="absolute left-0 top-full mt-1 w-52 bg-white rounded-lg shadow-xl border border-gray-100 py-1.5 z-40 text-left animate-in fade-in zoom-in-95">
+        <div
+          className={`absolute left-0 ${
+            openUpwards ? 'bottom-full mb-1' : 'top-full mt-1'
+          } w-52 bg-white rounded-lg shadow-xl border border-gray-100 py-1.5 z-40 text-left animate-in fade-in zoom-in-95`}
+        >
           <div className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
             Opções de Cópia
           </div>
