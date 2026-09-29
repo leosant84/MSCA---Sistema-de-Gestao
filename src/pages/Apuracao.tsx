@@ -109,6 +109,33 @@ export const Apuracao: React.FC = () => {
       const recList = (recordsData || []) as FiscalRecord[];
 
       const map: Record<string, string> = {};
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+
+      // Pré-preenche meses anteriores como "OK" (100% apurados)
+      loadedClients.forEach((client) => {
+        MONTH_NAMES_SHORT.forEach((_, monthIdx) => {
+          const isPast =
+            selectedYear < currentYear ||
+            (selectedYear === currentYear && monthIdx < currentMonth);
+
+          if (isPast) {
+            const comp = formatCompetencia(monthIdx, selectedYear, true);
+            const allObligations = [
+              ...(FISCAL_OBLIGATIONS['Simples Nacional'] || []),
+              ...(FISCAL_OBLIGATIONS['Lucro Presumido'] || []),
+              ...(FISCAL_OBLIGATIONS['Folha de Pagamento'] || []),
+            ];
+            allObligations.forEach((ob) => {
+              const k = `${client.id}::${ob}::${comp}`;
+              map[k] = 'OK';
+            });
+          }
+        });
+      });
+
+      // Sobrescreve com os registros reais do banco (se houver edição pelo usuário)
       recList.forEach((r) => {
         const key = `${r.client_id}::${r.obrigacao}::${r.competencia}`;
         map[key] = r.valor || '';
@@ -229,6 +256,22 @@ export const Apuracao: React.FC = () => {
     [selectedCompForDrilldown, activeTab, user?.id, profile?.full_name, currentObligations, isObligationEnabled, inputValues, toast]
   );
 
+  // Auxiliar: checa se uma competência (ex: "jan/26") é de um mês anterior
+  const isPastCompetencia = useCallback((compStr: string) => {
+    const parts = compStr.toLowerCase().split('/');
+    if (parts.length !== 2) return false;
+    const mIdx = MONTH_NAMES_SHORT.findIndex((m) => m.toLowerCase() === parts[0]);
+    if (mIdx === -1) return false;
+    let y = parseInt(parts[1], 10);
+    if (y < 100) y += 2000;
+
+    const now = new Date();
+    const curY = now.getFullYear();
+    const curM = now.getMonth();
+
+    return y < curY || (y === curY && mIdx < curM);
+  }, []);
+
   // Calcula a porcentagem de conclusão de uma Obrigação em uma Competência específica
   const getObligationMonthStats = useCallback(
     (obrigacao: string, competencia: string) => {
@@ -237,11 +280,19 @@ export const Apuracao: React.FC = () => {
       const total = applicable.length;
       if (total === 0) return { total: 0, okCount: 0, percent: 100 };
 
+      const isPast = isPastCompetencia(competencia);
+
       let okCount = 0;
       applicable.forEach((c) => {
         const key = `${c.id}::${obrigacao}::${competencia}`;
-        const val = inputValues[key] || '';
-        if (val.trim().toUpperCase() === 'OK') {
+        const val = inputValues[key];
+
+        // Se tiver valor no map (ou no banco), respeita o valor. Se não tiver registro e for mês anterior, considera OK (100%).
+        if (val !== undefined) {
+          if ((val || '').trim().toUpperCase() === 'OK') {
+            okCount++;
+          }
+        } else if (isPast) {
           okCount++;
         }
       });
@@ -249,7 +300,7 @@ export const Apuracao: React.FC = () => {
       const percent = Math.round((okCount / total) * 100);
       return { total, okCount, percent };
     },
-    [tabClients, isObligationEnabled, inputValues]
+    [tabClients, isObligationEnabled, inputValues, isPastCompetencia]
   );
 
   // Calcula estatísticas gerais da competência mais recente / corrente

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   X,
   Search,
@@ -6,6 +6,10 @@ import {
   CheckCircle2,
   Clock,
   MapPin,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Check,
 } from 'lucide-react';
 import { RawCnpjCopyButton } from './RawCnpjCopyButton';
 import { useToast } from '../contexts/ToastContext';
@@ -23,6 +27,9 @@ interface ApuracaoDrilldownModalProps {
   isObligationEnabled: (client: Client, obrigacao: string) => boolean;
 }
 
+type SortField = 'numero_pasta' | 'razao_social' | 'cnpj' | 'localidade' | 'status';
+type SortDirection = 'asc' | 'desc';
+
 export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   isOpen,
   onClose,
@@ -36,6 +43,8 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
 }) => {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState<SortField>('razao_social');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   if (!isOpen) return null;
 
@@ -43,7 +52,7 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   const applicableClients = clients.filter((c) => isObligationEnabled(c, obrigacaoName));
 
   // Filtrar por busca textual
-  const filteredClients = applicableClients.filter((c) => {
+  const searchedClients = applicableClients.filter((c) => {
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase();
     const rawCnpj = (c.cnpj || '').replace(/\D/g, '');
@@ -55,6 +64,61 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
     );
   });
 
+  // Ordenação das colunas
+  const filteredClients = useMemo(() => {
+    return [...searchedClients].sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortField) {
+        case 'numero_pasta': {
+          const pastaA = (a.numero_pasta || '').trim();
+          const pastaB = (b.numero_pasta || '').trim();
+          comparison = pastaA.localeCompare(pastaB, undefined, { numeric: true, sensitivity: 'base' });
+          break;
+        }
+        case 'razao_social': {
+          const razaoA = (a.razao_social || '').trim();
+          const razaoB = (b.razao_social || '').trim();
+          comparison = razaoA.localeCompare(razaoB, 'pt-BR', { sensitivity: 'base' });
+          break;
+        }
+        case 'cnpj': {
+          const cnpjA = (a.cnpj || '').replace(/\D/g, '');
+          const cnpjB = (b.cnpj || '').replace(/\D/g, '');
+          comparison = cnpjA.localeCompare(cnpjB);
+          break;
+        }
+        case 'localidade': {
+          const locA = (a.localidade || '').trim();
+          const locB = (b.localidade || '').trim();
+          comparison = locA.localeCompare(locB, 'pt-BR', { sensitivity: 'base' });
+          break;
+        }
+        case 'status': {
+          const keyA = `${a.id}::${obrigacaoName}::${competencia}`;
+          const keyB = `${b.id}::${obrigacaoName}::${competencia}`;
+          const isOkA = (inputValues[keyA] || '').trim().toUpperCase() === 'OK';
+          const isOkB = (inputValues[keyB] || '').trim().toUpperCase() === 'OK';
+          comparison = (isOkA === isOkB ? 0 : isOkA ? -1 : 1);
+          break;
+        }
+        default:
+          comparison = 0;
+      }
+
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [searchedClients, sortField, sortDirection, inputValues, obrigacaoName, competencia]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
   // Estatísticas da obrigação no mês
   const total = applicableClients.length;
   const okCount = applicableClients.filter((c) => {
@@ -65,20 +129,13 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   }).length;
   const percent = total > 0 ? Math.round((okCount / total) * 100) : 100;
 
-  const handleToggleStatus = (client: Client) => {
-    const key = `${client.id}::${obrigacaoName}::${competencia}`;
-    const keyLegacy = `${client.id}::${obrigacaoName}`;
-    const currentVal = inputValues[key] !== undefined ? inputValues[key] : (inputValues[keyLegacy] || '');
-    const isOk = (currentVal || '').trim().toUpperCase() === 'OK';
-    const nextVal = isOk ? '' : 'OK';
+  const handleInputChange = (client: Client, rawValue: string) => {
+    const trimmed = rawValue.trim();
+    // Se o usuário digitar "OK" (ou minúsculo "ok"), normaliza para "OK"
+    const isOkTyped = trimmed.toUpperCase() === 'OK';
+    const finalValue = isOkTyped ? 'OK' : rawValue;
 
-    onStatusChange(client, obrigacaoName, nextVal);
-
-    if (nextVal === 'OK') {
-      toast(`${client.razao_social}: Marcado como OK`, 'success');
-    } else {
-      toast(`${client.razao_social}: Marcado como Pendente`, 'info');
-    }
+    onStatusChange(client, obrigacaoName, finalValue);
   };
 
   const handleMarkAllVisibleOk = () => {
@@ -94,22 +151,22 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-white rounded-3xl shadow-2xl border border-stone-200/80 w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95">
-        {/* Cabeçalho do Modal */}
-        <div className="p-5 px-6 border-b border-stone-100 bg-gradient-to-r from-stone-50 via-white to-amber-50/40 flex items-start justify-between gap-4">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-2xl border border-stone-200/80 w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95">
+        {/* Cabeçalho do Modal (compacto) */}
+        <div className="p-3.5 px-5 border-b border-stone-100 bg-gradient-to-r from-stone-50 via-white to-amber-50/40 flex items-start justify-between gap-3">
           <div>
-            <div className="flex items-center space-x-2 text-[11px] font-bold text-[#A67C2E] uppercase tracking-wider">
+            <div className="flex items-center space-x-1.5 text-[10px] font-bold text-[#A67C2E] uppercase tracking-wider">
               <span>{regime}</span>
               <span>•</span>
-              <span className="font-mono bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full">
-                Competência: {competencia}
+              <span className="font-mono bg-amber-100 text-amber-900 px-1.5 py-0.2 rounded">
+                COMPETÊNCIA: {competencia.toUpperCase()}
               </span>
             </div>
-            <h2 className="text-xl font-bold text-stone-900 mt-1 flex items-center space-x-2">
+            <h2 className="text-base sm:text-lg font-bold text-stone-900 mt-0.5 flex items-center space-x-2">
               <span>{obrigacaoName}</span>
               <span
-                className={`text-xs px-2.5 py-0.5 rounded-full font-bold shadow-2xs ${
+                className={`text-[10px] px-2 py-0.2 rounded-full font-bold shadow-2xs ${
                   percent === 100
                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                     : 'bg-amber-100 text-amber-900 border border-amber-300'
@@ -118,31 +175,31 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                 {percent}% Concluído ({okCount}/{total})
               </span>
             </h2>
-            <p className="text-xs text-stone-500 mt-0.5">
-              Gerencie individualmente os clientes vinculados a esta apuração mensal.
+            <p className="text-[11px] text-stone-500">
+              Digite <strong>OK</strong> no campo de status para marcar como apurado. Deixe vazio para manter como pendente.
             </p>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer shrink-0"
+            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer shrink-0"
             title="Fechar formulário"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Barra de Filtros e Ações Rápidas */}
-        <div className="p-4 px-6 bg-stone-50/70 border-b border-stone-200/60 flex flex-wrap items-center justify-between gap-3">
-          <div className="relative flex-1 min-w-[240px] max-w-md">
-            <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        {/* Barra de Filtros e Ações Rápidas (compacta) */}
+        <div className="p-2.5 px-5 bg-stone-50/70 border-b border-stone-200/60 flex flex-wrap items-center justify-between gap-2.5">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar cliente por razão social, CNPJ ou cidade..."
-              className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-stone-200 rounded-xl focus:ring-1 focus:ring-[#C5A059] focus:outline-none"
+              placeholder="Buscar por razão social, CNPJ ou cidade..."
+              className="w-full pl-8 pr-2.5 py-1 text-xs bg-white border border-stone-200 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:outline-none"
             />
           </div>
 
@@ -150,7 +207,7 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
             <button
               type="button"
               onClick={handleMarkAllVisibleOk}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold transition-all cursor-pointer shadow-2xs"
+              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold transition-all cursor-pointer shadow-2xs"
             >
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
               <span>Marcar visíveis como OK</span>
@@ -159,23 +216,102 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
         </div>
 
         {/* Tabela de Clientes */}
-        <div className="flex-1 overflow-y-auto min-h-[300px]">
+        <div className="flex-1 overflow-y-auto min-h-[260px]">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-10 bg-stone-100 shadow-xs">
               <tr className="border-b border-stone-200 text-[10px] font-bold text-stone-600 uppercase tracking-wider select-none">
-                <th className="py-2.5 px-4 w-12 text-center">Dom.</th>
-                <th className="py-2.5 px-4">Razão Social</th>
-                <th className="py-2.5 px-3">CNPJ (Cópia Rápida)</th>
-                <th className="py-2.5 px-3">Localidade</th>
-                <th className="py-2.5 px-4 text-right">Status da Apuração</th>
+                {/* Domínio com classificação */}
+                <th className="py-1.5 px-3 w-14 text-center">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('numero_pasta')}
+                    className="inline-flex items-center space-x-1 font-bold text-stone-600 hover:text-[#C5A059] transition-colors cursor-pointer"
+                    title="Classificar por pasta / domínio"
+                  >
+                    <span>Dom.</span>
+                    {sortField === 'numero_pasta' ? (
+                      sortDirection === 'asc' ? <ArrowUp className="w-2.5 h-2.5 text-[#C5A059]" /> : <ArrowDown className="w-2.5 h-2.5 text-[#C5A059]" />
+                    ) : (
+                      <ArrowUpDown className="w-2.5 h-2.5 text-stone-300" />
+                    )}
+                  </button>
+                </th>
+
+                {/* Razão Social com classificação */}
+                <th className="py-1.5 px-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('razao_social')}
+                    className="inline-flex items-center space-x-1 font-bold text-stone-600 hover:text-[#C5A059] transition-colors cursor-pointer"
+                    title="Classificar por Razão Social"
+                  >
+                    <span>Razão Social</span>
+                    {sortField === 'razao_social' ? (
+                      sortDirection === 'asc' ? <ArrowUp className="w-2.5 h-2.5 text-[#C5A059]" /> : <ArrowDown className="w-2.5 h-2.5 text-[#C5A059]" />
+                    ) : (
+                      <ArrowUpDown className="w-2.5 h-2.5 text-stone-300" />
+                    )}
+                  </button>
+                </th>
+
+                {/* CNPJ com classificação */}
+                <th className="py-1.5 px-2.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('cnpj')}
+                    className="inline-flex items-center space-x-1 font-bold text-stone-600 hover:text-[#C5A059] transition-colors cursor-pointer"
+                    title="Classificar por CNPJ"
+                  >
+                    <span>CNPJ</span>
+                    {sortField === 'cnpj' ? (
+                      sortDirection === 'asc' ? <ArrowUp className="w-2.5 h-2.5 text-[#C5A059]" /> : <ArrowDown className="w-2.5 h-2.5 text-[#C5A059]" />
+                    ) : (
+                      <ArrowUpDown className="w-2.5 h-2.5 text-stone-300" />
+                    )}
+                  </button>
+                </th>
+
+                {/* Localidade com classificação */}
+                <th className="py-1.5 px-2.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('localidade')}
+                    className="inline-flex items-center space-x-1 font-bold text-stone-600 hover:text-[#C5A059] transition-colors cursor-pointer"
+                    title="Classificar por Localidade"
+                  >
+                    <span>Localidade</span>
+                    {sortField === 'localidade' ? (
+                      sortDirection === 'asc' ? <ArrowUp className="w-2.5 h-2.5 text-[#C5A059]" /> : <ArrowDown className="w-2.5 h-2.5 text-[#C5A059]" />
+                    ) : (
+                      <ArrowUpDown className="w-2.5 h-2.5 text-stone-300" />
+                    )}
+                  </button>
+                </th>
+
+                {/* Status da Apuração com classificação */}
+                <th className="py-1.5 px-3 text-right">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('status')}
+                    className="inline-flex items-center space-x-1 font-bold text-stone-600 hover:text-[#C5A059] transition-colors cursor-pointer ml-auto"
+                    title="Classificar por Status da Apuração"
+                  >
+                    <span>Status da Apuração</span>
+                    {sortField === 'status' ? (
+                      sortDirection === 'asc' ? <ArrowUp className="w-2.5 h-2.5 text-[#C5A059]" /> : <ArrowDown className="w-2.5 h-2.5 text-[#C5A059]" />
+                    ) : (
+                      <ArrowUpDown className="w-2.5 h-2.5 text-stone-300" />
+                    )}
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100 text-xs text-stone-700">
               {filteredClients.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-stone-400">
-                    <Building className="w-7 h-7 text-stone-300 mx-auto mb-2" />
-                    <span>Nenhum cliente localizado para esta apuração.</span>
+                  <td colSpan={5} className="py-10 text-center text-stone-400">
+                    <Building className="w-6 h-6 text-stone-300 mx-auto mb-1.5" />
+                    <span className="text-xs">Nenhum cliente localizado para esta apuração.</span>
                   </td>
                 </tr>
               ) : (
@@ -188,68 +324,95 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                   return (
                     <tr
                       key={client.id}
-                      className={`hover:bg-amber-50/30 transition-colors ${
-                        isOk ? 'bg-emerald-50/20' : ''
+                      className={`hover:bg-amber-50/20 transition-colors ${
+                        isOk ? 'bg-emerald-50/15' : ''
                       }`}
                     >
                       {/* Domínio */}
-                      <td className="py-2.5 px-4 text-center font-mono font-bold text-stone-800 text-[11px]">
+                      <td className="py-1 px-3 text-center font-mono font-bold text-stone-800 text-[10px]">
                         {client.numero_pasta || '-'}
                       </td>
 
                       {/* Razão Social */}
-                      <td className="py-2.5 px-4">
-                        <div className="font-semibold text-stone-900 leading-tight">
+                      <td className="py-1 px-3">
+                        <div className="font-semibold text-stone-900 leading-tight text-xs">
                           {client.razao_social}
                         </div>
                         {client.puro_ou_hibrido && (
-                          <span className="text-[9px] text-stone-500 bg-stone-100 px-1 py-0.2 rounded mt-0.5 inline-block">
+                          <span className="text-[8px] text-stone-500 bg-stone-100 px-1 rounded inline-block mt-0.5">
                             {client.puro_ou_hibrido}
                           </span>
                         )}
                       </td>
 
                       {/* CNPJ Puro com botão de copiar em 1 clique */}
-                      <td className="py-2.5 px-3 whitespace-nowrap">
+                      <td className="py-1 px-2.5 whitespace-nowrap">
                         <RawCnpjCopyButton cnpj={client.cnpj} />
                       </td>
 
                       {/* Localidade */}
-                      <td className="py-2.5 px-3 whitespace-nowrap">
+                      <td className="py-1 px-2.5 whitespace-nowrap">
                         {client.localidade ? (
-                          <div className="inline-flex items-center space-x-1 text-[11px] text-stone-600 bg-stone-50 px-2 py-0.5 rounded-lg border border-stone-200">
-                            <MapPin className="w-2.5 h-2.5 text-[#C5A059]" />
+                          <div className="inline-flex items-center space-x-1 text-[10px] text-stone-600 bg-stone-50 px-1.5 py-0.2 rounded border border-stone-200">
+                            <MapPin className="w-2 h-2 text-[#C5A059]" />
                             <span className="uppercase">{client.localidade}</span>
                           </div>
                         ) : (
-                          <span className="text-stone-300 text-xs">-</span>
+                          <span className="text-stone-300 text-[10px]">-</span>
                         )}
                       </td>
 
-                      {/* Status da Apuração com Alternância Editável Instantânea */}
-                      <td className="py-2.5 px-4 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleStatus(client)}
-                          className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-xl font-bold text-xs transition-all shadow-2xs cursor-pointer ${
-                            isOk
-                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                              : 'bg-stone-100 hover:bg-amber-100 text-stone-600 hover:text-amber-900 border border-stone-200/80'
-                          }`}
-                          title="Clique para alternar entre OK e Pendente"
-                        >
-                          {isOk ? (
-                            <>
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>OK</span>
-                            </>
-                          ) : (
-                            <>
-                              <Clock className="w-3.5 h-3.5 text-stone-400" />
-                              <span>PENDENTE</span>
-                            </>
-                          )}
-                        </button>
+                      {/* Status da Apuração: Campo editável com OK ou vazio (Pendente) + botão rápido */}
+                      <td className="py-1 px-3 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center justify-end space-x-1.5">
+                          {/* Campo de input de texto para preencher "OK" ou deixar vazio */}
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={val}
+                              onChange={(e) => handleInputChange(client, e.target.value)}
+                              placeholder="OK"
+                              className={`w-14 px-2 py-0.5 text-center text-xs font-mono font-bold rounded border uppercase transition-colors focus:outline-none focus:ring-1 ${
+                                isOk
+                                  ? 'bg-emerald-50 border-emerald-400 text-emerald-800 focus:ring-emerald-500'
+                                  : 'bg-white border-stone-300 text-stone-700 placeholder-stone-300 focus:border-[#C5A059] focus:ring-[#C5A059]'
+                              }`}
+                              title='Digite "OK" para apurado ou deixe vazio para pendente'
+                            />
+                          </div>
+
+                          {/* Botão de 1 clique para alternar rápido entre OK e vazio */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = isOk ? '' : 'OK';
+                              onStatusChange(client, obrigacaoName, next);
+                              if (next === 'OK') {
+                                toast(`${client.razao_social}: Marcado como OK`, 'success');
+                              } else {
+                                toast(`${client.razao_social}: Marcado como Pendente`, 'info');
+                              }
+                            }}
+                            className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer border ${
+                              isOk
+                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600'
+                                : 'bg-stone-50 hover:bg-amber-50 text-stone-500 hover:text-stone-800 border-stone-200'
+                            }`}
+                            title="Clique para alternar rápido entre OK e Pendente"
+                          >
+                            {isOk ? (
+                              <>
+                                <Check className="w-3 h-3" />
+                                <span>OK</span>
+                              </>
+                            ) : (
+                              <>
+                                <Clock className="w-3 h-3 text-stone-400" />
+                                <span>PENDENTE</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -259,17 +422,17 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
           </table>
         </div>
 
-        {/* Rodapé */}
-        <div className="p-3.5 px-6 bg-stone-50 border-t border-stone-200/70 flex items-center justify-between text-xs text-stone-500 rounded-b-3xl">
+        {/* Rodapé (compacto) */}
+        <div className="p-2.5 px-5 bg-stone-50 border-t border-stone-200/70 flex items-center justify-between text-[11px] text-stone-500 rounded-b-2xl">
           <div>
-            Exibindo <strong>{filteredClients.length}</strong> de <strong>{total}</strong> clientes desta apuração.
+            Exibindo <strong>{filteredClients.length}</strong> de <strong>{total}</strong> clientes.
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-900 text-white text-xs font-semibold transition-all cursor-pointer shadow-xs"
+            className="px-3 py-1 rounded-lg bg-stone-800 hover:bg-stone-900 text-white text-xs font-semibold transition-all cursor-pointer shadow-xs"
           >
-            Concluir e Salvar
+            Concluir e Fechar
           </button>
         </div>
       </div>
