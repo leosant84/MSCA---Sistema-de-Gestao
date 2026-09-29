@@ -11,6 +11,7 @@ import {
   ChevronRight,
   X,
   User,
+  ShieldCheck,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -153,7 +154,12 @@ export const Apuracao: React.FC = () => {
       // Checagem de link de validação vindo por query param
       const valClientParam = searchParams.get('client_id');
       const valCompParam = searchParams.get('comp');
+      const valRegParam = searchParams.get('regime');
       const shouldValidate = searchParams.get('validate') === 'true';
+
+      if (valRegParam && FISCAL_REGIME_OPTIONS.some((r) => r.value === valRegParam)) {
+        setActiveTab(valRegParam as FiscalRegimeType);
+      }
 
       if (shouldValidate && valClientParam && valCompParam) {
         const found = loadedClients.find((c) => c.id === valClientParam);
@@ -170,6 +176,27 @@ export const Apuracao: React.FC = () => {
       setLoading(false);
     }
   }, [selectedYear, searchParams, toast]);
+
+  // Se a rota/URL mudar os parâmetros enquanto o componente já estiver montado
+  useEffect(() => {
+    const regParam = searchParams.get('regime');
+    const valClientParam = searchParams.get('client_id');
+    const valCompParam = searchParams.get('comp');
+    const shouldValidate = searchParams.get('validate') === 'true';
+
+    if (regParam && FISCAL_REGIME_OPTIONS.some((r) => r.value === regParam)) {
+      setActiveTab(regParam as FiscalRegimeType);
+    }
+
+    if (shouldValidate && valClientParam && valCompParam && clients.length > 0) {
+      const found = clients.find((c) => c.id === valClientParam);
+      if (found) {
+        setClientToValidate(found);
+        setCompToValidate(valCompParam);
+        setValidationModalOpen(true);
+      }
+    }
+  }, [searchParams, clients]);
 
   useEffect(() => {
     fetchApuracaoData();
@@ -573,18 +600,36 @@ export const Apuracao: React.FC = () => {
 
           {/* Botão de Ver todas as apurações do cliente selecionado */}
           {currentFilteredClient && (
-            <button
-              type="button"
-              onClick={() => {
-                setClientForApuracoesModal(currentFilteredClient);
-                setClientApuracoesModalOpen(true);
-              }}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-2xl bg-[#C5A059] hover:bg-[#A67C2E] text-white text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0"
-              title={`Ver e gerenciar todas as apurações de ${currentFilteredClient.razao_social}`}
-            >
-              <Building className="w-3.5 h-3.5" />
-              <span>Ver Apurações do Cliente</span>
-            </button>
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setClientForApuracoesModal(currentFilteredClient);
+                  setClientApuracoesModalOpen(true);
+                }}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-2xl bg-[#C5A059] hover:bg-[#A67C2E] text-white text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                title={`Ver e gerenciar todas as apurações de ${currentFilteredClient.razao_social}`}
+              >
+                <Building className="w-3.5 h-3.5" />
+                <span>Ver Apurações do Cliente</span>
+              </button>
+
+              {profile?.role === 'admin' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClientToValidate(currentFilteredClient);
+                    setCompToValidate(currentMonthCompetencia);
+                    setValidationModalOpen(true);
+                  }}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                  title={`Validar ou apontar pendência de apuração para ${currentFilteredClient.razao_social}`}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Validar / Apontar Pendência</span>
+                </button>
+              )}
+            </div>
           )}
 
           {!selectedClientIdFilter && (

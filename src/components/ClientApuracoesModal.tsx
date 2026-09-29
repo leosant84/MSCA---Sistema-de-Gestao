@@ -104,6 +104,17 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     toast(`Todas as ${clientObligations.length} apurações de ${selectedComp} marcadas como OK!`, 'success');
   };
 
+  const handleUnmarkAll = () => {
+    clientObligations.forEach((ob) => {
+      const key = `${client.id}::${ob}::${selectedComp}`;
+      const val = inputValues[key];
+      if ((val || '').trim() !== '') {
+        onStatusChange(client, ob, selectedComp, '');
+      }
+    });
+    toast(`Apurações de ${selectedComp} desmarcadas (pendentes)!`, 'info');
+  };
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
       <div className="bg-white rounded-2xl shadow-2xl border border-stone-200/80 w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95">
@@ -205,9 +216,20 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
               type="button"
               onClick={handleMarkAllVisibleOk}
               className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold transition-all cursor-pointer shadow-2xs"
+              title={`Marcar todas as apurações de ${selectedComp.toUpperCase()} como OK`}
             >
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Marcar todas de {selectedComp.toUpperCase()} como OK</span>
+              <span>Marcar todas como OK</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleUnmarkAll}
+              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-200 text-xs font-semibold transition-all cursor-pointer shadow-2xs"
+              title={`Limpar todas as apurações de ${selectedComp.toUpperCase()} (tornar pendente)`}
+            >
+              <X className="w-3.5 h-3.5 text-stone-500" />
+              <span>Desmarcar todas</span>
             </button>
           </div>
         </div>
