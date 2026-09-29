@@ -386,10 +386,10 @@ export const Clients: React.FC = () => {
           </div>
           <button
             type="button"
-            onClick={() => setStatusFilter(statusFilter === 'INADIMPLENTE' ? 'Todos' : 'INADIMPLENTE')}
+            onClick={() => setStatusFilter(statusFilter === 'INATIVA' ? 'Todos' : 'INATIVA')}
             className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-amber-100/80 text-stone-700 hover:text-amber-900 border border-stone-200/80 text-[11px] font-medium transition-colors shrink-0 cursor-pointer"
           >
-            {statusFilter === 'INADIMPLENTE' ? 'Ver Todos os Clientes' : 'Filtrar Inadimplentes'}
+            {statusFilter === 'INATIVA' ? 'Ver Todos os Clientes' : 'Filtrar Inativas'}
           </button>
         </div>
       )}
@@ -425,9 +425,6 @@ export const Clients: React.FC = () => {
             <option value="Todos">TODOS</option>
             <option value="ATIVO">ATIVO</option>
             <option value="TRANSFERIDO">TRANSFERIDO</option>
-            <option value="INADIMPLENTE">
-              INADIMPLENTE{isAdmin && overdueClientsMap.size > 0 ? ` (${overdueClientsMap.size})` : ''}
-            </option>
             <option value="BAIXADA">BAIXADA</option>
             <option value="INATIVA">INATIVA</option>
           </select>
