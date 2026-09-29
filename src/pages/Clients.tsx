@@ -386,14 +386,14 @@ export const Clients: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabela de Clientes Estilo Card Flutuante */}
+      {/* Tabela de Clientes Estilo Card Flutuante com Cabeçalho Fixo (Sticky) */}
       <div className="bg-white/95 backdrop-blur-md rounded-3xl border border-slate-200/70 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto min-h-[300px]">
+        <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-250px)] min-h-[340px]">
           <table className="w-full text-left border-collapse">
-            <thead className="sticky top-16 z-20">
+            <thead className="sticky top-0 z-20 bg-slate-100 shadow-xs">
               {/* Linha Única do Cabeçalho: Títulos das Colunas com Setas de Ordenação */}
-              <tr className="bg-slate-50 border-b border-slate-200/60 text-[10px] font-bold text-stone-500 uppercase tracking-wider select-none shadow-xs">
-                <th className="py-2.5 px-3 whitespace-nowrap">
+              <tr className="bg-slate-100 border-b border-slate-200 text-[10px] font-bold text-stone-600 uppercase tracking-wider select-none">
+                <th className="py-2.5 px-3 whitespace-nowrap bg-slate-100">
                   <button
                     type="button"
                     onClick={() => handleSort('numero_pasta')}
@@ -413,7 +413,7 @@ export const Clients: React.FC = () => {
                   </button>
                 </th>
 
-                <th className="py-2.5 px-3">
+                <th className="py-2.5 px-3 bg-slate-100">
                   <button
                     type="button"
                     onClick={() => handleSort('razao_social')}
@@ -433,7 +433,7 @@ export const Clients: React.FC = () => {
                   </button>
                 </th>
 
-                <th className="py-2.5 px-2.5 whitespace-nowrap">
+                <th className="py-2.5 px-2.5 whitespace-nowrap bg-slate-100">
                   <button
                     type="button"
                     onClick={() => handleSort('cnpj')}
@@ -453,7 +453,7 @@ export const Clients: React.FC = () => {
                   </button>
                 </th>
 
-                <th className="py-2.5 px-2.5 whitespace-nowrap">
+                <th className="py-2.5 px-2.5 whitespace-nowrap bg-slate-100">
                   <button
                     type="button"
                     onClick={() => handleSort('cpf')}
@@ -473,7 +473,7 @@ export const Clients: React.FC = () => {
                   </button>
                 </th>
 
-                <th className="py-2.5 px-2 whitespace-nowrap">
+                <th className="py-2.5 px-2 whitespace-nowrap bg-slate-100">
                   <button
                     type="button"
                     onClick={() => handleSort('localidade')}
@@ -493,9 +493,9 @@ export const Clients: React.FC = () => {
                   </button>
                 </th>
 
-                <th className="py-2.5 px-2.5">Portais</th>
+                <th className="py-2.5 px-2.5 bg-slate-100">Portais</th>
 
-                <th className="py-2.5 px-2 text-center whitespace-nowrap">
+                <th className="py-2.5 px-2 text-center whitespace-nowrap bg-slate-100">
                   <button
                     type="button"
                     onClick={() => handleSort('fator_r')}
@@ -515,14 +515,14 @@ export const Clients: React.FC = () => {
                   </button>
                 </th>
 
-                <th className="py-2.5 px-3 text-right whitespace-nowrap">
+                <th className="py-2.5 px-3 text-right whitespace-nowrap bg-slate-100">
                   <div className="inline-flex items-center space-x-2 justify-end">
                     {hasActiveFilters && (
                       <button
                         type="button"
                         onClick={handleClearFilters}
                         title="Limpar busca e filtros"
-                        className="px-2 py-0.5 rounded bg-stone-100 hover:bg-rose-50 text-stone-500 hover:text-rose-600 text-[10px] font-normal transition-colors cursor-pointer inline-flex items-center space-x-1"
+                        className="px-2 py-0.5 rounded bg-white hover:bg-rose-50 text-stone-500 hover:text-rose-600 text-[10px] font-normal transition-colors cursor-pointer inline-flex items-center space-x-1 shadow-2xs"
                       >
                         <X className="w-3 h-3" />
                         <span>Limpar</span>
