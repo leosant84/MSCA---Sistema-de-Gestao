@@ -386,10 +386,10 @@ export const Clients: React.FC = () => {
           </div>
           <button
             type="button"
-            onClick={() => setStatusFilter(statusFilter === 'INADIMPLENTE' ? 'Todos' : 'INADIMPLENTE')}
+            onClick={() => setStatusFilter(statusFilter === 'INATIVA' ? 'Todos' : 'INATIVA')}
             className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-amber-100/80 text-stone-700 hover:text-amber-900 border border-stone-200/80 text-[11px] font-medium transition-colors shrink-0 cursor-pointer"
           >
-            {statusFilter === 'INADIMPLENTE' ? 'Ver Todos os Clientes' : 'Filtrar Inadimplentes'}
+            {statusFilter === 'INATIVA' ? 'Ver Todos os Clientes' : 'Filtrar Inativas'}
           </button>
         </div>
       )}
@@ -425,9 +425,6 @@ export const Clients: React.FC = () => {
             <option value="Todos">TODOS</option>
             <option value="ATIVO">ATIVO</option>
             <option value="TRANSFERIDO">TRANSFERIDO</option>
-            <option value="INADIMPLENTE">
-              INADIMPLENTE{isAdmin && overdueClientsMap.size > 0 ? ` (${overdueClientsMap.size})` : ''}
-            </option>
             <option value="BAIXADA">BAIXADA</option>
             <option value="INATIVA">INATIVA</option>
           </select>
@@ -732,25 +729,25 @@ export const Clients: React.FC = () => {
                     <td className="py-2.5 px-3 text-right whitespace-nowrap">
                       <div className="flex flex-col items-end space-y-1">
                         <span
-                          className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide shadow-2xs ${
+                          className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium tracking-tight shadow-2xs ${
                             (c.status || '').toUpperCase() === 'ATIVO'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
-                              : (c.status || '').toUpperCase().includes('INADIMPLENTE')
-                              ? 'bg-rose-50 text-rose-700 border border-rose-300 font-bold'
                               : (c.status || '').toUpperCase() === 'TRANSFERIDO'
                               ? 'bg-blue-50 text-blue-700 border border-blue-200/80'
                               : (c.status || '').toUpperCase() === 'BAIXADA'
                               ? 'bg-orange-50 text-orange-700 border border-orange-200/80'
+                              : (c.status || '').toUpperCase().startsWith('INATIV')
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200/80'
                               : 'bg-slate-100 text-stone-600 border border-slate-200'
                           }`}
                         >
-                          {c.status}
+                          {(c.status || '').toUpperCase().startsWith('INATIV') ? 'Inativa' : c.status}
                         </span>
 
                         {isAdmin && overdueClientsMap.has(c.id) && (
                           <span
-                            title="Total vencido em aberto"
-                            className="inline-flex items-center text-[9px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded-full border border-rose-200"
+                            title="Total vencido em aberto (Inadimplente)"
+                            className="inline-flex items-center text-[10px] font-bold text-rose-600 bg-rose-50/80 px-2 py-0.5 rounded-full border border-rose-200 shadow-2xs"
                           >
                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
                               overdueClientsMap.get(c.id)?.totalOverdue || 0

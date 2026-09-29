@@ -440,8 +440,6 @@ export const ClientModal: React.FC<ClientModalProps> = ({
                 >
                   <option value="ATIVO">ATIVO</option>
                   <option value="TRANSFERIDO">TRANSFERIDO</option>
-                  <option value="INATIVO (INADIMPLENTE)">INATIVO (INADIMPLENTE)</option>
-                  <option value="INADIMPLENTE">INADIMPLENTE</option>
                   <option value="BAIXADA">BAIXADA</option>
                   <option value="INATIVA">INATIVA</option>
                 </select>
