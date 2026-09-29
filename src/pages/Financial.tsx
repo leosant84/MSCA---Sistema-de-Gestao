@@ -258,7 +258,20 @@ export const Financial: React.FC = () => {
         }
 
         const matchComp = selectedCompetencia === 'Todas' || e.competencia === selectedCompetencia;
-        const matchBanco = bancoFilter === 'Todos' || (e.banco || '') === bancoFilter;
+        let matchBanco = true;
+        if (bancoFilter !== 'Todos') {
+          const entryBanco = (e.banco || '').trim().toLowerCase();
+          const filterBanco = bancoFilter.trim().toLowerCase();
+          if (entryBanco === filterBanco) {
+            matchBanco = true;
+          } else if (filterBanco.includes('itaú') || filterBanco.includes('itau')) {
+            matchBanco = entryBanco.includes('itaú') || entryBanco.includes('itau');
+          } else if (filterBanco.includes('cora')) {
+            matchBanco = entryBanco.includes('cora');
+          } else {
+            matchBanco = entryBanco === filterBanco;
+          }
+        }
 
         // Filtro por Pill rápida de status (ou select)
         let matchStatus = true;
@@ -1750,8 +1763,8 @@ export const Financial: React.FC = () => {
                   ))
                 ) : (
                   <>
-                    <option value="Itaú">Itaú</option>
-                    <option value="Cora">Cora</option>
+                    <option value="Itaú (c/c)">Itaú (c/c)</option>
+                    <option value="Cora (c/c)">Cora (c/c)</option>
                     <option value="C6">C6</option>
                   </>
                 )}

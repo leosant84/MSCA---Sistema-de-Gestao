@@ -22,7 +22,11 @@ export const SettleEntryModal: React.FC<SettleEntryModalProps> = ({
   const [dataRecebimento, setDataRecebimento] = useState(
     entry?.data_recebimento || new Date().toISOString().split('T')[0]
   );
-  const [banco, setBanco] = useState(entry?.banco || 'Itaú');
+  const [banco, setBanco] = useState(() => {
+    const raw = entry?.banco || '';
+    if (raw.toLowerCase().includes('cora')) return 'Cora (c/c)';
+    return 'Itaú (c/c)';
+  });
 
   if (!isOpen || !entry) return null;
 
@@ -120,8 +124,8 @@ export const SettleEntryModal: React.FC<SettleEntryModalProps> = ({
               onChange={(e) => setBanco(e.target.value)}
               className="w-full text-xs font-semibold px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] bg-white text-gray-800"
             >
-              <option value="Itaú">Itaú</option>
-              <option value="Cora">Cora</option>
+              <option value="Itaú (c/c)">Itaú (c/c)</option>
+              <option value="Cora (c/c)">Cora (c/c)</option>
             </select>
           </div>
 

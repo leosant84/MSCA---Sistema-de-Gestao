@@ -23,7 +23,7 @@ export const BatchSettleModal: React.FC<BatchSettleModalProps> = ({
   const [dataRecebimento, setDataRecebimento] = useState(
     new Date().toISOString().split('T')[0]
   );
-  const [banco, setBanco] = useState('Itaú');
+  const [banco, setBanco] = useState('Itaú (c/c)');
 
   if (!isOpen || selectedIds.length === 0) return null;
 
@@ -126,8 +126,8 @@ export const BatchSettleModal: React.FC<BatchSettleModalProps> = ({
               onChange={(e) => setBanco(e.target.value)}
               className="w-full text-xs font-semibold px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] bg-white text-gray-800"
             >
-              <option value="Itaú">Itaú</option>
-              <option value="Cora">Cora</option>
+              <option value="Itaú (c/c)">Itaú (c/c)</option>
+              <option value="Cora (c/c)">Cora (c/c)</option>
             </select>
           </div>
 

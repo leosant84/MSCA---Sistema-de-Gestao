@@ -497,8 +497,8 @@ export const FinancialEntryModal: React.FC<FinancialEntryModalProps> = ({
                     className="w-full text-xs font-semibold px-3 py-2 bg-white border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059]"
                   >
                     <option value="">-- Não definido --</option>
-                    <option value="Itaú">Itaú</option>
-                    <option value="Cora">Cora</option>
+                    <option value="Itaú (c/c)">Itaú (c/c)</option>
+                    <option value="Cora (c/c)">Cora (c/c)</option>
                   </select>
                 </div>
               </div>
