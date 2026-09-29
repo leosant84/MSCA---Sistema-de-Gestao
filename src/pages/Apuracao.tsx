@@ -9,6 +9,9 @@ import {
   Building,
   CheckSquare,
   TrendingUp,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -50,6 +53,20 @@ export const Apuracao: React.FC = () => {
 
   // Cache local em memória de valores digitados para feedback imediato e debounce de gravação
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
+
+  // Ordenação das colunas
+  type SortField = 'razao_social' | 'numero_pasta' | 'cnpj' | 'localidade' | 'progresso' | string;
+  const [sortField, setSortField] = useState<SortField>('razao_social');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
 
   // Lista de anos disponíveis no seletor
   const availableYears = useMemo(() => {
@@ -172,33 +189,6 @@ export const Apuracao: React.FC = () => {
     }
   };
 
-  // Clientes filtrados para a aba ativa
-  const tabClients = useMemo(() => {
-    return clients.filter((c) => {
-      // 0. Apenas clientes ATIVOS participam do setor de apuração
-      const statusNorm = (c.status || '').trim().toUpperCase();
-      if (statusNorm !== 'ATIVO') return false;
-
-      // 1. Filtrar pelo escopo oficial da aba (166 Simples Nacional, 18 Lucro Presumido, 7 Folha de Pagamento)
-      const scopeSet = APURACAO_CLIENT_IDS[activeTab];
-      const matchRegime = scopeSet ? scopeSet.has(c.id) : false;
-
-      if (!matchRegime) return false;
-
-      // 2. Filtro textual de busca
-      if (searchTerm.trim()) {
-        const term = searchTerm.toLowerCase();
-        const matchName = (c.razao_social || '').toLowerCase().includes(term);
-        const matchCnpj = (c.cnpj || '').includes(term);
-        const matchCity = (c.localidade || '').toLowerCase().includes(term);
-        const matchDominio = (c.numero_pasta || '').toLowerCase().includes(term);
-        return matchName || matchCnpj || matchCity || matchDominio;
-      }
-
-      return true;
-    });
-  }, [clients, activeTab, searchTerm]);
-
   // Lista de obrigações da aba ativa
   const currentObligations = useMemo(() => {
     return FISCAL_OBLIGATIONS[activeTab] || [];
@@ -236,6 +226,80 @@ export const Apuracao: React.FC = () => {
     },
     [currentObligations, isObligationEnabled, inputValues]
   );
+
+  // Clientes filtrados e ordenados para a aba ativa
+  const tabClients = useMemo(() => {
+    const filtered = clients.filter((c) => {
+      // 0. Apenas clientes ATIVOS participam do setor de apuração
+      const statusNorm = (c.status || '').trim().toUpperCase();
+      if (statusNorm !== 'ATIVO') return false;
+
+      // 1. Filtrar pelo escopo oficial da aba (166 Simples Nacional, 18 Lucro Presumido, 7 Folha de Pagamento)
+      const scopeSet = APURACAO_CLIENT_IDS[activeTab];
+      const matchRegime = scopeSet ? scopeSet.has(c.id) : false;
+
+      if (!matchRegime) return false;
+
+      // 2. Filtro textual de busca
+      if (searchTerm.trim()) {
+        const term = searchTerm.toLowerCase();
+        const matchName = (c.razao_social || '').toLowerCase().includes(term);
+        const matchCnpj = (c.cnpj || '').includes(term);
+        const matchCity = (c.localidade || '').toLowerCase().includes(term);
+        const matchDominio = (c.numero_pasta || '').toLowerCase().includes(term);
+        return matchName || matchCnpj || matchCity || matchDominio;
+      }
+
+      return true;
+    });
+
+    // Ordenação dinâmica pela coluna selecionada
+    return filtered.sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortField) {
+        case 'numero_pasta': {
+          const pastaA = (a.numero_pasta || '').trim();
+          const pastaB = (b.numero_pasta || '').trim();
+          comparison = pastaA.localeCompare(pastaB, undefined, { numeric: true, sensitivity: 'base' });
+          break;
+        }
+        case 'razao_social': {
+          const nameA = (a.razao_social || '').trim();
+          const nameB = (b.razao_social || '').trim();
+          comparison = nameA.localeCompare(nameB, 'pt-BR', { sensitivity: 'base' });
+          break;
+        }
+        case 'cnpj': {
+          const cnpjA = (a.cnpj || a.cpf || '').replace(/\D/g, '');
+          const cnpjB = (b.cnpj || b.cpf || '').replace(/\D/g, '');
+          comparison = cnpjA.localeCompare(cnpjB);
+          break;
+        }
+        case 'localidade': {
+          const locA = (a.localidade || '').trim();
+          const locB = (b.localidade || '').trim();
+          comparison = locA.localeCompare(locB, 'pt-BR', { sensitivity: 'base' });
+          break;
+        }
+        case 'progresso': {
+          const progA = calculateClientProgress(a).percent;
+          const progB = calculateClientProgress(b).percent;
+          comparison = progA - progB;
+          break;
+        }
+        default: {
+          // Ordenação por uma obrigação dinâmica específica
+          const valA = (inputValues[`${a.id}::${sortField}`] || '').trim();
+          const valB = (inputValues[`${b.id}::${sortField}`] || '').trim();
+          comparison = valA.localeCompare(valB, 'pt-BR', { sensitivity: 'base' });
+          break;
+        }
+      }
+
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [clients, activeTab, searchTerm, sortField, sortDirection, calculateClientProgress, inputValues]);
 
   // Totais Gerais do Dashboard no topo da página
   const dashboardStats = useMemo(() => {
@@ -518,35 +582,113 @@ export const Apuracao: React.FC = () => {
         <div className="overflow-x-auto relative">
           <table className="w-full text-left border-collapse min-w-max">
             <thead>
-              <tr className="bg-stone-50 border-b border-gray-200 text-[11px] font-bold text-gray-600 uppercase tracking-wider">
+              <tr className="bg-stone-50 border-b border-gray-200 text-[10px] font-bold text-gray-600 uppercase tracking-wider select-none">
                 {/* Colunas Fixas Congeladas à Esquerda */}
-                <th className="py-3 px-3.5 sticky left-0 z-20 bg-stone-50 shadow-[1px_0_0_0_#E5E7EB] w-[260px] min-w-[260px] max-w-[260px]">
-                  Razão Social / Cliente
-                </th>
-                <th className="py-3 px-3 sticky left-[260px] z-20 bg-stone-50 shadow-[1px_0_0_0_#E5E7EB] w-[170px] min-w-[170px] max-w-[170px] whitespace-nowrap">
-                  CNPJ
-                </th>
-                <th className="py-3 px-3 min-w-[100px] whitespace-nowrap">
-                  Portais
-                </th>
-                <th className="py-3 px-3 min-w-[130px] whitespace-nowrap">
-                  Localidade
+                <th className="py-2 px-2.5 sticky left-0 z-20 bg-stone-50 shadow-[1px_0_0_0_#E5E7EB] w-[240px] min-w-[240px] max-w-[240px]">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('razao_social')}
+                    className="flex items-center space-x-1 hover:text-[#C5A059] transition-colors cursor-pointer group text-left"
+                  >
+                    <span>Razão Social / Cliente</span>
+                    {sortField === 'razao_social' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
+                    )}
+                  </button>
                 </th>
 
-                {/* Colunas Dinâmicas: Uma para cada obrigação */}
+                <th className="py-2 px-2 sticky left-[240px] z-20 bg-stone-50 shadow-[1px_0_0_0_#E5E7EB] w-[140px] min-w-[140px] max-w-[140px] whitespace-nowrap">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('cnpj')}
+                    className="flex items-center space-x-1 hover:text-[#C5A059] transition-colors cursor-pointer group"
+                  >
+                    <span>CNPJ</span>
+                    {sortField === 'cnpj' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
+                    )}
+                  </button>
+                </th>
+
+                <th className="py-2 px-1.5 min-w-[80px] whitespace-nowrap text-center">
+                  Portais
+                </th>
+
+                <th className="py-2 px-2 min-w-[110px] whitespace-nowrap">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('localidade')}
+                    className="flex items-center space-x-1 hover:text-[#C5A059] transition-colors cursor-pointer group"
+                  >
+                    <span>Localidade</span>
+                    {sortField === 'localidade' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
+                    )}
+                  </button>
+                </th>
+
+                {/* Colunas Dinâmicas: Uma para cada obrigação com ordenação */}
                 {currentObligations.map((obrigacao) => (
                   <th
                     key={obrigacao}
-                    className="py-3 px-2 text-center text-[10px] min-w-[115px] max-w-[140px] whitespace-normal leading-tight border-l border-gray-100"
-                    title={obrigacao}
+                    className="py-1.5 px-1 text-center text-[9px] min-w-[95px] max-w-[120px] whitespace-normal leading-tight border-l border-gray-100"
+                    title={`Clique para ordenar por: ${obrigacao}`}
                   >
-                    <span className="line-clamp-2">{obrigacao}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleSort(obrigacao)}
+                      className="w-full flex flex-col items-center justify-center hover:text-[#C5A059] transition-colors cursor-pointer group"
+                    >
+                      <span className="line-clamp-2">{obrigacao}</span>
+                      {sortField === obrigacao ? (
+                        sortDirection === 'asc' ? (
+                          <ArrowUp className="w-2.5 h-2.5 text-[#C5A059] mt-0.5" />
+                        ) : (
+                          <ArrowDown className="w-2.5 h-2.5 text-[#C5A059] mt-0.5" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-2.5 h-2.5 text-stone-300 group-hover:text-stone-400 mt-0.5" />
+                      )}
+                    </button>
                   </th>
                 ))}
 
-                {/* Coluna Final: % Concluído */}
-                <th className="py-3 px-3 text-center sticky right-0 z-20 bg-stone-50 shadow-[-1px_0_0_0_#E5E7EB] min-w-[130px]">
-                  % Concluído
+                {/* Coluna Final: % Concluído com ordenação */}
+                <th className="py-2 px-2 text-center sticky right-0 z-20 bg-stone-50 shadow-[-1px_0_0_0_#E5E7EB] min-w-[105px]">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('progresso')}
+                    className="w-full inline-flex items-center justify-center space-x-1 hover:text-[#C5A059] transition-colors cursor-pointer group"
+                  >
+                    <span>% Concluído</span>
+                    {sortField === 'progresso' ? (
+                      sortDirection === 'asc' ? (
+                        <ArrowUp className="w-3 h-3 text-[#C5A059]" />
+                      ) : (
+                        <ArrowDown className="w-3 h-3 text-[#C5A059]" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-stone-300 group-hover:text-stone-400" />
+                    )}
+                  </button>
                 </th>
               </tr>
             </thead>
@@ -590,16 +732,16 @@ export const Apuracao: React.FC = () => {
                       }`}
                     >
                       {/* Coluna 1 Fixa: Razão Social */}
-                      <td className="py-2.5 px-3.5 sticky left-0 z-10 bg-white group-hover:bg-amber-50/20 shadow-[1px_0_0_0_#E5E7EB] w-[260px] min-w-[260px] max-w-[260px]">
-                        <div className="flex items-center justify-between gap-1.5">
+                      <td className="py-1.5 px-2.5 sticky left-0 z-10 bg-white group-hover:bg-amber-50/20 shadow-[1px_0_0_0_#E5E7EB] w-[240px] min-w-[240px] max-w-[240px]">
+                        <div className="flex items-center justify-between gap-1">
                           <div className="min-w-0">
                             <span
-                              className="font-bold text-gray-900 truncate block text-xs"
+                              className="font-bold text-gray-900 truncate block text-[11px] leading-tight"
                               title={client.razao_social}
                             >
                               {client.razao_social}
                             </span>
-                            <div className="flex items-center space-x-1.5 text-[10px] text-gray-400">
+                            <div className="flex items-center space-x-1 text-[9px] text-gray-400">
                               <span>Nº Domínio: {client.numero_pasta || '-'}</span>
                               {client.parcelamento_ativo && (
                                 <span className="text-[#C5A059] font-bold">Parc. Ativo</span>
@@ -612,20 +754,20 @@ export const Apuracao: React.FC = () => {
                             type="button"
                             onClick={() => handleMarkAllClientOk(client)}
                             title="Marcar todas as obrigações deste cliente como OK"
-                            className="p-1 rounded hover:bg-emerald-100 text-gray-300 hover:text-emerald-700 transition-colors cursor-pointer shrink-0"
+                            className="p-0.5 rounded hover:bg-emerald-100 text-gray-300 hover:text-emerald-700 transition-colors cursor-pointer shrink-0"
                           >
-                            <CheckSquare className="w-3.5 h-3.5" />
+                            <CheckSquare className="w-3 h-3" />
                           </button>
                         </div>
                       </td>
 
                       {/* Coluna 2 Fixa: CNPJ (sem máscara e com botão de copiar) */}
-                      <td className="py-2.5 px-3 sticky left-[260px] z-10 bg-white shadow-[1px_0_0_0_#E5E7EB] w-[170px] min-w-[170px] max-w-[170px] whitespace-nowrap">
+                      <td className="py-1.5 px-2 sticky left-[240px] z-10 bg-white shadow-[1px_0_0_0_#E5E7EB] w-[140px] min-w-[140px] max-w-[140px] whitespace-nowrap">
                         <RawCnpjCopyButton cnpj={client.cnpj || client.cpf} />
                       </td>
 
                       {/* Coluna 3: Portais com logins e senhas */}
-                      <td className="py-2.5 px-3 whitespace-nowrap">
+                      <td className="py-1.5 px-1.5 whitespace-nowrap text-center">
                         <PortalsDropdown
                           loginPrefeitura={client.login_prefeitura}
                           senhaPrefeitura={client.senha_prefeitura}
@@ -636,7 +778,7 @@ export const Apuracao: React.FC = () => {
                       </td>
 
                       {/* Coluna 4: Localidade */}
-                      <td className="py-2.5 px-3 text-[11px] text-gray-600 whitespace-nowrap">
+                      <td className="py-1.5 px-2 text-[10px] text-gray-600 whitespace-nowrap truncate max-w-[130px]" title={client.localidade || '-'}>
                         {client.localidade || '-'}
                       </td>
 
@@ -656,10 +798,10 @@ export const Apuracao: React.FC = () => {
                           return (
                             <td
                               key={obrigacao}
-                              className="py-1 px-1.5 text-center bg-gray-50/80 border-l border-gray-100"
+                              className="py-1 px-1 text-center bg-gray-50/80 border-l border-gray-100"
                               title="Obrigação não aplicável a este cliente"
                             >
-                              <div className="w-full py-1 text-[10px] text-gray-300 font-mono select-none">
+                              <div className="w-full py-0.5 text-[9px] text-gray-300 font-mono select-none">
                                 N/A
                               </div>
                             </td>
@@ -678,7 +820,7 @@ export const Apuracao: React.FC = () => {
                         return (
                           <td
                             key={obrigacao}
-                            className="py-1 px-1.5 text-center border-l border-gray-100 relative"
+                            className="py-1 px-1 text-center border-l border-gray-100 relative min-w-[95px] max-w-[120px]"
                           >
                             <input
                               type="text"
@@ -687,21 +829,21 @@ export const Apuracao: React.FC = () => {
                               onBlur={() => handleCellBlur(client, obrigacao)}
                               placeholder="-"
                               title={`Valor: "${rawValue}" | Digite "OK" para concluir`}
-                              className={`w-full text-center text-[11px] py-1 px-1 rounded-lg border transition-all focus:outline-none focus:ring-1 focus:ring-[#C5A059] ${inputStyle}`}
+                              className={`w-full text-center text-[10px] py-0.5 px-1 rounded border transition-all focus:outline-none focus:ring-1 focus:ring-[#C5A059] leading-tight ${inputStyle}`}
                             />
                             {isSavingThis && (
-                              <span className="absolute right-2 top-2 w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                              <span className="absolute right-1.5 top-1.5 w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
                             )}
                           </td>
                         );
                       })}
 
                       {/* Coluna Final Fixa: % Concluído com Barra de Progresso */}
-                      <td className="py-2 px-3 sticky right-0 z-10 bg-white shadow-[-1px_0_0_0_#E5E7EB] text-center">
-                        <div className="flex flex-col items-center justify-center space-y-1">
-                          <div className="flex items-center space-x-1.5">
+                      <td className="py-1 px-2 sticky right-0 z-10 bg-white shadow-[-1px_0_0_0_#E5E7EB] text-center min-w-[105px]">
+                        <div className="flex flex-col items-center justify-center space-y-0.5">
+                          <div className="flex items-center space-x-1">
                             <span
-                              className={`text-xs font-black font-mono ${
+                              className={`text-[10px] font-black font-mono ${
                                 is100
                                   ? 'text-emerald-600'
                                   : progress.percent > 0
@@ -711,11 +853,11 @@ export const Apuracao: React.FC = () => {
                             >
                               {progress.percent}%
                             </span>
-                            {is100 && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+                            {is100 && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
                           </div>
 
                           {/* Mini Barra de Progresso */}
-                          <div className="w-16 bg-gray-100 h-1.5 rounded-full overflow-hidden">
+                          <div className="w-14 bg-gray-100 h-1 rounded-full overflow-hidden">
                             <div
                               style={{ width: `${progress.percent}%` }}
                               className={`h-full rounded-full transition-all duration-300 ${
@@ -724,7 +866,7 @@ export const Apuracao: React.FC = () => {
                             />
                           </div>
 
-                          <span className="text-[9px] text-gray-400">
+                          <span className="text-[8px] text-gray-400 font-mono">
                             {progress.okCount}/{progress.totalEnabled}
                           </span>
                         </div>

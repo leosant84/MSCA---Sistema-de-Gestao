@@ -33,13 +33,13 @@ export const RawCnpjCopyButton: React.FC<RawCnpjCopyButtonProps> = ({ cnpj, clas
       type="button"
       onClick={handleCopy}
       title="Clique para copiar CNPJ (sem máscara)"
-      className={`inline-flex items-center space-x-1 font-mono text-[11px] text-stone-700 hover:text-stone-900 font-semibold bg-slate-50 hover:bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200 hover:border-slate-300 transition-all shadow-2xs cursor-pointer group ${className}`}
+      className={`inline-flex items-center space-x-1 font-mono text-[10px] text-stone-700 hover:text-stone-900 font-semibold bg-slate-50 hover:bg-slate-100 px-1.5 py-0.5 rounded-md border border-slate-200 hover:border-slate-300 transition-all shadow-2xs cursor-pointer group ${className}`}
     >
       <span>{rawCnpj}</span>
       {copied ? (
-        <Check className="w-3 h-3 text-emerald-600 animate-pulse ml-0.5" />
+        <Check className="w-2.5 h-2.5 text-emerald-600 animate-pulse ml-0.5" />
       ) : (
-        <Copy className="w-3 h-3 text-stone-400 group-hover:text-stone-600 ml-0.5 transition-colors" />
+        <Copy className="w-2.5 h-2.5 text-stone-400 group-hover:text-stone-600 ml-0.5 transition-colors" />
       )}
     </button>
   );
