@@ -51,48 +51,22 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   // Filtrar clientes que necessitam desta apuração específica (obrigação habilitada)
   const applicableClients = clients.filter((c) => isObligationEnabled(c, obrigacaoName));
 
-  // Função auxiliar para normalizar e remover acentos
-  const normalizeText = (text?: string | null) => {
-    return (text || '')
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .trim();
-  };
+  // Filtrar por busca textual
+  const searchedClients = applicableClients.filter((c) => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase();
+    const rawCnpj = (c.cnpj || '').replace(/\D/g, '');
+    return (
+      (c.razao_social || '').toLowerCase().includes(term) ||
+      rawCnpj.includes(term.replace(/\D/g, '')) ||
+      (c.localidade || '').toLowerCase().includes(term) ||
+      (c.numero_pasta || '').toLowerCase().includes(term)
+    );
+  });
 
-  // Filtrar e ordenar clientes
+  // Ordenação das colunas
   const filteredClients = useMemo(() => {
-    const rawTerm = searchTerm.trim();
-    const normalizedTerm = normalizeText(rawTerm);
-    const cleanNumbersQuery = rawTerm.replace(/\D/g, '');
-
-    // 1. Filtragem por busca
-    const searched = applicableClients.filter((c) => {
-      if (!normalizedTerm) return true;
-
-      const normRazao = normalizeText(c.razao_social);
-      const normLocalidade = normalizeText(c.localidade);
-      const normPasta = normalizeText(c.numero_pasta);
-      const rawCnpj = (c.cnpj || '').replace(/\D/g, '');
-      const rawCpf = (c.cpf || '').replace(/\D/g, '');
-
-      const matchesRazao = normRazao.includes(normalizedTerm);
-      const matchesLocalidade = normLocalidade.includes(normalizedTerm);
-      const matchesPasta = normPasta.includes(normalizedTerm);
-      const matchesCnpj = cleanNumbersQuery ? rawCnpj.includes(cleanNumbersQuery) : false;
-      const matchesCpf = cleanNumbersQuery ? rawCpf.includes(cleanNumbersQuery) : false;
-
-      return (
-        matchesRazao ||
-        matchesLocalidade ||
-        matchesPasta ||
-        matchesCnpj ||
-        matchesCpf
-      );
-    });
-
-    // 2. Ordenação das colunas
-    return searched.sort((a, b) => {
+    return [...searchedClients].sort((a, b) => {
       let comparison = 0;
 
       switch (sortField) {
@@ -134,7 +108,7 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
 
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [applicableClients, searchTerm, sortField, sortDirection, inputValues, obrigacaoName, competencia]);
+  }, [searchedClients, sortField, sortDirection, inputValues, obrigacaoName, competencia]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -225,18 +199,8 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Buscar por razão social, CNPJ ou cidade..."
-              className="w-full pl-8 pr-7 py-1 text-xs bg-white border border-stone-200 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:outline-none"
+              className="w-full pl-8 pr-2.5 py-1 text-xs bg-white border border-stone-200 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:outline-none"
             />
-            {searchTerm && (
-              <button
-                type="button"
-                onClick={() => setSearchTerm('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 p-0.5 rounded cursor-pointer"
-                title="Limpar busca"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
           </div>
 
           <div className="flex items-center space-x-2">

@@ -9,6 +9,8 @@ import {
   Layers,
   Sparkles,
   ChevronRight,
+  X,
+  User,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -22,6 +24,7 @@ import {
 import { APURACAO_CLIENT_IDS } from '../constants/apuracaoScope';
 import { ApuracaoDrilldownModal } from '../components/ApuracaoDrilldownModal';
 import { ApuracaoValidationModal } from '../components/ApuracaoValidationModal';
+import { ClientApuracoesModal } from '../components/ClientApuracoesModal';
 import { notificationService } from '../services/notificationService';
 import type { FiscalRegimeType } from '../constants/fiscalObligations';
 import type { Client, FiscalRecord } from '../types';
@@ -58,6 +61,11 @@ export const Apuracao: React.FC = () => {
   const [drilldownModalOpen, setDrilldownModalOpen] = useState(false);
   const [selectedObligation, setSelectedObligation] = useState<string>('');
   const [selectedCompForDrilldown, setSelectedCompForDrilldown] = useState<string>('');
+
+  // Filtro por Cliente Específico e Modal de Apurações do Cliente
+  const [selectedClientIdFilter, setSelectedClientIdFilter] = useState<string>('');
+  const [clientApuracoesModalOpen, setClientApuracoesModalOpen] = useState(false);
+  const [clientForApuracoesModal, setClientForApuracoesModal] = useState<Client | null>(null);
 
   // Modal de Validação ADM
   const [validationModalOpen, setValidationModalOpen] = useState(false);
@@ -256,6 +264,44 @@ export const Apuracao: React.FC = () => {
     [selectedCompForDrilldown, activeTab, user?.id, profile?.full_name, currentObligations, isObligationEnabled, inputValues, toast]
   );
 
+  // Salvar alteração de status de apuração com competência arbitrária (chamado pelo modal de cliente)
+  const handleClientStatusChange = useCallback(
+    async (client: Client, obrigacao: string, comp: string, newValue: string) => {
+      const key = `${client.id}::${obrigacao}::${comp}`;
+
+      // Atualização otimista no estado local
+      setInputValues((prev) => ({ ...prev, [key]: newValue }));
+
+      try {
+        const isOk = newValue.trim().toUpperCase() === 'OK';
+        const status = isOk ? 'OK' : newValue.trim() ? 'OBS' : 'PENDENTE';
+
+        const payload = {
+          client_id: client.id,
+          competencia: comp,
+          regime: activeTab,
+          obrigacao,
+          valor: newValue.trim(),
+          status,
+          updated_by: user?.id || null,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error } = await supabase
+          .from('fiscal_records')
+          .upsert(payload, { onConflict: 'client_id,competencia,obrigacao' })
+          .select()
+          .single();
+
+        if (error) throw error;
+      } catch (err) {
+        console.error('Erro ao salvar apuração do cliente:', err);
+        toast('Erro ao sincronizar apuração com o servidor.', 'error');
+      }
+    },
+    [activeTab, user?.id, toast]
+  );
+
   // Auxiliar: checa se uma competência (ex: "jan/26") é de um mês anterior
   const isPastCompetencia = useCallback((compStr: string) => {
     const parts = compStr.toLowerCase().split('/');
@@ -272,11 +318,25 @@ export const Apuracao: React.FC = () => {
     return y < curY || (y === curY && mIdx < curM);
   }, []);
 
+  // Clientes considerados no cálculo da matriz (se filtrado por cliente, considera apenas ele)
+  const activeScopedClients = useMemo(() => {
+    if (selectedClientIdFilter) {
+      return tabClients.filter((c) => c.id === selectedClientIdFilter);
+    }
+    return tabClients;
+  }, [tabClients, selectedClientIdFilter]);
+
+  // Cliente único atualmente selecionado (se houver)
+  const currentFilteredClient = useMemo(() => {
+    if (!selectedClientIdFilter) return null;
+    return tabClients.find((c) => c.id === selectedClientIdFilter) || null;
+  }, [tabClients, selectedClientIdFilter]);
+
   // Calcula a porcentagem de conclusão de uma Obrigação em uma Competência específica
   const getObligationMonthStats = useCallback(
     (obrigacao: string, competencia: string) => {
-      // Clientes aplicáveis a esta obrigação
-      const applicable = tabClients.filter((c) => isObligationEnabled(c, obrigacao));
+      // Clientes aplicáveis a esta obrigação (respeitando o filtro de cliente se houver)
+      const applicable = activeScopedClients.filter((c) => isObligationEnabled(c, obrigacao));
       const total = applicable.length;
       if (total === 0) return { total: 0, okCount: 0, percent: 100 };
 
@@ -300,7 +360,7 @@ export const Apuracao: React.FC = () => {
       const percent = Math.round((okCount / total) * 100);
       return { total, okCount, percent };
     },
-    [tabClients, isObligationEnabled, inputValues, isPastCompetencia]
+    [activeScopedClients, isObligationEnabled, inputValues, isPastCompetencia]
   );
 
   // Calcula estatísticas gerais da competência mais recente / corrente
@@ -479,8 +539,59 @@ export const Apuracao: React.FC = () => {
           })}
         </div>
 
-        <div className="text-xs text-stone-400 font-medium px-2">
-          <span>{tabClients.length} clientes ativos monitorados</span>
+        <div className="flex items-center space-x-2">
+          {/* Seletor de Cliente do Regime */}
+          <div className="flex items-center space-x-1.5 bg-stone-50 border border-stone-200/80 rounded-2xl px-3 py-1.5 text-xs">
+            <User className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
+            <span className="text-[11px] font-semibold text-stone-500 hidden sm:inline shrink-0">
+              Cliente:
+            </span>
+            <select
+              value={selectedClientIdFilter}
+              onChange={(e) => setSelectedClientIdFilter(e.target.value)}
+              className="bg-transparent text-xs font-semibold text-stone-800 focus:outline-none max-w-[200px] sm:max-w-[280px] truncate cursor-pointer"
+            >
+              <option value="">Todos os clientes ({tabClients.length})</option>
+              {tabClients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.numero_pasta ? `[${c.numero_pasta}] ` : ''}{c.razao_social}
+                </option>
+              ))}
+            </select>
+
+            {selectedClientIdFilter && (
+              <button
+                type="button"
+                onClick={() => setSelectedClientIdFilter('')}
+                className="text-stone-400 hover:text-stone-600 p-0.5 rounded cursor-pointer"
+                title="Limpar filtro de cliente"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Botão de Ver todas as apurações do cliente selecionado */}
+          {currentFilteredClient && (
+            <button
+              type="button"
+              onClick={() => {
+                setClientForApuracoesModal(currentFilteredClient);
+                setClientApuracoesModalOpen(true);
+              }}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-2xl bg-[#C5A059] hover:bg-[#A67C2E] text-white text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0"
+              title={`Ver e gerenciar todas as apurações de ${currentFilteredClient.razao_social}`}
+            >
+              <Building className="w-3.5 h-3.5" />
+              <span>Ver Apurações do Cliente</span>
+            </button>
+          )}
+
+          {!selectedClientIdFilter && (
+            <div className="text-xs text-stone-400 font-medium px-2 hidden lg:inline">
+              <span>{tabClients.length} clientes ativos monitorados</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -652,6 +763,25 @@ export const Apuracao: React.FC = () => {
             clientToValidate ? isObligationEnabled(clientToValidate, ob) : true
           )}
           onValidationSuccess={fetchApuracaoData}
+        />
+      )}
+
+      {/* 7. MODAL DE APURAÇÕES COMPLETAS DE UM DETERMINADO CLIENTE */}
+      {clientApuracoesModalOpen && clientForApuracoesModal && (
+        <ClientApuracoesModal
+          isOpen={clientApuracoesModalOpen}
+          onClose={() => {
+            setClientApuracoesModalOpen(false);
+            setClientForApuracoesModal(null);
+          }}
+          client={clientForApuracoesModal}
+          regime={activeTab}
+          year={selectedYear}
+          yearCompetencias={yearCompetencias}
+          obligations={currentObligations}
+          inputValues={inputValues}
+          onStatusChange={handleClientStatusChange}
+          isObligationEnabled={isObligationEnabled}
         />
       )}
     </div>
