@@ -22,7 +22,8 @@ import {
   AlertTriangle,
   CalendarDays,
   ArrowDownLeft,
-  FileSpreadsheet
+  FileSpreadsheet,
+  FolderTree
 } from 'lucide-react';
 import { parseCompetencia, formatCompetencia, isEntryOverdue } from '../utils/competencia';
 import { supabase } from '../lib/supabase';
@@ -62,6 +63,7 @@ export const Financial: React.FC = () => {
   const [bancoFilter, setBancoFilter] = useState<string>('Todos');
   const [statusFilter, setStatusFilter] = useState<string>('Todos');
   const [clientFilter, setClientFilter] = useState<string>('Todos');
+  const [contaContabilFilter, setContaContabilFilter] = useState<string>('Todas');
 
   // Filtro de Mês e Ano específico para os Cards de Resumo e Distribuição de Gastos
   const [cardMonth, setCardMonth] = useState<number>(() => new Date().getMonth());
@@ -186,6 +188,29 @@ export const Financial: React.FC = () => {
     }).length;
   }, [entries]);
 
+  // Lista de bancos / formas de pagamento presentes nas saídas (garantindo que qualquer variação apareça no filtro)
+  const availableExpenseBancos = useMemo(() => {
+    const set = new Set<string>();
+    // Adiciona métodos padrão
+    EXPENSE_PAYMENT_METHODS.forEach((m) => set.add(m));
+    // Adiciona métodos existentes na base de dados
+    expenses.forEach((ex) => {
+      const b = (ex.banco || '').trim();
+      if (b) set.add(b);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [expenses]);
+
+  // Lista de contas contábeis para o filtro de Saídas
+  const availableExpenseContas = useMemo(() => {
+    const set = new Set<string>();
+    expenses.forEach((ex) => {
+      const c = (ex.conta_contabil || '').trim();
+      if (c) set.add(c);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [expenses]);
+
   const expensePendingCount = useMemo(() => {
     return expenses.filter((e) => {
       let matchYear = true;
@@ -194,12 +219,20 @@ export const Financial: React.FC = () => {
         matchYear = String(year) === selectedYear;
       }
       const matchComp = selectedCompetencia === 'Todas' || e.competencia === selectedCompetencia;
-      const matchBanco = bancoFilter === 'Todos' || e.banco === bancoFilter;
+      
+      const expBanco = (e.banco || '').trim().toLowerCase();
+      const filterBanco = bancoFilter.trim().toLowerCase();
+      const matchBanco = bancoFilter === 'Todos' || expBanco === filterBanco;
+
+      const expConta = (e.conta_contabil || '').trim().toLowerCase();
+      const filterConta = contaContabilFilter.trim().toLowerCase();
+      const matchConta = contaContabilFilter === 'Todas' || expConta === filterConta;
+
       const normStatus = (e.status || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       const isPending = normStatus === 'A PAGAR';
-      return matchYear && matchComp && matchBanco && isPending;
+      return matchYear && matchComp && matchBanco && matchConta && isPending;
     }).length;
-  }, [expenses, selectedYear, selectedCompetencia, bancoFilter]);
+  }, [expenses, selectedYear, selectedCompetencia, bancoFilter, contaContabilFilter]);
 
   // Lista de clientes únicos para filtro
   const uniqueClients = useMemo(() => {
@@ -263,7 +296,34 @@ export const Financial: React.FC = () => {
         }
 
         const matchComp = selectedCompetencia === 'Todas' || e.competencia === selectedCompetencia;
-        const matchBanco = bancoFilter === 'Todos' || e.banco === bancoFilter;
+
+        // Filtro Forma / Banco: robusto contra variações (ex: "Itaú" vs "Itaú (c/c)", espaços, maiúsculas/minúsculas)
+        let matchBanco = true;
+        if (bancoFilter !== 'Todos') {
+          const expBanco = (e.banco || '').trim().toLowerCase();
+          const filterBanco = bancoFilter.trim().toLowerCase();
+          if (expBanco === filterBanco) {
+            matchBanco = true;
+          } else if (filterBanco.includes('itaú') || filterBanco.includes('itau')) {
+            matchBanco = expBanco.includes('itaú') || expBanco.includes('itau');
+          } else if (filterBanco.includes('cora')) {
+            matchBanco = expBanco.includes('cora');
+          } else if (filterBanco.includes('cartão') || filterBanco.includes('cartao')) {
+            matchBanco = expBanco.includes('cart');
+          } else if (filterBanco.includes('boleto')) {
+            matchBanco = expBanco.includes('boleto');
+          } else {
+            matchBanco = expBanco === filterBanco;
+          }
+        }
+
+        // Filtro Conta Contábil
+        let matchConta = true;
+        if (contaContabilFilter !== 'Todas') {
+          const expConta = (e.conta_contabil || '').trim().toLowerCase();
+          const filterConta = contaContabilFilter.trim().toLowerCase();
+          matchConta = expConta === filterConta;
+        }
 
         let matchStatus = true;
         if (statusFilter !== 'Todos') {
@@ -279,7 +339,7 @@ export const Financial: React.FC = () => {
           }
         }
 
-        return matchYear && matchComp && matchBanco && matchStatus;
+        return matchYear && matchComp && matchBanco && matchConta && matchStatus;
       })
       .sort((a, b) => {
         // Ordenação prioritária por Data de Pagamento / Previsão (crescente)
@@ -297,7 +357,7 @@ export const Financial: React.FC = () => {
         // Desempate final por descrição do pagamento
         return (a.descricao_pagamento || '').localeCompare(b.descricao_pagamento || '');
       });
-  }, [expenses, selectedYear, selectedCompetencia, bancoFilter, statusFilter]);
+  }, [expenses, selectedYear, selectedCompetencia, bancoFilter, contaContabilFilter, statusFilter]);
 
   // Totais Calculados para os Cards de Resumo (Filtrados por cardMonth e cardYear)
   const currentMonthTotals = useMemo(() => {
@@ -1683,9 +1743,9 @@ export const Financial: React.FC = () => {
               >
                 <option value="Todos">Todos</option>
                 {activeTab === 'saidas' ? (
-                  EXPENSE_PAYMENT_METHODS.map((method) => (
-                    <option key={method} value={method}>
-                      {method}
+                  availableExpenseBancos.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
                     </option>
                   ))
                 ) : (
@@ -1697,6 +1757,26 @@ export const Financial: React.FC = () => {
                 )}
               </select>
             </div>
+
+            {/* Filtro Conta Contábil (para Saídas) */}
+            {activeTab === 'saidas' && (
+              <div className="flex items-center space-x-1.5">
+                <FolderTree className="w-3.5 h-3.5 text-gray-400" />
+                <span className="text-xs text-gray-500 font-medium">Conta Contábil:</span>
+                <select
+                  value={contaContabilFilter}
+                  onChange={(e) => setContaContabilFilter(e.target.value)}
+                  className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-800 max-w-[200px] truncate focus:ring-1 focus:ring-[#C5A059]"
+                >
+                  <option value="Todas">Todas as contas</option>
+                  {availableExpenseContas.map((conta) => (
+                    <option key={conta} value={conta}>
+                      {conta}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Filtro Status (para Saídas) */}
             {activeTab === 'saidas' && (
@@ -1741,6 +1821,7 @@ export const Financial: React.FC = () => {
                   const filterDesc = [
                     selectedCompetencia !== 'Todas' ? selectedCompetencia : '',
                     bancoFilter !== 'Todos' ? bancoFilter : '',
+                    contaContabilFilter !== 'Todas' ? contaContabilFilter : '',
                     statusFilter !== 'Todos' ? statusFilter : ''
                   ].filter(Boolean).join('_');
                   exportFinancialExpensesToExcel(filteredExpenses, filterDesc);
