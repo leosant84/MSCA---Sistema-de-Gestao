@@ -504,12 +504,6 @@ export const Apuracao: React.FC = () => {
       : [...clientsWithStatus];
 
     return list.sort((a, b) => {
-      const pastaA = a.client.numero_pasta ? parseInt(a.client.numero_pasta, 10) : Infinity;
-      const pastaB = b.client.numero_pasta ? parseInt(b.client.numero_pasta, 10) : Infinity;
-
-      if (!isNaN(pastaA) && !isNaN(pastaB) && pastaA !== pastaB) {
-        return pastaA - pastaB;
-      }
       return (a.client.razao_social || '').localeCompare(b.client.razao_social || '', 'pt-BR');
     });
   }, [clientsWithStatus, onlyReadyForValidationFilter]);
@@ -739,17 +733,10 @@ export const Apuracao: React.FC = () => {
                   ? `Prontos para validar (${selectableClients.length})`
                   : `Todos os clientes (${tabClients.length})`}
               </option>
-              {selectableClients.map(({ client: c, is100, isValidated, percent }) => {
-                const tag = is100
-                  ? isValidated
-                    ? ' [✓ Validado]'
-                    : ' [★ 100% Para Validar]'
-                  : ` [${percent}%]`;
+              {selectableClients.map(({ client: c }) => {
                 return (
                   <option key={c.id} value={c.id}>
-                    {c.numero_pasta ? `[${c.numero_pasta}] ` : ''}
                     {c.razao_social}
-                    {tag}
                   </option>
                 );
               })}
