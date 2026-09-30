@@ -150,6 +150,18 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
     toast(`Todos os ${filteredClients.length} clientes visíveis marcados como OK!`, 'success');
   };
 
+  const handleUnmarkAllVisible = () => {
+    filteredClients.forEach((c) => {
+      const key = `${c.id}::${obrigacaoName}::${competencia}`;
+      const keyLegacy = `${c.id}::${obrigacaoName}`;
+      const currentVal = inputValues[key] !== undefined ? inputValues[key] : (inputValues[keyLegacy] || '');
+      if ((currentVal || '').trim() !== '') {
+        onStatusChange(c, obrigacaoName, '');
+      }
+    });
+    toast(`Status de ${filteredClients.length} clientes visíveis desmarcado (pendente)!`, 'info');
+  };
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
       <div className="bg-white rounded-2xl shadow-2xl border border-stone-200/80 w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95">
@@ -211,6 +223,16 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
             >
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
               <span>Marcar visíveis como OK</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleUnmarkAllVisible}
+              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-200 text-xs font-semibold transition-all cursor-pointer shadow-2xs"
+              title="Limpar o status dos clientes visíveis (tornar pendente)"
+            >
+              <X className="w-3.5 h-3.5 text-stone-500" />
+              <span>Desmarcar todos</span>
             </button>
           </div>
         </div>

@@ -7,10 +7,14 @@ import {
   MapPin,
   Calendar,
   Check,
+  ShieldCheck,
+  AlertTriangle,
 } from 'lucide-react';
 import { RawCnpjCopyButton } from './RawCnpjCopyButton';
 import { useToast } from '../contexts/ToastContext';
-import type { Client } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+import { apuracaoValidationService, buildValidationKey } from '../services/apuracaoValidationService';
+import type { Client, ClientApuracaoValidation } from '../types';
 
 interface ClientApuracoesModalProps {
   isOpen: boolean;
@@ -21,8 +25,11 @@ interface ClientApuracoesModalProps {
   yearCompetencias: string[];
   obligations: string[];
   inputValues: Record<string, string>;
+  validations: Record<string, ClientApuracaoValidation>;
   onStatusChange: (client: Client, obrigacao: string, competencia: string, newValue: string) => void;
   isObligationEnabled: (client: Client, obrigacao: string) => boolean;
+  onOpenValidationModal: (client: Client, competencia: string) => void;
+  onRefreshData?: () => void;
 }
 
 export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
@@ -34,10 +41,14 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   yearCompetencias,
   obligations,
   inputValues,
+  validations,
   onStatusChange,
   isObligationEnabled,
+  onOpenValidationModal,
+  onRefreshData,
 }) => {
   const { toast } = useToast();
+  const { profile, user } = useAuth();
   const currentMonthIdx = new Date().getMonth();
   const [selectedComp, setSelectedComp] = useState<string>(
     () => yearCompetencias[currentMonthIdx] || yearCompetencias[0] || 'set/26'
@@ -56,6 +67,13 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     return (val || '').trim().toUpperCase() === 'OK';
   }).length;
   const percentInMonth = totalInMonth > 0 ? Math.round((okCountInMonth / totalInMonth) * 100) : 100;
+  const isMonth100 = totalInMonth > 0 && okCountInMonth === totalInMonth;
+
+  // Status de validação do ADM para o cliente no mês selecionado
+  const currentValidationKey = buildValidationKey(client.id, selectedComp);
+  const currentValidation = validations[currentValidationKey];
+  const isValidated = currentValidation?.status === 'APPROVED';
+  const isNeedsReview = currentValidation?.status === 'NEEDS_REVIEW';
 
   // Estatísticas no ano inteiro (todas as competências x obrigações)
   let totalInYear = 0;
@@ -101,7 +119,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
         onStatusChange(client, ob, selectedComp, 'OK');
       }
     });
-    toast(`Todas as ${clientObligations.length} apurações de ${selectedComp} marcadas como OK!`, 'success');
+    toast(`Todas as ${clientObligations.length} apurações de ${selectedComp.toUpperCase()} marcadas como OK!`, 'success');
   };
 
   const handleUnmarkAll = () => {
@@ -112,7 +130,34 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
         onStatusChange(client, ob, selectedComp, '');
       }
     });
-    toast(`Apurações de ${selectedComp} desmarcadas (pendentes)!`, 'info');
+    toast(`Apurações de ${selectedComp.toUpperCase()} desmarcadas (pendentes)!`, 'info');
+  };
+
+  // Alternar checkbox de validação do ADM direto na linha
+  const handleToggleValidationCheck = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (profile?.role !== 'admin') {
+      toast('Apenas gestores administradores podem validar apurações.', 'info');
+      return;
+    }
+
+    const checked = e.target.checked;
+    if (checked) {
+      // Se marcou o tick, homologa validação
+      await apuracaoValidationService.setValidationApproved({
+        clientId: client.id,
+        competencia: selectedComp,
+        regime,
+        adminId: user?.id,
+        adminName: profile?.full_name || 'Gestor ADM',
+      });
+      toast(`Apuração de ${selectedComp.toUpperCase()} validada pelo ADM!`, 'success');
+      onRefreshData?.();
+    } else {
+      // Se desmarcou, limpa validação
+      await apuracaoValidationService.clearValidation(client.id, selectedComp);
+      toast(`Validação de ${selectedComp.toUpperCase()} removida.`, 'info');
+      onRefreshData?.();
+    }
   };
 
   return (
@@ -170,47 +215,85 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
           </button>
         </div>
 
-        {/* Seletor de Competência (12 Meses em formato tabs horizontais) */}
-        <div className="p-2.5 px-6 bg-stone-50 border-b border-stone-200/60 flex items-center justify-between gap-3 overflow-x-auto">
-          <div className="flex items-center space-x-1">
-            <Calendar className="w-3.5 h-3.5 text-stone-400 mr-1 shrink-0" />
-            <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider mr-2 shrink-0">
-              Mês:
-            </span>
-            <div className="flex items-center space-x-1 bg-stone-200/60 p-0.5 rounded-xl">
-              {yearCompetencias.map((comp) => {
-                const isSelected = selectedComp === comp;
-                const mLabel = comp.split('/')[0].toUpperCase();
+        {/* 1. SELETOR DE COMPETÊNCIA: SELECT/FILTRO AO INVÉS DE ABAS HORIZONTAIS */}
+        <div className="p-2.5 px-6 bg-stone-50 border-b border-stone-200/60 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 bg-white border border-stone-300/80 rounded-xl px-3 py-1 shadow-2xs">
+              <Calendar className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
+              <label htmlFor="comp-select" className="text-xs font-bold text-stone-600 uppercase tracking-wider shrink-0">
+                Competência:
+              </label>
+              <select
+                id="comp-select"
+                value={selectedComp}
+                onChange={(e) => setSelectedComp(e.target.value)}
+                className="bg-transparent text-xs font-bold text-stone-900 focus:outline-none cursor-pointer pr-2"
+              >
+                {yearCompetencias.map((comp) => {
+                  const mLabel = comp.split('/')[0].toUpperCase();
+                  const compValKey = buildValidationKey(client.id, comp);
+                  const isCompValid = validations[compValKey]?.status === 'APPROVED';
 
-                // Checar se todas as obrigações deste mês estão OK
-                const okInThisMonth = clientObligations.filter((ob) => {
-                  const key = `${client.id}::${ob}::${comp}`;
-                  const val = inputValues[key];
-                  return (val || '').trim().toUpperCase() === 'OK';
-                }).length;
-                const is100InThisMonth = clientObligations.length > 0 && okInThisMonth === clientObligations.length;
+                  const okCountInComp = clientObligations.filter((ob) => {
+                    const key = `${client.id}::${ob}::${comp}`;
+                    const val = inputValues[key];
+                    return (val || '').trim().toUpperCase() === 'OK';
+                  }).length;
+                  const is100InComp = clientObligations.length > 0 && okCountInComp === clientObligations.length;
 
-                return (
-                  <button
-                    key={comp}
-                    type="button"
-                    onClick={() => setSelectedComp(comp)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center space-x-1 ${
-                      isSelected
-                        ? 'bg-white text-stone-900 shadow-xs'
-                        : 'text-stone-600 hover:text-stone-900 hover:bg-white/50'
-                    }`}
-                  >
-                    <span>{mLabel}</span>
-                    {is100InThisMonth && (
-                      <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
-                    )}
-                  </button>
-                );
-              })}
+                  let suffix = '';
+                  if (isCompValid) {
+                    suffix = ' ✓ (Validado ADM)';
+                  } else if (is100InComp) {
+                    suffix = ' (100% Apurado)';
+                  }
+
+                  return (
+                    <option key={comp} value={comp}>
+                      {mLabel}/{comp.split('/')[1] || year} {suffix}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* Badge de Status Geral do Mês Selecionado */}
+            <div className="hidden sm:flex items-center space-x-1.5">
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center space-x-1 border ${
+                  isMonth100
+                    ? isValidated
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                      : 'bg-slate-100 text-slate-700 border-slate-300'
+                    : 'bg-amber-100 text-amber-900 border-amber-300'
+                }`}
+              >
+                {isValidated ? (
+                  <>
+                    <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                    <span>Validado pelo ADM</span>
+                  </>
+                ) : isNeedsReview ? (
+                  <>
+                    <AlertTriangle className="w-3 h-3 text-rose-600" />
+                    <span>Revisão Apontada</span>
+                  </>
+                ) : isMonth100 ? (
+                  <>
+                    <Clock className="w-3 h-3 text-slate-500" />
+                    <span>100% (Aguardando Validação)</span>
+                  </>
+                ) : (
+                  <>
+                    <Clock className="w-3 h-3 text-amber-600" />
+                    <span>{percentInMonth}% em andamento</span>
+                  </>
+                )}
+              </span>
             </div>
           </div>
 
+          {/* Botões de Ação em Lote */}
           <div className="flex items-center space-x-2 shrink-0">
             <button
               type="button"
@@ -234,7 +317,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
           </div>
         </div>
 
-        {/* Tabela de Obrigações do Cliente */}
+        {/* 2. TABELA DE OBRIGAÇÕES COM STATUS DA VALIDAÇÃO E CHECKBOX ADM */}
         <div className="flex-1 overflow-y-auto min-h-[260px]">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-10 bg-stone-100 shadow-xs">
@@ -242,13 +325,14 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                 <th className="py-2 px-4 w-12 text-center">Item</th>
                 <th className="py-2 px-4">Obrigação / Apuração</th>
                 <th className="py-2 px-4 text-center">Competência</th>
-                <th className="py-2 px-4 text-right">Status da Apuração</th>
+                <th className="py-2 px-4 text-center">Status da Apuração</th>
+                <th className="py-2 px-4 text-right">Status da Validação</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100 text-xs text-stone-700">
               {clientObligations.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="py-10 text-center text-stone-400">
+                  <td colSpan={5} className="py-10 text-center text-stone-400">
                     Nenhuma apuração habilitada para este cliente.
                   </td>
                 </tr>
@@ -257,33 +341,40 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                   const key = `${client.id}::${obrigacao}::${selectedComp}`;
                   const val = inputValues[key] !== undefined ? inputValues[key] : '';
                   const isOk = (val || '').trim().toUpperCase() === 'OK';
+                  const isReviewFlagged = currentValidation?.pending_obligations?.includes(obrigacao);
 
                   return (
                     <tr
                       key={obrigacao}
                       className={`hover:bg-amber-50/20 transition-colors ${
-                        isOk ? 'bg-emerald-50/15' : ''
-                      }`}
+                        isOk ? (isValidated ? 'bg-emerald-50/20' : 'bg-slate-50/40') : ''
+                      } ${isReviewFlagged ? 'bg-rose-50/30' : ''}`}
                     >
                       {/* Índice */}
-                      <td className="py-1 px-4 text-center font-mono text-[10px] text-stone-400">
+                      <td className="py-1.5 px-4 text-center font-mono text-[10px] text-stone-400">
                         {String(index + 1).padStart(2, '0')}
                       </td>
 
                       {/* Nome da Obrigação */}
-                      <td className="py-1 px-4 font-semibold text-stone-900">
-                        <span>{obrigacao}</span>
+                      <td className="py-1.5 px-4 font-semibold text-stone-900">
+                        <div className="flex items-center space-x-1.5">
+                          <span>{obrigacao}</span>
+                          {isReviewFlagged && (
+                            <span className="text-[9px] bg-rose-100 text-rose-800 font-bold px-1.5 py-0.2 rounded border border-rose-300">
+                              Revisar
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Competência Atual */}
-                      <td className="py-1 px-4 text-center font-mono text-[11px] text-stone-600 uppercase">
+                      <td className="py-1.5 px-4 text-center font-mono text-[11px] text-stone-600 uppercase">
                         {selectedComp}
                       </td>
 
-                      {/* Status Editável */}
-                      <td className="py-1 px-4 text-right whitespace-nowrap">
-                        <div className="inline-flex items-center justify-end space-x-1.5">
-                          {/* Campo de digitação de texto OK/vazio */}
+                      {/* Status da Apuração: Editável com OK ou vazio */}
+                      <td className="py-1.5 px-4 text-center whitespace-nowrap">
+                        <div className="inline-flex items-center justify-center space-x-1.5">
                           <input
                             type="text"
                             value={val}
@@ -297,7 +388,6 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                             title='Digite "OK" para apurado ou deixe vazio para pendente'
                           />
 
-                          {/* Botão rápido para alternar */}
                           <button
                             type="button"
                             onClick={() => handleToggleStatus(obrigacao)}
@@ -322,6 +412,53 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                           </button>
                         </div>
                       </td>
+
+                      {/* 2. STATUS DA VALIDAÇÃO: Checkbox/Tick e Badge de Validação */}
+                      <td className="py-1.5 px-4 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center justify-end space-x-2">
+                          {isValidated ? (
+                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                              <span>Validado ADM</span>
+                            </span>
+                          ) : isNeedsReview ? (
+                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                              <AlertTriangle className="w-3 h-3 text-rose-600" />
+                              <span>Pendente Revisão</span>
+                            </span>
+                          ) : isOk ? (
+                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-300">
+                              <Clock className="w-2.5 h-2.5 text-slate-400" />
+                              <span>Aguardando ADM</span>
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-stone-400">Não apurado</span>
+                          )}
+
+                          {/* Checkbox para ticar se está validado pelo ADM */}
+                          <label
+                            className={`inline-flex items-center space-x-1 p-0.5 px-1.5 rounded cursor-pointer select-none transition-colors ${
+                              profile?.role === 'admin'
+                                ? 'hover:bg-stone-100 text-stone-700'
+                                : 'opacity-60 cursor-not-allowed text-stone-400'
+                            }`}
+                            title={
+                              profile?.role === 'admin'
+                                ? 'Ticar para marcar/desmarcar validação do ADM'
+                                : 'Apenas usuários administradores podem alterar a validação'
+                            }
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isValidated}
+                              disabled={profile?.role !== 'admin'}
+                              onChange={handleToggleValidationCheck}
+                              className="w-3.5 h-3.5 text-emerald-600 rounded border-stone-300 focus:ring-emerald-500 cursor-pointer disabled:cursor-not-allowed"
+                            />
+                            <span className="text-[10px] font-semibold">Ticar</span>
+                          </label>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })
@@ -330,18 +467,45 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
           </table>
         </div>
 
-        {/* Rodapé */}
-        <div className="p-3 px-6 bg-stone-50 border-t border-stone-200/70 flex items-center justify-between text-[11px] text-stone-500 rounded-b-2xl">
+        {/* 3. RODAPÉ COM BOTÕES PARA FINALIZAR VALIDAÇÃO OU SINALIZAR PENDÊNCIA (ABRINDO CAIXINHA FINAL) */}
+        <div className="p-3 px-6 bg-stone-50 border-t border-stone-200/70 flex flex-wrap items-center justify-between text-[11px] text-stone-500 gap-3 rounded-b-2xl">
           <div>
             Competência <strong>{selectedComp.toUpperCase()}</strong>: <strong>{percentInMonth}%</strong> concluído ({okCountInMonth}/{totalInMonth} apurações).
+            {isValidated && <span className="ml-1 text-emerald-700 font-bold">• Homologado pelo ADM</span>}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-1 rounded-lg bg-stone-800 hover:bg-stone-900 text-white text-xs font-semibold transition-all cursor-pointer shadow-xs"
-          >
-            Concluir e Fechar
-          </button>
+
+          <div className="flex items-center space-x-2">
+            {/* Botão para Finalizar Validação ou Sinalizar Pendência (abre ApuracaoValidationModal) */}
+            {profile?.role === 'admin' && (
+              <button
+                type="button"
+                onClick={() => onOpenValidationModal(client, selectedComp)}
+                className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
+                  isValidated
+                    ? 'bg-slate-700 hover:bg-slate-800 text-white'
+                    : isMonth100
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-amber-600 hover:bg-amber-700 text-white'
+                }`}
+                title="Abrir caixinha final para homologar validação ou sinalizar pendência ao analista"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>
+                  {isValidated
+                    ? 'Gerenciar Validação / Apontar Pendência'
+                    : 'Finalizar Validação / Apontar Pendência'}
+                </span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-900 text-white text-xs font-semibold transition-all cursor-pointer shadow-xs"
+            >
+              Concluir e Fechar
+            </button>
+          </div>
         </div>
       </div>
     </div>

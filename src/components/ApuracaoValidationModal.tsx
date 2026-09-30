@@ -9,6 +9,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { notificationService } from '../services/notificationService';
+import { apuracaoValidationService } from '../services/apuracaoValidationService';
 import type { Client } from '../types';
 
 interface ApuracaoValidationModalProps {
@@ -43,6 +44,14 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
   const handleApprove = async () => {
     setSubmitting(true);
     try {
+      await apuracaoValidationService.setValidationApproved({
+        clientId: client.id,
+        competencia,
+        regime,
+        adminId: user?.id,
+        adminName: profile?.full_name || 'Gestor ADM',
+      });
+
       await notificationService.notifyOperatorApproved({
         client_id: client.id,
         client_name: client.razao_social,
@@ -52,7 +61,7 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
         admin_name: profile?.full_name || 'Gestor ADM',
       });
 
-      toast(`Apuração de ${client.razao_social} aprovada com sucesso!`, 'success');
+      toast(`Apuração de ${client.razao_social} homologada e aprovada com sucesso!`, 'success');
       onValidationSuccess?.();
       onClose();
     } catch {
@@ -76,6 +85,16 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
 
     setSubmitting(true);
     try {
+      await apuracaoValidationService.setValidationNeedsReview({
+        clientId: client.id,
+        competencia,
+        regime,
+        adminId: user?.id,
+        adminName: profile?.full_name || 'Gestor ADM',
+        reviewNotes: reviewNotes.trim(),
+        pendingObligations: selectedPendingObligations,
+      });
+
       await notificationService.notifyOperatorReviewNeeded({
         client_id: client.id,
         client_name: client.razao_social,
