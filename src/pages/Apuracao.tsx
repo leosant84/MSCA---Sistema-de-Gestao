@@ -426,13 +426,22 @@ export const Apuracao: React.FC = () => {
   );
 
   // Auxiliar: verifica se o mês está validado pelo ADM
-  // Se houver cliente único filtrado, checa se a apuração daquele cliente no mês foi validada
+  // Se houver cliente único filtrado, checa se a apuração daquele cliente no mês foi validada (ou a obrigação específica)
   // Se não houver cliente filtrado, checa se todos os clientes aplicáveis foram validados pelo ADM
   const isMonthValidated = useCallback(
     (competencia: string, obrigacao?: string) => {
+      const isClientVal = (c: Client) => {
+        const k = buildValidationKey(c.id, competencia);
+        const valRec = validations[k];
+        if (!valRec) return false;
+        if (obrigacao && valRec.validated_obligations && Array.isArray(valRec.validated_obligations)) {
+          return valRec.validated_obligations.includes(obrigacao);
+        }
+        return valRec.status === 'APPROVED';
+      };
+
       if (currentFilteredClient) {
-        const k = buildValidationKey(currentFilteredClient.id, competencia);
-        return validations[k]?.status === 'APPROVED';
+        return isClientVal(currentFilteredClient);
       }
 
       const applicableClients = obrigacao
@@ -441,10 +450,7 @@ export const Apuracao: React.FC = () => {
 
       if (applicableClients.length === 0) return false;
 
-      return applicableClients.every((c) => {
-        const k = buildValidationKey(c.id, competencia);
-        return validations[k]?.status === 'APPROVED';
-      });
+      return applicableClients.every((c) => isClientVal(c));
     },
     [currentFilteredClient, activeScopedClients, isObligationEnabled, validations]
   );
@@ -493,11 +499,21 @@ export const Apuracao: React.FC = () => {
 
   // Lista de clientes disponíveis no select (considera filtro de "apenas prontos para validar")
   const selectableClients = useMemo(() => {
-    if (onlyReadyForValidationFilter) {
-      return clientsWithStatus.filter((c) => c.is100 && !c.isValidated);
-    }
-    return clientsWithStatus;
+    const list = onlyReadyForValidationFilter
+      ? clientsWithStatus.filter((c) => c.is100 && !c.isValidated)
+      : [...clientsWithStatus];
+
+    return list.sort((a, b) => {
+      const pastaA = a.client.numero_pasta ? parseInt(a.client.numero_pasta, 10) : Infinity;
+      const pastaB = b.client.numero_pasta ? parseInt(b.client.numero_pasta, 10) : Infinity;
+
+      if (!isNaN(pastaA) && !isNaN(pastaB) && pastaA !== pastaB) {
+        return pastaA - pastaB;
+      }
+      return (a.client.razao_social || '').localeCompare(b.client.razao_social || '', 'pt-BR');
+    });
   }, [clientsWithStatus, onlyReadyForValidationFilter]);
+
 
 
   const overallCurrentMonthProgress = useMemo(() => {

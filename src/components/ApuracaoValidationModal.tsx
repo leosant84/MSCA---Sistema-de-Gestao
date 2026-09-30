@@ -50,6 +50,7 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
         regime,
         adminId: user?.id,
         adminName: profile?.full_name || 'Gestor ADM',
+        allObligations: obligations,
       });
 
       await notificationService.notifyOperatorApproved({
@@ -61,7 +62,7 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
         admin_name: profile?.full_name || 'Gestor ADM',
       });
 
-      toast(`Apuração de ${client.razao_social} homologada e aprovada com sucesso!`, 'success');
+      toast(`Apuração de ${client.razao_social} aprovada com sucesso!`, 'success');
       onValidationSuccess?.();
       onClose();
     } catch {
