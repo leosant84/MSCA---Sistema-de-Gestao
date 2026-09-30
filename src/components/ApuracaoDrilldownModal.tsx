@@ -10,6 +10,7 @@ import {
   ArrowUp,
   ArrowDown,
   Check,
+  AlertTriangle,
 } from 'lucide-react';
 import { RawCnpjCopyButton } from './RawCnpjCopyButton';
 import { useToast } from '../contexts/ToastContext';
@@ -138,6 +139,8 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
     onStatusChange(client, obrigacaoName, finalValue);
   };
 
+  const [confirmUnmarkModalOpen, setConfirmUnmarkModalOpen] = useState(false);
+
   const handleMarkAllVisibleOk = () => {
     filteredClients.forEach((c) => {
       const key = `${c.id}::${obrigacaoName}::${competencia}`;
@@ -150,7 +153,24 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
     toast(`Todos os ${filteredClients.length} clientes visíveis marcados como OK!`, 'success');
   };
 
-  const handleUnmarkAllVisible = () => {
+  const handlePromptUnmarkAll = () => {
+    // Quantos estão atualmente marcados como OK ou preenchidos?
+    const filledCount = filteredClients.filter((c) => {
+      const key = `${c.id}::${obrigacaoName}::${competencia}`;
+      const keyLegacy = `${c.id}::${obrigacaoName}`;
+      const currentVal = inputValues[key] !== undefined ? inputValues[key] : (inputValues[keyLegacy] || '');
+      return (currentVal || '').trim() !== '';
+    }).length;
+
+    if (filledCount === 0) {
+      toast('Nenhum cliente visível possui status preenchido para desmarcar.', 'info');
+      return;
+    }
+
+    setConfirmUnmarkModalOpen(true);
+  };
+
+  const handleConfirmUnmarkAll = () => {
     filteredClients.forEach((c) => {
       const key = `${c.id}::${obrigacaoName}::${competencia}`;
       const keyLegacy = `${c.id}::${obrigacaoName}`;
@@ -159,7 +179,8 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
         onStatusChange(c, obrigacaoName, '');
       }
     });
-    toast(`Status de ${filteredClients.length} clientes visíveis desmarcado (pendente)!`, 'info');
+    setConfirmUnmarkModalOpen(false);
+    toast(`Status de ${filteredClients.length} clientes visíveis desmarcado com sucesso!`, 'info');
   };
 
   return (
@@ -227,11 +248,11 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
 
             <button
               type="button"
-              onClick={handleUnmarkAllVisible}
-              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-200 text-xs font-semibold transition-all cursor-pointer shadow-2xs"
-              title="Limpar o status dos clientes visíveis (tornar pendente)"
+              onClick={handlePromptUnmarkAll}
+              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-rose-50 text-stone-700 hover:text-rose-700 border border-stone-200 hover:border-rose-200 text-xs font-semibold transition-all cursor-pointer shadow-2xs"
+              title="Limpar o status dos clientes visíveis (solicitará confirmação)"
             >
-              <X className="w-3.5 h-3.5 text-stone-500" />
+              <X className="w-3.5 h-3.5 text-stone-500 group-hover:text-rose-600" />
               <span>Desmarcar todos</span>
             </button>
           </div>
@@ -458,6 +479,47 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* MODAL DE CONFIRMAÇÃO PARA DESMARCAR TODOS */}
+      {confirmUnmarkModalOpen && (
+        <div className="fixed inset-0 z-60 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl p-5 max-w-md w-full shadow-2xl border border-stone-200 animate-in zoom-in-95 duration-150 space-y-4">
+            <div className="flex items-start space-x-3.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-stone-900">
+                  Tem certeza que deseja desmarcar todos?
+                </h3>
+                <p className="text-xs text-stone-500 leading-relaxed">
+                  Esta ação limpará o status de apuração de{' '}
+                  <strong className="text-stone-700">{filteredClients.length}</strong> clientes visíveis na obrigação{' '}
+                  <strong className="text-stone-700">{obrigacaoName}</strong> ({competencia.toUpperCase()}), tornando-os <strong>pendentes</strong>.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => setConfirmUnmarkModalOpen(false)}
+                className="px-3.5 py-1.5 rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-50 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmUnmarkAll}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors shadow-xs cursor-pointer inline-flex items-center space-x-1.5"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Sim, Desmarcar Todos</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
