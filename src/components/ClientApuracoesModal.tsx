@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   X,
   Building,
@@ -36,6 +36,7 @@ interface ClientApuracoesModalProps {
   onRefreshData?: () => void;
   clients100Percent?: Client[];
   onSelectClient?: (client: Client) => void;
+  defaultCompetencia?: string;
 }
 
 export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
@@ -53,6 +54,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   onRefreshData,
   clients100Percent = [],
   onSelectClient,
+  defaultCompetencia,
 }) => {
   const { toast } = useToast();
   const { profile, user } = useAuth();
@@ -61,8 +63,15 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     return m === 0 ? 11 : m - 1;
   })();
   const [selectedComp, setSelectedComp] = useState<string>(
-    () => yearCompetencias[currentMonthIdx] || yearCompetencias[0] || 'set/26'
+    () => defaultCompetencia || yearCompetencias[currentMonthIdx] || yearCompetencias[0] || 'set/26'
   );
+
+  useEffect(() => {
+    if (defaultCompetencia) {
+      setSelectedComp(defaultCompetencia);
+    }
+  }, [defaultCompetencia, client?.id]);
+
   const [searchTerm, setSearchTerm] = useState('');
 
   // Estado para Modal de Confirmação de Pendência
@@ -314,7 +323,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                 <span>{client.razao_social}</span>
               </h2>
 
-              {sortedClients100.length > 1 && (
+              {sortedClients100.length > 1 && currentClientIdx !== -1 && (
                 <div className="flex items-center space-x-1 ml-2 bg-stone-100/90 rounded-xl p-0.5 border border-stone-200">
                   <button
                     type="button"

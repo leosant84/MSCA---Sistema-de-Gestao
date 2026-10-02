@@ -95,15 +95,10 @@ export const Apuracao: React.FC = () => {
   }, [currentMonthIdx, selectedYear]);
 
   // Lista de obrigações da aba ativa (sem etapa 'ENVIO')
-  // Para perfil ADM: restringe SOMENTE para 'GUIA INSS', 'GERAR OS DAS' e 'Parc. Ativo'
+  // Na matriz principal da tela, o Administrador e analistas visualizam todas as obrigações
   const currentObligations = useMemo(() => {
-    const all = FISCAL_OBLIGATIONS[activeTab] || [];
-    if (profile?.role === 'admin') {
-      const allowedAdmin = ['GUIA INSS', 'GERAR OS DAS', 'Parc. Ativo'];
-      return all.filter((ob) => allowedAdmin.includes(ob));
-    }
-    return all;
-  }, [activeTab, profile?.role]);
+    return FISCAL_OBLIGATIONS[activeTab] || [];
+  }, [activeTab]);
 
   // Carrega Clientes e Registros do Ano Selecionado
   const fetchApuracaoData = useCallback(async () => {
@@ -447,7 +442,7 @@ export const Apuracao: React.FC = () => {
   const getClientCurrentMonthSummary = useCallback(
     (client: Client) => {
       const applicable = currentObligations.filter((ob) => isObligationEnabled(client, ob));
-      if (applicable.length === 0) return { percent: 100, is100: true, isValidated: false, isNeedsReview: false };
+      if (applicable.length === 0) return { percent: 0, is100: false, isValidated: false, isNeedsReview: false };
 
       let okCount = 0;
 
@@ -460,7 +455,7 @@ export const Apuracao: React.FC = () => {
       });
 
       const percent = Math.round((okCount / applicable.length) * 100);
-      const is100 = percent === 100;
+      const is100 = applicable.length > 0 && okCount === applicable.length;
       const vKey = buildValidationKey(client.id, currentMonthCompetencia);
       const isValidated = is100 && validations[vKey]?.status === 'APPROVED';
       const isNeedsReview = validations[vKey]?.status === 'NEEDS_REVIEW';
@@ -969,6 +964,7 @@ export const Apuracao: React.FC = () => {
           clients100Percent={clients100Percent}
           onSelectClient={(c) => setClientForApuracoesModal(c)}
           onRefreshData={fetchApuracaoData}
+          defaultCompetencia={currentMonthCompetencia}
         />
       )}
     </div>
