@@ -26,7 +26,6 @@ import {
 } from '../constants/fiscalObligations';
 import { APURACAO_CLIENT_IDS } from '../constants/apuracaoScope';
 import { ApuracaoDrilldownModal } from '../components/ApuracaoDrilldownModal';
-import { ApuracaoValidationModal } from '../components/ApuracaoValidationModal';
 import { ClientApuracoesModal } from '../components/ClientApuracoesModal';
 import { notificationService } from '../services/notificationService';
 import { apuracaoValidationService, buildValidationKey } from '../services/apuracaoValidationService';
@@ -68,16 +67,12 @@ export const Apuracao: React.FC = () => {
   const [drilldownModalOpen, setDrilldownModalOpen] = useState(false);
   const [selectedObligation, setSelectedObligation] = useState<string>('');
   const [selectedCompForDrilldown, setSelectedCompForDrilldown] = useState<string>('');
+  const [drilldownInitialShowPending, setDrilldownInitialShowPending] = useState(false);
 
   // Filtro por Cliente Específico e Modal de Apurações do Cliente
   const [selectedClientIdFilter, setSelectedClientIdFilter] = useState<string>('');
   const [clientApuracoesModalOpen, setClientApuracoesModalOpen] = useState(false);
   const [clientForApuracoesModal, setClientForApuracoesModal] = useState<Client | null>(null);
-
-  // Modal de Validação ADM
-  const [validationModalOpen, setValidationModalOpen] = useState(false);
-  const [clientToValidate, setClientToValidate] = useState<Client | null>(null);
-  const [compToValidate, setCompToValidate] = useState<string>('');
 
   // Lista de Anos disponíveis
   const availableYears = useMemo(() => {
@@ -100,9 +95,15 @@ export const Apuracao: React.FC = () => {
   }, [currentMonthIdx, selectedYear]);
 
   // Lista de obrigações da aba ativa (sem etapa 'ENVIO')
+  // Para perfil ADM: restringe SOMENTE para 'GUIA INSS', 'GERAR OS DAS' e 'Parc. Ativo'
   const currentObligations = useMemo(() => {
-    return FISCAL_OBLIGATIONS[activeTab] || [];
-  }, [activeTab]);
+    const all = FISCAL_OBLIGATIONS[activeTab] || [];
+    if (profile?.role === 'admin') {
+      const allowedAdmin = ['GUIA INSS', 'GERAR OS DAS', 'Parc. Ativo'];
+      return all.filter((ob) => allowedAdmin.includes(ob));
+    }
+    return all;
+  }, [activeTab, profile?.role]);
 
   // Carrega Clientes e Registros do Ano Selecionado
   const fetchApuracaoData = useCallback(async () => {
@@ -158,9 +159,8 @@ export const Apuracao: React.FC = () => {
       if (shouldValidate && valClientParam && valCompParam) {
         const found = loadedClients.find((c) => c.id === valClientParam);
         if (found) {
-          setClientToValidate(found);
-          setCompToValidate(valCompParam);
-          setValidationModalOpen(true);
+          setClientForApuracoesModal(found);
+          setClientApuracoesModalOpen(true);
         }
       }
     } catch (err: unknown) {
@@ -185,9 +185,8 @@ export const Apuracao: React.FC = () => {
     if (shouldValidate && valClientParam && valCompParam && clients.length > 0) {
       const found = clients.find((c) => c.id === valClientParam);
       if (found) {
-        setClientToValidate(found);
-        setCompToValidate(valCompParam);
-        setValidationModalOpen(true);
+        setClientForApuracoesModal(found);
+        setClientApuracoesModalOpen(true);
       }
     }
   }, [searchParams, clients]);
@@ -509,9 +508,10 @@ export const Apuracao: React.FC = () => {
   }, [currentObligations, getObligationMonthStats, currentMonthCompetencia]);
 
   // Abrir Modal de Drilldown para uma apuração
-  const handleOpenDrilldown = (obrigacao: string, comp: string) => {
+  const handleOpenDrilldown = (obrigacao: string, comp: string, isNeedsReview?: boolean) => {
     setSelectedObligation(obrigacao);
     setSelectedCompForDrilldown(comp);
+    setDrilldownInitialShowPending(Boolean(isNeedsReview));
     setDrilldownModalOpen(true);
   };
 
@@ -679,13 +679,12 @@ export const Apuracao: React.FC = () => {
               onClick={() => {
                 const firstReady = clientsWithStatus.find((c) => c.is100 && !c.isValidated)?.client || clients100Percent[0];
                 if (firstReady) {
-                  setClientToValidate(firstReady);
-                  setCompToValidate(currentMonthCompetencia);
-                  setValidationModalOpen(true);
+                  setClientForApuracoesModal(firstReady);
+                  setClientApuracoesModalOpen(true);
                 }
               }}
               className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-2xl text-xs font-bold transition-all shadow-2xs cursor-pointer border bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200"
-              title="Abrir formulário de validação dos clientes que estão 100% apurados"
+              title="Abrir formulário de validação individual dos clientes que estão 100% apurados"
             >
               <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-amber-700" />
               <span>100% Para Validar</span>
@@ -745,22 +744,6 @@ export const Apuracao: React.FC = () => {
                 <Building className="w-3.5 h-3.5" />
                 <span>Ver Apurações do Cliente</span>
               </button>
-
-              {profile?.role === 'admin' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setClientToValidate(currentFilteredClient);
-                    setCompToValidate(currentMonthCompetencia);
-                    setValidationModalOpen(true);
-                  }}
-                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-2xs cursor-pointer"
-                  title={`Validar ou apontar pendência de apuração para ${currentFilteredClient.razao_social}`}
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Validar / Apontar Pendência</span>
-                </button>
-              )}
             </div>
           )}
 
@@ -854,7 +837,7 @@ export const Apuracao: React.FC = () => {
                       return (
                         <td
                           key={compStr}
-                          onClick={() => handleOpenDrilldown(obrigacao, compStr)}
+                          onClick={() => handleOpenDrilldown(obrigacao, compStr, isNeedsReview)}
                           className="py-2 px-1 text-center cursor-pointer hover:bg-amber-50/60 transition-colors"
                           title={`${obrigacao} em ${compStr}: ${stats.percent}% (${stats.okCount}/${stats.total} clientes). ${
                             isNeedsReview
@@ -959,29 +942,14 @@ export const Apuracao: React.FC = () => {
           competencia={selectedCompForDrilldown}
           clients={tabClients}
           inputValues={inputValues}
+          validations={validations}
+          initialShowPendingOnly={drilldownInitialShowPending}
           onStatusChange={handleStatusChange}
           isObligationEnabled={isObligationEnabled}
         />
       )}
 
-      {/* 6. MODAL DE VALIDAÇÃO DO ADM */}
-      {validationModalOpen && (
-        <ApuracaoValidationModal
-          isOpen={validationModalOpen}
-          onClose={() => setValidationModalOpen(false)}
-          client={clientToValidate}
-          competencia={compToValidate}
-          regime={activeTab}
-          obligations={currentObligations.filter((ob) =>
-            clientToValidate ? isObligationEnabled(clientToValidate, ob) : true
-          )}
-          clients100Percent={clients100Percent}
-          onSelectClient={(newCli) => setClientToValidate(newCli)}
-          onValidationSuccess={fetchApuracaoData}
-        />
-      )}
-
-      {/* 7. MODAL DE APURAÇÕES COMPLETAS DE UM DETERMINADO CLIENTE */}
+      {/* 6. MODAL DE APURAÇÕES COMPLETAS DE UM DETERMINADO CLIENTE (COM APROVADO / PENDENTE E NAVEGAÇÃO 100%) */}
       {clientApuracoesModalOpen && clientForApuracoesModal && (
         <ClientApuracoesModal
           isOpen={clientApuracoesModalOpen}
@@ -998,11 +966,8 @@ export const Apuracao: React.FC = () => {
           validations={validations}
           onStatusChange={handleClientStatusChange}
           isObligationEnabled={isObligationEnabled}
-          onOpenValidationModal={(cli, comp) => {
-            setClientToValidate(cli);
-            setCompToValidate(comp);
-            setValidationModalOpen(true);
-          }}
+          clients100Percent={clients100Percent}
+          onSelectClient={(c) => setClientForApuracoesModal(c)}
           onRefreshData={fetchApuracaoData}
         />
       )}

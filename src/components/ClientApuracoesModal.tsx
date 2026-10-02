@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   X,
   Building,
@@ -9,6 +9,9 @@ import {
   Check,
   ShieldCheck,
   AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  Search,
 } from 'lucide-react';
 import { RawCnpjCopyButton } from './RawCnpjCopyButton';
 import { useToast } from '../contexts/ToastContext';
@@ -29,8 +32,10 @@ interface ClientApuracoesModalProps {
   validations: Record<string, ClientApuracaoValidation>;
   onStatusChange: (client: Client, obrigacao: string, competencia: string, newValue: string) => void;
   isObligationEnabled: (client: Client, obrigacao: string) => boolean;
-  onOpenValidationModal: (client: Client, competencia: string) => void;
+  onOpenValidationModal?: (client: Client, competencia: string) => void;
   onRefreshData?: () => void;
+  clients100Percent?: Client[];
+  onSelectClient?: (client: Client) => void;
 }
 
 export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
@@ -45,8 +50,9 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   validations,
   onStatusChange,
   isObligationEnabled,
-  onOpenValidationModal,
   onRefreshData,
+  clients100Percent = [],
+  onSelectClient,
 }) => {
   const { toast } = useToast();
   const { profile, user } = useAuth();
@@ -57,6 +63,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   const [selectedComp, setSelectedComp] = useState<string>(
     () => yearCompetencias[currentMonthIdx] || yearCompetencias[0] || 'set/26'
   );
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Estado para Modal de Confirmação de Pendência
   const [pendingModalOpen, setPendingModalOpen] = useState(false);
@@ -64,10 +71,47 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   const [pendingReason, setPendingReason] = useState('');
   const [pendingSubmitting, setPendingSubmitting] = useState(false);
 
+  // Lista de navegação ordenada alfabeticamente para clientes 100% apurados
+  const sortedClients100 = useMemo(() => {
+    return [...clients100Percent].sort((a, b) =>
+      (a.razao_social || '').localeCompare(b.razao_social || '', 'pt-BR')
+    );
+  }, [clients100Percent]);
+
+  const currentClientIdx = useMemo(() => {
+    if (!client || sortedClients100.length === 0) return -1;
+    return sortedClients100.findIndex((c) => c.id === client.id);
+  }, [client, sortedClients100]);
+
+  const handlePrevClient = () => {
+    if (sortedClients100.length === 0 || !onSelectClient) return;
+    const prevIdx = currentClientIdx <= 0 ? sortedClients100.length - 1 : currentClientIdx - 1;
+    onSelectClient(sortedClients100[prevIdx]);
+  };
+
+  const handleNextClient = () => {
+    if (sortedClients100.length === 0 || !onSelectClient) return;
+    const nextIdx = currentClientIdx >= sortedClients100.length - 1 ? 0 : currentClientIdx + 1;
+    onSelectClient(sortedClients100[nextIdx]);
+  };
+
   if (!isOpen || !client) return null;
 
-  // Obrigações habilitadas para este cliente
-  const clientObligations = obligations.filter((ob) => isObligationEnabled(client, ob));
+  // Obrigações habilitadas para este cliente com restrição de perfil ADM:
+  // Administrador visualiza SOMENTE: GUIA INSS, GERAR OS DAS e Parc. Ativo
+  const clientObligations = obligations.filter((ob) => {
+    if (profile?.role === 'admin') {
+      const allowedAdminObligations = ['GUIA INSS', 'GERAR OS DAS', 'Parc. Ativo'];
+      if (!allowedAdminObligations.includes(ob)) return false;
+    }
+    return isObligationEnabled(client, ob);
+  });
+
+  // Filtro textual por nome de obrigação
+  const filteredClientObligations = clientObligations.filter((ob) => {
+    if (!searchTerm.trim()) return true;
+    return ob.toLowerCase().includes(searchTerm.toLowerCase());
+  });
 
   // Estatísticas no mês selecionado
   const totalInMonth = clientObligations.length;
@@ -264,10 +308,36 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
               </span>
             </div>
 
-            <h2 className="text-base sm:text-lg font-bold text-stone-900 mt-1 flex items-center space-x-2">
-              <Building className="w-4 h-4 text-[#C5A059]" />
-              <span>{client.razao_social}</span>
-            </h2>
+            <div className="flex items-center space-x-2 mt-1">
+              <h2 className="text-base sm:text-lg font-bold text-stone-900 flex items-center space-x-2">
+                <Building className="w-4 h-4 text-[#C5A059]" />
+                <span>{client.razao_social}</span>
+              </h2>
+
+              {sortedClients100.length > 1 && (
+                <div className="flex items-center space-x-1 ml-2 bg-stone-100/90 rounded-xl p-0.5 border border-stone-200">
+                  <button
+                    type="button"
+                    onClick={handlePrevClient}
+                    className="p-1 rounded-lg hover:bg-white text-stone-600 hover:text-stone-900 transition-colors cursor-pointer"
+                    title="Cliente anterior (100% apurado)"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-[10px] font-mono px-1 font-bold text-stone-600">
+                    {currentClientIdx + 1}/{sortedClients100.length}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleNextClient}
+                    className="p-1 rounded-lg hover:bg-white text-stone-600 hover:text-stone-900 transition-colors cursor-pointer"
+                    title="Próximo cliente (100% apurado)"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
 
             <div className="flex flex-wrap items-center gap-2 mt-1">
               <RawCnpjCopyButton cnpj={client.cnpj} />
@@ -386,8 +456,20 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
             </div>
           </div>
 
-          {/* Botões de Ação em Lote */}
-          <div className="flex items-center space-x-2 shrink-0">
+          {/* Barra de Busca de Obrigações + Botões de Ação em Lote */}
+          <div className="flex items-center flex-wrap gap-2 shrink-0">
+            {/* Campo de filtro / busca por obrigação */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Filtrar apuração..."
+                className="pl-8 pr-2.5 py-1 text-xs bg-white border border-stone-200 rounded-xl focus:ring-1 focus:ring-[#C5A059] focus:outline-none w-36 sm:w-44"
+              />
+            </div>
+
             <button
               type="button"
               onClick={handleMarkAllVisibleOk}
@@ -427,14 +509,14 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100 text-xs text-stone-700">
-              {clientObligations.length === 0 ? (
+              {filteredClientObligations.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-10 text-center text-stone-400">
-                    Nenhuma apuração habilitada para este cliente.
+                    {searchTerm ? 'Nenhuma apuração encontrada com este filtro.' : 'Nenhuma apuração habilitada para este cliente.'}
                   </td>
                 </tr>
               ) : (
-                clientObligations.map((obrigacao, index) => {
+                filteredClientObligations.map((obrigacao, index) => {
                   const key = `${client.id}::${obrigacao}::${selectedComp}`;
                   const val = inputValues[key] !== undefined ? inputValues[key] : '';
                   const isOk = (val || '').trim().toUpperCase() === 'OK';
@@ -581,7 +663,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
           </table>
         </div>
 
-        {/* 3. RODAPÉ COM BOTÕES PARA FINALIZAR VALIDAÇÃO OU SINALIZAR PENDÊNCIA (ABRINDO CAIXINHA FINAL) */}
+        {/* 3. RODAPÉ INFORMATIVO */}
         <div className="p-3 px-6 bg-stone-50 border-t border-stone-200/70 flex flex-wrap items-center justify-between text-[11px] text-stone-500 gap-3 rounded-b-2xl">
           <div>
             Competência <strong>{selectedComp.toUpperCase()}</strong>: <strong>{percentInMonth}%</strong> concluído ({okCountInMonth}/{totalInMonth} apurações).
@@ -593,28 +675,13 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
           </div>
 
           <div className="flex items-center space-x-2">
-            {/* Botão para Finalizar Validação ou Sinalizar Pendência (abre ApuracaoValidationModal) */}
-            {profile?.role === 'admin' && (
-              <button
-                type="button"
-                onClick={() => onOpenValidationModal(client, selectedComp)}
-                className={`inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
-                  isAllObligationsValidated
-                    ? 'bg-slate-700 hover:bg-slate-800 text-white'
-                    : isMonth100
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                    : 'bg-amber-600 hover:bg-amber-700 text-white'
-                }`}
-                title="Abrir caixinha final para homologar validação ou sinalizar pendência ao analista"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>
-                  {isAllObligationsValidated
-                    ? 'Gerenciar Validação / Apontar Pendência'
-                    : 'Finalizar Validação / Apontar Pendência'}
-                </span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer bg-white hover:bg-stone-100 text-stone-700 border border-stone-200"
+            >
+              <span>Fechar</span>
+            </button>
           </div>
         </div>
       </div>

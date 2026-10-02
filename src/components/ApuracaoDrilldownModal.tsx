@@ -14,7 +14,8 @@ import {
 } from 'lucide-react';
 import { RawCnpjCopyButton } from './RawCnpjCopyButton';
 import { useToast } from '../contexts/ToastContext';
-import type { Client } from '../types';
+import { buildValidationKey } from '../services/apuracaoValidationService';
+import type { Client, ClientApuracaoValidation } from '../types';
 
 interface ApuracaoDrilldownModalProps {
   isOpen: boolean;
@@ -24,8 +25,10 @@ interface ApuracaoDrilldownModalProps {
   competencia: string;
   clients: Client[];
   inputValues: Record<string, string>;
+  validations?: Record<string, ClientApuracaoValidation>;
   onStatusChange: (client: Client, obrigacao: string, newValue: string) => void;
   isObligationEnabled: (client: Client, obrigacao: string) => boolean;
+  initialShowPendingOnly?: boolean;
 }
 
 type SortField = 'numero_pasta' | 'razao_social' | 'cnpj' | 'localidade' | 'status';
@@ -39,21 +42,41 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   competencia,
   clients,
   inputValues,
+  validations = {},
   onStatusChange,
   isObligationEnabled,
+  initialShowPendingOnly = false,
 }) => {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterNeedsReviewOnly, setFilterNeedsReviewOnly] = useState(initialShowPendingOnly);
   const [sortField, setSortField] = useState<SortField>('razao_social');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   if (!isOpen) return null;
 
+  // Auxiliar para checar se cliente possui pendência apontada na obrigação/competência
+  const checkClientNeedsReview = (c: Client) => {
+    const k = buildValidationKey(c.id, competencia);
+    const v = validations[k];
+    if (!v || v.status !== 'NEEDS_REVIEW') return false;
+    if (v.pending_obligations && v.pending_obligations.length > 0) {
+      return v.pending_obligations.includes(obrigacaoName);
+    }
+    return true;
+  };
+
   // Filtrar clientes que necessitam desta apuração específica (obrigação habilitada)
   const applicableClients = clients.filter((c) => isObligationEnabled(c, obrigacaoName));
 
-  // Filtrar por busca textual
+  // Clientes com pendência apontada
+  const clientsWithReview = applicableClients.filter(checkClientNeedsReview);
+
+  // Filtrar por busca textual e pendência
   const searchedClients = applicableClients.filter((c) => {
+    if (filterNeedsReviewOnly && !checkClientNeedsReview(c)) {
+      return false;
+    }
     if (!searchTerm.trim()) return true;
     const term = searchTerm.toLowerCase();
     const rawCnpj = (c.cnpj || '').replace(/\D/g, '');
@@ -223,6 +246,29 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
           </button>
         </div>
 
+        {/* Alerta de Pendência Apontada pelo ADM nesta obrigação */}
+        {clientsWithReview.length > 0 && (
+          <div className="bg-rose-50 border-b border-rose-200 px-5 py-2.5 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center space-x-2 text-rose-800">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>
+                <strong>Atenção:</strong> Existem <strong>{clientsWithReview.length}</strong> cliente(s) com apontamento de pendência nesta obrigação.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFilterNeedsReviewOnly((prev) => !prev)}
+              className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-colors cursor-pointer border ${
+                filterNeedsReviewOnly
+                  ? 'bg-rose-600 text-white border-rose-700'
+                  : 'bg-white text-rose-700 border-rose-300 hover:bg-rose-100'
+              }`}
+            >
+              {filterNeedsReviewOnly ? 'Exibir Todos os Clientes' : 'Filtrar Clientes com Pendência'}
+            </button>
+          </div>
+        )}
+
         {/* Barra de Filtros e Ações Rápidas (compacta) */}
         <div className="p-2.5 px-5 bg-stone-50/70 border-b border-stone-200/60 flex flex-wrap items-center justify-between gap-2.5">
           <div className="relative flex-1 min-w-[200px] max-w-sm">
@@ -363,12 +409,17 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                   const keyLegacy = `${client.id}::${obrigacaoName}`;
                   const val = inputValues[key] !== undefined ? inputValues[key] : (inputValues[keyLegacy] || '');
                   const isOk = (val || '').trim().toUpperCase() === 'OK';
+                  const isReviewFlagged = checkClientNeedsReview(client);
 
                   return (
                     <tr
                       key={client.id}
                       className={`hover:bg-amber-50/20 transition-colors ${
-                        isOk ? 'bg-emerald-50/15' : ''
+                        isReviewFlagged
+                          ? 'bg-rose-50/40 border-l-4 border-l-rose-500'
+                          : isOk
+                          ? 'bg-emerald-50/15'
+                          : ''
                       }`}
                     >
                       {/* Domínio */}
@@ -378,8 +429,16 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
 
                       {/* Razão Social */}
                       <td className="py-1 px-3">
-                        <div className="font-semibold text-stone-900 leading-tight text-xs">
-                          {client.razao_social}
+                        <div className="flex items-center space-x-1.5">
+                          <span className="font-semibold text-stone-900 leading-tight text-xs">
+                            {client.razao_social}
+                          </span>
+                          {isReviewFlagged && (
+                            <span className="inline-flex items-center space-x-0.5 text-[9px] font-bold bg-rose-100 text-rose-800 border border-rose-300 px-1.5 py-0.2 rounded-full">
+                              <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                              <span>Pendência Apontada</span>
+                            </span>
+                          )}
                         </div>
                         {client.puro_ou_hibrido && (
                           <span className="text-[8px] text-stone-500 bg-stone-100 px-1 rounded inline-block mt-0.5">
