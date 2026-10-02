@@ -11,7 +11,6 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
-  Search,
 } from 'lucide-react';
 import { RawCnpjCopyButton } from './RawCnpjCopyButton';
 import { useToast } from '../contexts/ToastContext';
@@ -72,8 +71,6 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     }
   }, [defaultCompetencia, client?.id]);
 
-  const [searchTerm, setSearchTerm] = useState('');
-
   // Estado para Modal de Confirmação de Pendência
   const [pendingModalOpen, setPendingModalOpen] = useState(false);
   const [pendingObligationTarget, setPendingObligationTarget] = useState<string | null>(null);
@@ -116,12 +113,6 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     return isObligationEnabled(client, ob);
   });
 
-  // Filtro textual por nome de obrigação
-  const filteredClientObligations = clientObligations.filter((ob) => {
-    if (!searchTerm.trim()) return true;
-    return ob.toLowerCase().includes(searchTerm.toLowerCase());
-  });
-
   // Estatísticas no mês selecionado
   const totalInMonth = clientObligations.length;
   const okCountInMonth = clientObligations.filter((ob) => {
@@ -129,7 +120,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     const val = inputValues[key];
     return (val || '').trim().toUpperCase() === 'OK';
   }).length;
-  const percentInMonth = totalInMonth > 0 ? Math.round((okCountInMonth / totalInMonth) * 100) : 100;
+  const percentInMonth = totalInMonth > 0 ? Math.round((okCountInMonth / totalInMonth) * 100) : 0;
   const isMonth100 = totalInMonth > 0 && okCountInMonth === totalInMonth;
 
   // Status de validação do ADM para o cliente no mês selecionado
@@ -166,7 +157,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
       }
     });
   });
-  const percentInYear = totalInYear > 0 ? Math.round((okCountInYear / totalInYear) * 100) : 100;
+  const percentInYear = totalInYear > 0 ? Math.round((okCountInYear / totalInYear) * 100) : 0;
 
   const handleInputChange = (obrigacao: string, rawValue: string) => {
     const trimmed = rawValue.trim();
@@ -465,20 +456,8 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
             </div>
           </div>
 
-          {/* Barra de Busca de Obrigações + Botões de Ação em Lote */}
+          {/* Botões de Ação em Lote */}
           <div className="flex items-center flex-wrap gap-2 shrink-0">
-            {/* Campo de filtro / busca por obrigação */}
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Filtrar apuração..."
-                className="pl-8 pr-2.5 py-1 text-xs bg-white border border-stone-200 rounded-xl focus:ring-1 focus:ring-[#C5A059] focus:outline-none w-36 sm:w-44"
-              />
-            </div>
-
             <button
               type="button"
               onClick={handleMarkAllVisibleOk}
@@ -518,14 +497,14 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100 text-xs text-stone-700">
-              {filteredClientObligations.length === 0 ? (
+              {clientObligations.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-10 text-center text-stone-400">
-                    {searchTerm ? 'Nenhuma apuração encontrada com este filtro.' : 'Nenhuma apuração habilitada para este cliente.'}
+                    Nenhuma apuração habilitada para este cliente.
                   </td>
                 </tr>
               ) : (
-                filteredClientObligations.map((obrigacao, index) => {
+                clientObligations.map((obrigacao, index) => {
                   const key = `${client.id}::${obrigacao}::${selectedComp}`;
                   const val = inputValues[key] !== undefined ? inputValues[key] : '';
                   const isOk = (val || '').trim().toUpperCase() === 'OK';

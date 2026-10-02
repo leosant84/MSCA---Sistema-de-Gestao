@@ -6,7 +6,6 @@ import {
   Calendar,
   Building,
   TrendingUp,
-  Layers,
   Sparkles,
   ChevronRight,
   X,
@@ -212,6 +211,15 @@ export const Apuracao: React.FC = () => {
 
   // Auxiliar: checa se obrigação está habilitada para o cliente
   const isObligationEnabled = useCallback((client: Client, obrigacao: string) => {
+    // Tratamento especial para Parc. Ativo
+    if (obrigacao === 'Parc. Ativo') {
+      if (client.parcelamento_ativo === true) return true;
+      if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
+        return client.obrigacoes_habilitadas.includes('Parc. Ativo');
+      }
+      return false;
+    }
+
     if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
       return client.obrigacoes_habilitadas.includes(obrigacao);
     }
@@ -363,7 +371,7 @@ export const Apuracao: React.FC = () => {
       // Clientes aplicáveis a esta obrigação (respeitando o filtro de cliente se houver)
       const applicable = activeScopedClients.filter((c) => isObligationEnabled(c, obrigacao));
       const total = applicable.length;
-      if (total === 0) return { total: 0, okCount: 0, percent: 100 };
+      if (total === 0) return { total: 0, okCount: 0, percent: 0 };
 
       let okCount = 0;
       applicable.forEach((c) => {
@@ -492,15 +500,56 @@ export const Apuracao: React.FC = () => {
 
 
 
-  const overallCurrentMonthProgress = useMemo(() => {
-    if (currentObligations.length === 0) return 0;
-    let sumPercent = 0;
-    currentObligations.forEach((ob) => {
-      const stats = getObligationMonthStats(ob, currentMonthCompetencia);
-      sumPercent += stats.percent;
+  // Percentual total do que já foi apurado no mês corrente (competência atual)
+  const totalApuradoPercent = useMemo(() => {
+    let totalItems = 0;
+    let okItems = 0;
+
+    tabClients.forEach((client) => {
+      const applicable = currentObligations.filter((ob) => isObligationEnabled(client, ob));
+      applicable.forEach((ob) => {
+        totalItems++;
+        const key = `${client.id}::${ob}::${currentMonthCompetencia}`;
+        const val = inputValues[key];
+        if (val !== undefined && (val || '').trim().toUpperCase() === 'OK') {
+          okItems++;
+        }
+      });
     });
-    return Math.round(sumPercent / currentObligations.length);
-  }, [currentObligations, getObligationMonthStats, currentMonthCompetencia]);
+
+    if (totalItems === 0) return 0;
+    return Math.round((okItems / totalItems) * 100);
+  }, [tabClients, currentObligations, isObligationEnabled, currentMonthCompetencia, inputValues]);
+
+  // Percentual total do que já foi validado pelo ADM no mês corrente
+  const totalValidadoPercent = useMemo(() => {
+    let totalItems = 0;
+    let validatedItems = 0;
+
+    tabClients.forEach((client) => {
+      const applicable = currentObligations.filter((ob) => isObligationEnabled(client, ob));
+      const vKey = buildValidationKey(client.id, currentMonthCompetencia);
+      const valRec = validations[vKey];
+
+      applicable.forEach((ob) => {
+        totalItems++;
+        if (valRec) {
+          if (valRec.status === 'APPROVED') {
+            validatedItems++;
+          } else if (
+            valRec.validated_obligations &&
+            Array.isArray(valRec.validated_obligations) &&
+            valRec.validated_obligations.includes(ob)
+          ) {
+            validatedItems++;
+          }
+        }
+      });
+    });
+
+    if (totalItems === 0) return 0;
+    return Math.round((validatedItems / totalItems) * 100);
+  }, [tabClients, currentObligations, isObligationEnabled, currentMonthCompetencia, validations]);
 
   // Abrir Modal de Drilldown para uma apuração
   const handleOpenDrilldown = (obrigacao: string, comp: string, isNeedsReview?: boolean) => {
@@ -564,67 +613,57 @@ export const Apuracao: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. CARDS DE RESUMO OPERACIONAL */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-        {/* Card 1: Total de Clientes no Regime */}
-        <div className="bg-white p-4 rounded-3xl border border-stone-200/70 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
-              Clientes no Regime
-            </span>
-            <div className="text-2xl font-extrabold text-stone-800 mt-0.5">
-              {tabClients.length}
-            </div>
-            <div className="text-[11px] text-stone-500 font-medium mt-0.5">
-              {activeTab} • Ativos
-            </div>
-          </div>
-          <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-2xs">
-            <Building className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* Card 2: Total de Apurações do Regime */}
-        <div className="bg-white p-4 rounded-3xl border border-stone-200/70 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">
-              Tipos de Apuração
-            </span>
-            <div className="text-2xl font-extrabold text-stone-800 mt-0.5">
-              {currentObligations.length}
-            </div>
-            <div className="text-[11px] text-stone-500 font-medium mt-0.5">
-              Etapa Envio Desconsiderada
-            </div>
-          </div>
-          <div className="w-11 h-11 rounded-2xl bg-amber-50 text-[#C5A059] flex items-center justify-center border border-amber-200/60 shadow-2xs">
-            <Layers className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* Card 3: Progresso da Competência Corrente */}
-        <div className="bg-white p-4 rounded-3xl border border-stone-200/70 shadow-xs flex items-center justify-between">
-          <div className="w-full mr-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
-                Mês Corrente ({currentMonthCompetencia})
+      {/* 2. CARDS DE RESUMO OPERACIONAL DO MÊS CORRENTE */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Card 1: Percentual Total Apurado do Mês Corrente */}
+        <div className="bg-white p-5 rounded-3xl border border-stone-200/70 shadow-xs flex items-center justify-between">
+          <div className="w-full mr-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider block">
+                Total Apurado ({currentMonthCompetencia})
               </span>
-              <span className="text-sm font-extrabold text-emerald-700">
-                {overallCurrentMonthProgress}%
+              <span className="text-2xl font-extrabold text-[#C5A059]">
+                {totalApuradoPercent}%
               </span>
             </div>
-            <div className="w-full bg-stone-100 h-2 rounded-full overflow-hidden">
+            <div className="w-full bg-stone-100 h-2.5 rounded-full overflow-hidden">
               <div
-                style={{ width: `${overallCurrentMonthProgress}%` }}
+                style={{ width: `${totalApuradoPercent}%` }}
+                className="bg-[#C5A059] h-full rounded-full transition-all duration-500"
+              />
+            </div>
+            <div className="text-[11px] text-stone-400 font-medium mt-1.5">
+              {activeTab} • Progresso geral de apuração no mês
+            </div>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-[#C5A059] flex items-center justify-center border border-amber-200/60 shadow-2xs shrink-0">
+            <TrendingUp className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Card 2: Percentual Total Validado do Mês Corrente */}
+        <div className="bg-white p-5 rounded-3xl border border-stone-200/70 shadow-xs flex items-center justify-between">
+          <div className="w-full mr-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider block">
+                Total Validado ({currentMonthCompetencia})
+              </span>
+              <span className="text-2xl font-extrabold text-emerald-700">
+                {totalValidadoPercent}%
+              </span>
+            </div>
+            <div className="w-full bg-stone-100 h-2.5 rounded-full overflow-hidden">
+              <div
+                style={{ width: `${totalValidadoPercent}%` }}
                 className="bg-emerald-600 h-full rounded-full transition-all duration-500"
               />
             </div>
-            <div className="text-[10px] text-stone-400 mt-1">
-              Média consolidada do mês atual
+            <div className="text-[11px] text-stone-400 font-medium mt-1.5">
+              Homologado pela Administração no mês
             </div>
           </div>
-          <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200 shadow-2xs shrink-0">
-            <TrendingUp className="w-5 h-5" />
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200 shadow-2xs shrink-0">
+            <ShieldCheck className="w-6 h-6" />
           </div>
         </div>
       </div>
@@ -935,7 +974,7 @@ export const Apuracao: React.FC = () => {
           obrigacaoName={selectedObligation}
           regime={activeTab}
           competencia={selectedCompForDrilldown}
-          clients={tabClients}
+          clients={activeScopedClients}
           inputValues={inputValues}
           validations={validations}
           initialShowPendingOnly={drilldownInitialShowPending}
