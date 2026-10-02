@@ -129,10 +129,20 @@ export const Apuracao: React.FC = () => {
 
       const map: Record<string, string> = {};
 
-      // Mapeia estritamente os registros reais do banco
+      // Mapeia os registros reais do banco
       recList.forEach((r) => {
         const key = `${r.client_id}::${r.obrigacao}::${r.competencia}`;
         map[key] = r.valor || '';
+
+        // Unificação retrocompatível: se houver registro histórico de "PRO-LAB. / FOPAG" ou "GUIA INSS",
+        // popula também a chave unificada "PRO LAB / INSS" (se ainda não preenchida com OK)
+        const obNorm = (r.obrigacao || '').trim().toUpperCase();
+        if (obNorm === 'PRO-LAB. / FOPAG' || obNorm === 'GUIA INSS') {
+          const unifiedKey = `${r.client_id}::PRO LAB / INSS::${r.competencia}`;
+          if (!map[unifiedKey] || (r.valor || '').trim().toUpperCase() === 'OK') {
+            map[unifiedKey] = r.valor || '';
+          }
+        }
       });
       setInputValues(map);
 
@@ -231,6 +241,29 @@ export const Apuracao: React.FC = () => {
         return client.obrigacoes_habilitadas.some((o) => {
           const n = (o || '').trim().toUpperCase();
           return n === 'GERAR OS DAS' || n === 'GERAR O DAS';
+        });
+      }
+      return true;
+    }
+
+    // Tratamento para PRO LAB / INSS (unificação de PRO-LAB. / FOPAG e GUIA INSS)
+    if (
+      obNorm === 'PRO LAB / INSS' ||
+      obNorm === 'PRO-LAB / INSS' ||
+      obNorm === 'PRO LAB/INSS' ||
+      obNorm === 'PRO-LAB. / FOPAG' ||
+      obNorm === 'GUIA INSS'
+    ) {
+      if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
+        return client.obrigacoes_habilitadas.some((o) => {
+          const n = (o || '').trim().toUpperCase();
+          return (
+            n === 'PRO LAB / INSS' ||
+            n === 'PRO-LAB / INSS' ||
+            n === 'PRO LAB/INSS' ||
+            n === 'PRO-LAB. / FOPAG' ||
+            n === 'GUIA INSS'
+          );
         });
       }
       return true;
@@ -416,7 +449,15 @@ export const Apuracao: React.FC = () => {
         const valRec = validations[k];
         if (!valRec) return false;
         if (obrigacao && valRec.validated_obligations && Array.isArray(valRec.validated_obligations)) {
-          return valRec.validated_obligations.includes(obrigacao);
+          if (valRec.validated_obligations.includes(obrigacao)) return true;
+          const obNorm = (obrigacao || '').trim().toUpperCase();
+          if (obNorm === 'PRO LAB / INSS') {
+            return (
+              valRec.validated_obligations.includes('GUIA INSS') ||
+              valRec.validated_obligations.includes('PRO-LAB. / FOPAG')
+            );
+          }
+          return false;
         }
         return valRec.status === 'APPROVED';
       };
@@ -444,7 +485,15 @@ export const Apuracao: React.FC = () => {
         const valRec = validations[k];
         if (!valRec || valRec.status !== 'NEEDS_REVIEW') return false;
         if (obrigacao && valRec.pending_obligations && valRec.pending_obligations.length > 0) {
-          return valRec.pending_obligations.includes(obrigacao);
+          if (valRec.pending_obligations.includes(obrigacao)) return true;
+          const obNorm = (obrigacao || '').trim().toUpperCase();
+          if (obNorm === 'PRO LAB / INSS') {
+            return (
+              valRec.pending_obligations.includes('GUIA INSS') ||
+              valRec.pending_obligations.includes('PRO-LAB. / FOPAG')
+            );
+          }
+          return false;
         }
         return true;
       };

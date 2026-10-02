@@ -121,10 +121,10 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   if (!isOpen || !client) return null;
 
   // Obrigações habilitadas para este cliente com restrição de perfil ADM:
-  // Administrador visualiza SOMENTE: GUIA INSS, GERAR OS DAS e Parc. Ativo
+  // Administrador visualiza SOMENTE: PRO LAB / INSS, GERAR OS DAS e Parc. Ativo
   const clientObligations = obligations.filter((ob) => {
     if (isAdmin) {
-      const allowedAdminObligations = ['GUIA INSS', 'GERAR OS DAS', 'Parc. Ativo'];
+      const allowedAdminObligations = ['PRO LAB / INSS', 'GUIA INSS', 'PRO-LAB. / FOPAG', 'GERAR OS DAS', 'Parc. Ativo'];
       if (!allowedAdminObligations.includes(ob)) return false;
     }
     return isObligationEnabled(client, ob);
@@ -149,7 +149,15 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   const isObligationValidated = (obrigacao: string) => {
     if (!currentValidation) return false;
     if (currentValidation.validated_obligations && Array.isArray(currentValidation.validated_obligations)) {
-      return currentValidation.validated_obligations.includes(obrigacao);
+      if (currentValidation.validated_obligations.includes(obrigacao)) return true;
+      const obNorm = (obrigacao || '').trim().toUpperCase();
+      if (obNorm === 'PRO LAB / INSS') {
+        return (
+          currentValidation.validated_obligations.includes('GUIA INSS') ||
+          currentValidation.validated_obligations.includes('PRO-LAB. / FOPAG')
+        );
+      }
+      return false;
     }
     return currentValidation.status === 'APPROVED';
   };

@@ -61,7 +61,15 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
     const v = validations[k];
     if (!v || v.status !== 'NEEDS_REVIEW') return false;
     if (v.pending_obligations && v.pending_obligations.length > 0) {
-      return v.pending_obligations.includes(obrigacaoName);
+      if (v.pending_obligations.includes(obrigacaoName)) return true;
+      const obNorm = (obrigacaoName || '').trim().toUpperCase();
+      if (obNorm === 'PRO LAB / INSS') {
+        return (
+          v.pending_obligations.includes('GUIA INSS') ||
+          v.pending_obligations.includes('PRO-LAB. / FOPAG')
+        );
+      }
+      return false;
     }
     return true;
   };

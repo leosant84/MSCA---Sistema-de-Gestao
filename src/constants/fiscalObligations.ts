@@ -10,8 +10,7 @@ export const FISCAL_REGIME_OPTIONS: { value: FiscalRegimeType; label: string }[]
 
 export const FISCAL_OBLIGATIONS: Record<FiscalRegimeType, string[]> = {
   'Simples Nacional': [
-    'PRO-LAB. / FOPAG',
-    'GUIA INSS',
+    'PRO LAB / INSS',
     'GUIA DE ISS',
     "BAIXAR OS XML'S",
     'IMPORTAR DOMINIO',

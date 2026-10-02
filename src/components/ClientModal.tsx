@@ -97,8 +97,20 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     parcelamento_ativo: Boolean(clientToEdit?.parcelamento_ativo),
     tipo_servico: (clientToEdit?.tipo_servico as FiscalRegimeType) || 
       (clientToEdit?.regime_tributario === 'Lucro Presumido' ? 'Lucro Presumido' : 'Simples Nacional'),
-    obrigacoes_habilitadas: (clientToEdit?.obrigacoes_habilitadas as string[]) || 
-      FISCAL_OBLIGATIONS[(clientToEdit?.regime_tributario === 'Lucro Presumido' ? 'Lucro Presumido' : 'Simples Nacional') as FiscalRegimeType] || [],
+    obrigacoes_habilitadas: (() => {
+      const raw = (clientToEdit?.obrigacoes_habilitadas as string[]) || 
+        FISCAL_OBLIGATIONS[(clientToEdit?.regime_tributario === 'Lucro Presumido' ? 'Lucro Presumido' : 'Simples Nacional') as FiscalRegimeType] || [];
+      // Se tiver PRO-LAB. / FOPAG ou GUIA INSS, substitui pela rubrica unificada PRO LAB / INSS
+      const list = raw.map((ob) => {
+        const obNorm = (ob || '').trim().toUpperCase();
+        if (obNorm === 'PRO-LAB. / FOPAG' || obNorm === 'GUIA INSS') {
+          return 'PRO LAB / INSS';
+        }
+        return ob;
+      });
+      // Remove duplicatas caso ambas existissem
+      return Array.from(new Set(list));
+    })(),
   });
 
   // Flag para controlar se o Posto Fiscal foi adicionado/habilitado
