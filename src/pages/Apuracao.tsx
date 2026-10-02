@@ -211,17 +211,33 @@ export const Apuracao: React.FC = () => {
 
   // Auxiliar: checa se obrigação está habilitada para o cliente
   const isObligationEnabled = useCallback((client: Client, obrigacao: string) => {
-    // Tratamento especial para Parc. Ativo
-    if (obrigacao === 'Parc. Ativo') {
+    const obNorm = (obrigacao || '').trim().toUpperCase();
+
+    // Tratamento especial para Parc. Ativo (aceita 'Parc. Ativo', 'PARC.', 'PARCELAM. ATIVO')
+    if (obNorm === 'PARC. ATIVO' || obNorm === 'PARC.' || obNorm === 'PARCELAM. ATIVO') {
       if (client.parcelamento_ativo === true) return true;
       if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
-        return client.obrigacoes_habilitadas.includes('Parc. Ativo');
+        return client.obrigacoes_habilitadas.some((o) => {
+          const n = (o || '').trim().toUpperCase();
+          return n === 'PARC. ATIVO' || n === 'PARC.' || n === 'PARCELAM. ATIVO';
+        });
       }
       return false;
     }
 
+    // Tratamento para GERAR OS DAS / GERAR O DAS
+    if (obNorm === 'GERAR OS DAS' || obNorm === 'GERAR O DAS') {
+      if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
+        return client.obrigacoes_habilitadas.some((o) => {
+          const n = (o || '').trim().toUpperCase();
+          return n === 'GERAR OS DAS' || n === 'GERAR O DAS';
+        });
+      }
+      return true;
+    }
+
     if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
-      return client.obrigacoes_habilitadas.includes(obrigacao);
+      return client.obrigacoes_habilitadas.some((o) => (o || '').trim().toUpperCase() === obNorm);
     }
     return true;
   }, []);
@@ -992,10 +1008,14 @@ export const Apuracao: React.FC = () => {
             setClientForApuracoesModal(null);
           }}
           client={clientForApuracoesModal}
-          regime={activeTab}
+          regime={clientForApuracoesModal.regime_tributario || activeTab}
           year={selectedYear}
           yearCompetencias={yearCompetencias}
-          obligations={currentObligations}
+          obligations={
+            (clientForApuracoesModal.regime_tributario &&
+              FISCAL_OBLIGATIONS[clientForApuracoesModal.regime_tributario as FiscalRegimeType]) ||
+            currentObligations
+          }
           inputValues={inputValues}
           validations={validations}
           onStatusChange={handleClientStatusChange}

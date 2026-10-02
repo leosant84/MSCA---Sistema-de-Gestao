@@ -56,7 +56,8 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   defaultCompetencia,
 }) => {
   const { toast } = useToast();
-  const { profile, user } = useAuth();
+  const { profile, user, role, isAdmin: authIsAdmin } = useAuth();
+  const isAdmin = authIsAdmin || profile?.role === 'admin' || role === 'admin';
   const currentMonthIdx = (() => {
     const m = new Date().getMonth();
     return m === 0 ? 11 : m - 1;
@@ -106,7 +107,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   // Obrigações habilitadas para este cliente com restrição de perfil ADM:
   // Administrador visualiza SOMENTE: GUIA INSS, GERAR OS DAS e Parc. Ativo
   const clientObligations = obligations.filter((ob) => {
-    if (profile?.role === 'admin') {
+    if (isAdmin) {
       const allowedAdminObligations = ['GUIA INSS', 'GERAR OS DAS', 'Parc. Ativo'];
       if (!allowedAdminObligations.includes(ob)) return false;
     }
@@ -204,7 +205,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
 
   // Botão Aprovado (homologa individualmente a obrigação)
   const handleApproveObligation = async (obrigacao: string) => {
-    if (profile?.role !== 'admin') {
+    if (!isAdmin) {
       toast('Apenas gestores administradores podem validar apurações.', 'info');
       return;
     }
@@ -226,7 +227,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
 
   // Botão Pendente (abre modal de confirmação e desabilita status OK)
   const handleOpenPendingModal = (obrigacao: string) => {
-    if (profile?.role !== 'admin') {
+    if (!isAdmin) {
       toast('Apenas gestores administradores podem apontar pendências.', 'info');
       return;
     }
@@ -608,7 +609,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                           )}
 
                           {/* Botões Aprovado e Pendente para perfil Admin (Item 7) */}
-                          {profile?.role === 'admin' ? (
+                          {isAdmin ? (
                             <div className="inline-flex items-center space-x-1.5">
                               <button
                                 type="button"
