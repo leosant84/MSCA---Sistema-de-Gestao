@@ -34,6 +34,7 @@ interface ClientApuracoesModalProps {
   onOpenValidationModal?: (client: Client, competencia: string) => void;
   onRefreshData?: () => void;
   clients100Percent?: Client[];
+  allClients?: Client[];
   onSelectClient?: (client: Client) => void;
   defaultCompetencia?: string;
 }
@@ -52,6 +53,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   isObligationEnabled,
   onRefreshData,
   clients100Percent = [],
+  allClients = [],
   onSelectClient,
   defaultCompetencia,
 }) => {
@@ -78,28 +80,42 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   const [pendingReason, setPendingReason] = useState('');
   const [pendingSubmitting, setPendingSubmitting] = useState(false);
 
-  // Lista de navegação ordenada alfabeticamente para clientes 100% apurados
-  const sortedClients100 = useMemo(() => {
-    return [...clients100Percent].sort((a, b) =>
+  // Lista de navegação ordenada alfabeticamente:
+  // Prioriza clientes 100% apurados se houver mais de 1, caso contrário permite navegar entre os clientes disponíveis (allClients)
+  const navigationClients = useMemo(() => {
+    // Se a lista de 100% tem 2 ou mais clientes, usa ela
+    let list = clients100Percent;
+    
+    // Se a lista de 100% tem menos de 2 clientes mas recebemos allClients, usa allClients
+    if ((!list || list.length < 2) && allClients && allClients.length > 1) {
+      list = allClients;
+    }
+
+    // Se o cliente atual não estiver na lista selecionada, inclui-o para que a posição e navegação funcionem sempre
+    if (client && list && !list.some((c) => c.id === client.id)) {
+      list = [client, ...list];
+    }
+
+    return [...(list || [])].sort((a, b) =>
       (a.razao_social || '').localeCompare(b.razao_social || '', 'pt-BR')
     );
-  }, [clients100Percent]);
+  }, [clients100Percent, allClients, client]);
 
   const currentClientIdx = useMemo(() => {
-    if (!client || sortedClients100.length === 0) return -1;
-    return sortedClients100.findIndex((c) => c.id === client.id);
-  }, [client, sortedClients100]);
+    if (!client || navigationClients.length === 0) return -1;
+    return navigationClients.findIndex((c) => c.id === client.id);
+  }, [client, navigationClients]);
 
   const handlePrevClient = () => {
-    if (sortedClients100.length === 0 || !onSelectClient) return;
-    const prevIdx = currentClientIdx <= 0 ? sortedClients100.length - 1 : currentClientIdx - 1;
-    onSelectClient(sortedClients100[prevIdx]);
+    if (navigationClients.length === 0 || !onSelectClient) return;
+    const prevIdx = currentClientIdx <= 0 ? navigationClients.length - 1 : currentClientIdx - 1;
+    onSelectClient(navigationClients[prevIdx]);
   };
 
   const handleNextClient = () => {
-    if (sortedClients100.length === 0 || !onSelectClient) return;
-    const nextIdx = currentClientIdx >= sortedClients100.length - 1 ? 0 : currentClientIdx + 1;
-    onSelectClient(sortedClients100[nextIdx]);
+    if (navigationClients.length === 0 || !onSelectClient) return;
+    const nextIdx = currentClientIdx >= navigationClients.length - 1 ? 0 : currentClientIdx + 1;
+    onSelectClient(navigationClients[nextIdx]);
   };
 
   if (!isOpen || !client) return null;
@@ -315,24 +331,24 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                 <span>{client.razao_social}</span>
               </h2>
 
-              {sortedClients100.length > 1 && currentClientIdx !== -1 && (
+              {navigationClients.length > 1 && currentClientIdx !== -1 && (
                 <div className="flex items-center space-x-1 ml-2 bg-stone-100/90 rounded-xl p-0.5 border border-stone-200">
                   <button
                     type="button"
                     onClick={handlePrevClient}
                     className="p-1 rounded-lg hover:bg-white text-stone-600 hover:text-stone-900 transition-colors cursor-pointer"
-                    title="Cliente anterior (100% apurado)"
+                    title="Cliente anterior"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
                   <span className="text-[10px] font-mono px-1 font-bold text-stone-600">
-                    {currentClientIdx + 1}/{sortedClients100.length}
+                    {currentClientIdx + 1}/{navigationClients.length}
                   </span>
                   <button
                     type="button"
                     onClick={handleNextClient}
                     className="p-1 rounded-lg hover:bg-white text-stone-600 hover:text-stone-900 transition-colors cursor-pointer"
-                    title="Próximo cliente (100% apurado)"
+                    title="Próximo cliente"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>

@@ -1021,6 +1021,7 @@ export const Apuracao: React.FC = () => {
           onStatusChange={handleClientStatusChange}
           isObligationEnabled={isObligationEnabled}
           clients100Percent={clients100Percent}
+          allClients={tabClients}
           onSelectClient={(c) => setClientForApuracoesModal(c)}
           onRefreshData={fetchApuracaoData}
           defaultCompetencia={currentMonthCompetencia}
