@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   X,
   CheckCircle2,
   AlertTriangle,
   ShieldCheck,
   Send,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -19,6 +21,8 @@ interface ApuracaoValidationModalProps {
   competencia: string;
   regime: string;
   obligations: string[];
+  clients100Percent?: Client[];
+  onSelectClient?: (client: Client) => void;
   onValidationSuccess?: () => void;
 }
 
@@ -29,6 +33,8 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
   competencia,
   regime,
   obligations,
+  clients100Percent = [],
+  onSelectClient,
   onValidationSuccess,
 }) => {
   const { user, profile } = useAuth();
@@ -38,6 +44,44 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
   const [selectedPendingObligations, setSelectedPendingObligations] = useState<string[]>([]);
   const [reviewNotes, setReviewNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Lista ordenada alfabeticamente dos clientes 100% apurados
+  const sortedClients100 = useMemo(() => {
+    return [...clients100Percent].sort((a, b) =>
+      (a.razao_social || '').localeCompare(b.razao_social || '', 'pt-BR')
+    );
+  }, [clients100Percent]);
+
+  const currentIndex = client
+    ? sortedClients100.findIndex((c) => c.id === client.id)
+    : -1;
+
+  const handlePrevClient = () => {
+    if (sortedClients100.length <= 1) return;
+    const prevIdx = currentIndex <= 0 ? sortedClients100.length - 1 : currentIndex - 1;
+    onSelectClient?.(sortedClients100[prevIdx]);
+    setMode('view');
+    setSelectedPendingObligations([]);
+    setReviewNotes('');
+  };
+
+  const handleNextClient = () => {
+    if (sortedClients100.length <= 1) return;
+    const nextIdx = currentIndex >= sortedClients100.length - 1 ? 0 : currentIndex + 1;
+    onSelectClient?.(sortedClients100[nextIdx]);
+    setMode('view');
+    setSelectedPendingObligations([]);
+    setReviewNotes('');
+  };
+
+  // Visão do Administrador na Validação: limitar estritamente a GUIA INSS, GERAR OS DAS e Parc. Ativo
+  const visibleObligations = useMemo(() => {
+    if (profile?.role === 'admin') {
+      const adminAllowed = ['GUIA INSS', 'GERAR OS DAS', 'Parc. Ativo'];
+      return obligations.filter((ob) => adminAllowed.includes(ob));
+    }
+    return obligations;
+  }, [obligations, profile?.role]);
 
   if (!isOpen || !client) return null;
 
@@ -73,8 +117,8 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
   };
 
   const handleToggleObligation = (ob: string) => {
-    setSelectedPendingObligations((prev) =>
-      prev.includes(ob) ? prev.filter((item) => item !== ob) : [...prev, ob]
+    setSelectedPendingObligations((prev: string[]) =>
+      prev.includes(ob) ? prev.filter((item: string) => item !== ob) : [...prev, ob]
     );
   };
 
@@ -127,8 +171,13 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-[10px] font-bold text-[#A67C2E] uppercase tracking-wider">
-                Validação de Apuração ADM
+              <div className="text-[10px] font-bold text-[#A67C2E] uppercase tracking-wider flex items-center space-x-2">
+                <span>Validação de Apuração ADM</span>
+                {sortedClients100.length > 0 && currentIndex !== -1 && (
+                  <span className="text-[10px] font-mono text-stone-500 font-normal">
+                    ({currentIndex + 1} de {sortedClients100.length})
+                  </span>
+                )}
               </div>
               <h2 className="text-base font-bold text-stone-900 leading-tight">
                 {client.razao_social}
@@ -143,13 +192,37 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-1.5">
+            {/* Setas de Navegação entre Clientes 100% Apurados */}
+            {sortedClients100.length > 1 && (
+              <div className="flex items-center bg-stone-100 p-0.5 rounded-xl border border-stone-200/80 mr-1">
+                <button
+                  type="button"
+                  onClick={handlePrevClient}
+                  className="p-1 rounded-lg text-stone-600 hover:text-stone-900 hover:bg-white transition-all cursor-pointer shadow-2xs"
+                  title="Cliente anterior (100% apurado)"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNextClient}
+                  className="p-1 rounded-lg text-stone-600 hover:text-stone-900 hover:bg-white transition-all cursor-pointer shadow-2xs"
+                  title="Próximo cliente (100% apurado)"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Corpo */}
@@ -166,13 +239,13 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
                 </p>
               </div>
 
-              {/* Lista de etapas apuradas */}
+              {/* Lista de etapas apuradas (visão restrita para admin) */}
               <div>
                 <span className="font-bold text-stone-700 block mb-2 uppercase text-[10px] tracking-wider">
-                  Etapas Concluídas no Mês ({obligations.length}):
+                  Etapas a Validar ({visibleObligations.length}):
                 </span>
                 <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-1">
-                  {obligations.map((ob) => (
+                  {visibleObligations.map((ob) => (
                     <div
                       key={ob}
                       className="p-2 rounded-xl bg-stone-50 border border-stone-200/70 flex items-center space-x-2"
@@ -226,7 +299,7 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
                   Etapas a serem revistas (opcional selecionar):
                 </label>
                 <div className="grid grid-cols-2 gap-1.5 max-h-36 overflow-y-auto pr-1">
-                  {obligations.map((ob) => {
+                  {visibleObligations.map((ob) => {
                     const isSelected = selectedPendingObligations.includes(ob);
                     return (
                       <button

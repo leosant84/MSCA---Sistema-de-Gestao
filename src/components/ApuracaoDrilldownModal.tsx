@@ -473,9 +473,9 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1 rounded-lg bg-stone-800 hover:bg-stone-900 text-white text-xs font-semibold transition-all cursor-pointer shadow-xs"
+            className="p-1 px-3 rounded-lg text-stone-500 hover:text-stone-700 hover:bg-stone-200/60 transition-colors text-xs font-semibold cursor-pointer"
           >
-            Concluir e Fechar
+            Fechar
           </button>
         </div>
       </div>

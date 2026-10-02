@@ -14,6 +14,7 @@ import { RawCnpjCopyButton } from './RawCnpjCopyButton';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { apuracaoValidationService, buildValidationKey } from '../services/apuracaoValidationService';
+import { notificationService } from '../services/notificationService';
 import type { Client, ClientApuracaoValidation } from '../types';
 
 interface ClientApuracoesModalProps {
@@ -49,10 +50,19 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
 }) => {
   const { toast } = useToast();
   const { profile, user } = useAuth();
-  const currentMonthIdx = new Date().getMonth();
+  const currentMonthIdx = (() => {
+    const m = new Date().getMonth();
+    return m === 0 ? 11 : m - 1;
+  })();
   const [selectedComp, setSelectedComp] = useState<string>(
     () => yearCompetencias[currentMonthIdx] || yearCompetencias[0] || 'set/26'
   );
+
+  // Estado para Modal de Confirmação de Pendência
+  const [pendingModalOpen, setPendingModalOpen] = useState(false);
+  const [pendingObligationTarget, setPendingObligationTarget] = useState<string | null>(null);
+  const [pendingReason, setPendingReason] = useState('');
+  const [pendingSubmitting, setPendingSubmitting] = useState(false);
 
   if (!isOpen || !client) return null;
 
@@ -80,7 +90,6 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     if (currentValidation.validated_obligations && Array.isArray(currentValidation.validated_obligations)) {
       return currentValidation.validated_obligations.includes(obrigacao);
     }
-    // Fallback legado: se status for APPROVED, todas estavam validadas
     return currentValidation.status === 'APPROVED';
   };
 
@@ -149,56 +158,92 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     toast(`Apurações de ${selectedComp.toUpperCase()} desmarcadas (pendentes)!`, 'info');
   };
 
-  // Alternar checkbox de validação de UMA ÚNICA obrigação
-  const handleToggleObligationValidation = async (obrigacao: string, currentlyChecked: boolean) => {
+  // Botão Aprovado (homologa individualmente a obrigação)
+  const handleApproveObligation = async (obrigacao: string) => {
     if (profile?.role !== 'admin') {
       toast('Apenas gestores administradores podem validar apurações.', 'info');
       return;
     }
 
-    const nextChecked = !currentlyChecked;
     await apuracaoValidationService.toggleObligationValidation({
       clientId: client.id,
       competencia: selectedComp,
       regime,
       obrigacao,
       allClientObligations: clientObligations,
-      validated: nextChecked,
+      validated: true,
       adminId: user?.id,
       adminName: profile?.full_name || 'Gestor ADM',
     });
 
-    if (nextChecked) {
-      toast(`Obrigação "${obrigacao}" validada pelo ADM!`, 'success');
-    } else {
-      toast(`Validação de "${obrigacao}" desmarcada.`, 'info');
-    }
+    toast(`Obrigação "${obrigacao}" aprovada pelo ADM!`, 'success');
     onRefreshData?.();
   };
 
-  // Alternar validação de TODAS as obrigações (Marcar todas / Desmarcar todas)
-  const handleToggleAllValidationCheck = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Botão Pendente (abre modal de confirmação e desabilita status OK)
+  const handleOpenPendingModal = (obrigacao: string) => {
     if (profile?.role !== 'admin') {
-      toast('Apenas gestores administradores podem validar apurações.', 'info');
+      toast('Apenas gestores administradores podem apontar pendências.', 'info');
       return;
     }
+    setPendingObligationTarget(obrigacao);
+    setPendingReason('');
+    setPendingModalOpen(true);
+  };
 
-    const checked = e.target.checked;
-    if (checked) {
-      await apuracaoValidationService.setValidationApproved({
+  // Confirmar pendência: desabilita o status OK, registra pendência e notifica analista
+  const handleConfirmPending = async () => {
+    if (!pendingObligationTarget) return;
+    setPendingSubmitting(true);
+    try {
+      // 1. Desabilita o status OK da apuração
+      onStatusChange(client, pendingObligationTarget, selectedComp, '');
+
+      // 2. Desvalida a obrigação caso estivesse aprovada
+      await apuracaoValidationService.toggleObligationValidation({
+        clientId: client.id,
+        competencia: selectedComp,
+        regime,
+        obrigacao: pendingObligationTarget,
+        allClientObligations: clientObligations,
+        validated: false,
+        adminId: user?.id,
+        adminName: profile?.full_name || 'Gestor ADM',
+      });
+
+      // 3. Marca como NEEDS_REVIEW no registro de validação
+      await apuracaoValidationService.setValidationNeedsReview({
         clientId: client.id,
         competencia: selectedComp,
         regime,
         adminId: user?.id,
         adminName: profile?.full_name || 'Gestor ADM',
-        allObligations: clientObligations,
+        reviewNotes: pendingReason.trim() || `Pendência apontada na obrigação: ${pendingObligationTarget}`,
+        pendingObligations: [pendingObligationTarget],
       });
-      toast(`Todas as apurações de ${selectedComp.toUpperCase()} foram validadas pelo ADM!`, 'success');
-    } else {
-      await apuracaoValidationService.clearValidation(client.id, selectedComp);
-      toast(`Validações de ${selectedComp.toUpperCase()} foram desmarcadas.`, 'info');
+
+      // 4. Dispara notificação automática detalhada para o analista
+      await notificationService.notifyOperatorReviewNeeded({
+        client_id: client.id,
+        client_name: client.razao_social,
+        competencia: selectedComp,
+        regime,
+        admin_id: user?.id,
+        admin_name: profile?.full_name || 'Gestor ADM',
+        review_notes: pendingReason.trim() || `Pendência apontada na obrigação: ${pendingObligationTarget}`,
+        pending_obligations: [pendingObligationTarget],
+      });
+
+      toast(`Pendência apontada em "${pendingObligationTarget}" e notificação enviada ao analista!`, 'info');
+      setPendingModalOpen(false);
+      setPendingObligationTarget(null);
+      setPendingReason('');
+      onRefreshData?.();
+    } catch {
+      toast('Erro ao apontar pendência.', 'error');
+    } finally {
+      setPendingSubmitting(false);
     }
-    onRefreshData?.();
   };
 
   return (
@@ -376,28 +421,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                 <th className="py-2 px-4 text-center">Status da Apuração</th>
                 <th className="py-2 px-4 text-right">
                   <div className="inline-flex items-center justify-end space-x-2">
-                    <span>Status da Validação</span>
-                    {profile?.role === 'admin' && (
-                      <label
-                        className="inline-flex items-center space-x-1 cursor-pointer select-none bg-stone-200/70 hover:bg-stone-200 text-stone-700 px-1.5 py-0.5 rounded text-[9px] font-bold transition-colors"
-                        title={
-                          isAllObligationsValidated
-                            ? 'Clique para desmarcar todas as validações'
-                            : 'Clique para validar todas as apurações desta competência'
-                        }
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isAllObligationsValidated}
-                          ref={(el) => {
-                            if (el) el.indeterminate = isPartiallyValidated;
-                          }}
-                          onChange={handleToggleAllValidationCheck}
-                          className="w-3 h-3 text-emerald-600 rounded border-stone-300 focus:ring-emerald-500 cursor-pointer"
-                        />
-                        <span>Marcar todos</span>
-                      </label>
-                    )}
+                    <span>{profile?.role === 'admin' ? 'Ações de Validação (ADM)' : 'Status da Validação'}</span>
                   </div>
                 </th>
               </tr>
@@ -513,28 +537,40 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                             <span className="text-[10px] text-stone-400">Não apurado</span>
                           )}
 
-                          {/* Checkbox para ticar se está validado pelo ADM (um de cada vez) */}
-                          <label
-                            className={`inline-flex items-center space-x-1 p-0.5 px-1.5 rounded cursor-pointer select-none transition-colors ${
-                              profile?.role === 'admin'
-                                ? 'hover:bg-stone-100 text-stone-700'
-                                : 'opacity-60 cursor-not-allowed text-stone-400'
-                            }`}
-                            title={
-                              profile?.role === 'admin'
-                                ? `Ticar para validar apenas ${obrigacao}`
-                                : 'Apenas usuários administradores podem alterar a validação'
-                            }
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isItemValidated}
-                              disabled={profile?.role !== 'admin'}
-                              onChange={() => handleToggleObligationValidation(obrigacao, isItemValidated)}
-                              className="w-3.5 h-3.5 text-emerald-600 rounded border-stone-300 focus:ring-emerald-500 cursor-pointer disabled:cursor-not-allowed"
-                            />
-                            <span className="text-[10px] font-semibold">Ticar</span>
-                          </label>
+                          {/* Botões Aprovado e Pendente para perfil Admin (Item 7) */}
+                          {profile?.role === 'admin' ? (
+                            <div className="inline-flex items-center space-x-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleApproveObligation(obrigacao)}
+                                className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
+                                  isItemValidated
+                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-emerald-200'
+                                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 hover:border-emerald-300'
+                                }`}
+                                title={`Aprovar apuração de ${obrigacao}`}
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                                <span>Aprovado</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPendingModal(obrigacao)}
+                                className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
+                                  isReviewFlagged
+                                    ? 'bg-rose-600 text-white border-rose-700 shadow-rose-200'
+                                    : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 hover:border-rose-300'
+                                }`}
+                                title={`Apontar pendência e notificar analista sobre ${obrigacao}`}
+                              >
+                                <AlertTriangle className="w-3.5 h-3.5" />
+                                <span>Pendente</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-stone-400 italic">Validação do Administrador</span>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -562,7 +598,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenValidationModal(client, selectedComp)}
-                className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
+                className={`inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
                   isAllObligationsValidated
                     ? 'bg-slate-700 hover:bg-slate-800 text-white'
                     : isMonth100
@@ -571,7 +607,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                 }`}
                 title="Abrir caixinha final para homologar validação ou sinalizar pendência ao analista"
               >
-                <ShieldCheck className="w-3.5 h-3.5" />
+                <ShieldCheck className="w-4 h-4" />
                 <span>
                   {isAllObligationsValidated
                     ? 'Gerenciar Validação / Apontar Pendência'
@@ -579,17 +615,74 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                 </span>
               </button>
             )}
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-900 text-white text-xs font-semibold transition-all cursor-pointer shadow-xs"
-            >
-              Concluir e Fechar
-            </button>
           </div>
         </div>
       </div>
+
+      {/* MODAL DE CONFIRMAÇÃO DE PENDÊNCIA (Item 7) */}
+      {pendingModalOpen && (
+        <div className="fixed inset-0 z-60 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-stone-200 w-full max-w-md p-6 animate-in zoom-in-95">
+            <div className="flex items-center space-x-3 text-rose-600 mb-3">
+              <div className="p-2 rounded-xl bg-rose-50 border border-rose-200">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-base font-bold text-stone-900">Confirmar Apontamento de Pendência</h4>
+                <p className="text-xs text-stone-500">
+                  {client.razao_social} • {selectedComp.toUpperCase()}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-stone-50 rounded-xl p-3 border border-stone-200 text-xs text-stone-700 mb-4 space-y-1">
+              <p>
+                <strong>Obrigação:</strong> <span className="font-semibold text-rose-700">{pendingObligationTarget}</span>
+              </p>
+              <p className="text-[11px] text-stone-500">
+                Ao confirmar, o status &quot;OK&quot; atual da apuração será <strong>desabilitado</strong> e uma notificação imediata será disparada para o analista responsável com os detalhes do cliente e da obrigação.
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-stone-700 mb-1">
+                Motivo / Detalhes da Pendência (opcional):
+              </label>
+              <textarea
+                value={pendingReason}
+                onChange={(e) => setPendingReason(e.target.value)}
+                placeholder="Ex: Valor da guia diverge da folha, favor recalcular..."
+                rows={3}
+                className="w-full text-xs rounded-xl border border-stone-300 p-2.5 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100">
+              <button
+                type="button"
+                disabled={pendingSubmitting}
+                onClick={() => {
+                  setPendingModalOpen(false);
+                  setPendingObligationTarget(null);
+                  setPendingReason('');
+                }}
+                className="px-4 py-2 text-xs font-semibold text-stone-600 hover:text-stone-800 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={pendingSubmitting}
+                onClick={handleConfirmPending}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>{pendingSubmitting ? 'Registrando...' : 'Confirmar Pendência'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

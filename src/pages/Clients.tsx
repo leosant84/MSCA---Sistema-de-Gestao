@@ -9,7 +9,6 @@ import {
   FileSpreadsheet,
   Receipt,
   MapPin,
-  Percent,
   X,
   ArrowUpDown,
   ArrowUp,
@@ -655,8 +654,7 @@ export const Clients: React.FC = () => {
                     {/* Coluna Fator R */}
                     <td className="py-2.5 px-2.5 text-center whitespace-nowrap">
                       {c.fator_r === 'Sim' ? (
-                        <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-bold text-[10px] border border-emerald-200 shadow-2xs">
-                          <Percent className="w-2.5 h-2.5 text-emerald-600" />
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-bold text-[10px] border border-emerald-200 shadow-2xs">
                           <span>Sim</span>
                         </span>
                       ) : (

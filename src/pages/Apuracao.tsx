@@ -13,6 +13,7 @@ import {
   User,
   ShieldCheck,
   Clock,
+  AlertTriangle,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -70,7 +71,6 @@ export const Apuracao: React.FC = () => {
 
   // Filtro por Cliente Específico e Modal de Apurações do Cliente
   const [selectedClientIdFilter, setSelectedClientIdFilter] = useState<string>('');
-  const [onlyReadyForValidationFilter, setOnlyReadyForValidationFilter] = useState<boolean>(false);
   const [clientApuracoesModalOpen, setClientApuracoesModalOpen] = useState(false);
   const [clientForApuracoesModal, setClientForApuracoesModal] = useState<Client | null>(null);
 
@@ -90,7 +90,11 @@ export const Apuracao: React.FC = () => {
     return MONTH_NAMES_SHORT.map((_, idx) => formatCompetencia(idx, selectedYear, true));
   }, [selectedYear]);
 
-  const currentMonthIdx = useMemo(() => new Date().getMonth(), []);
+  // Regra da competência m-1: apurações utilizam sempre o mês anterior como referência padrão
+  const currentMonthIdx = useMemo(() => {
+    const m = new Date().getMonth();
+    return m === 0 ? 11 : m - 1;
+  }, []);
   const currentMonthCompetencia = useMemo(() => {
     return formatCompetencia(currentMonthIdx, selectedYear, true);
   }, [currentMonthIdx, selectedYear]);
@@ -129,33 +133,8 @@ export const Apuracao: React.FC = () => {
       const recList = (recordsData || []) as FiscalRecord[];
 
       const map: Record<string, string> = {};
-      const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth();
 
-      // Pré-preenche meses anteriores como "OK" (100% apurados)
-      loadedClients.forEach((client) => {
-        MONTH_NAMES_SHORT.forEach((_, monthIdx) => {
-          const isPast =
-            selectedYear < currentYear ||
-            (selectedYear === currentYear && monthIdx < currentMonth);
-
-          if (isPast) {
-            const comp = formatCompetencia(monthIdx, selectedYear, true);
-            const allObligations = [
-              ...(FISCAL_OBLIGATIONS['Simples Nacional'] || []),
-              ...(FISCAL_OBLIGATIONS['Lucro Presumido'] || []),
-              ...(FISCAL_OBLIGATIONS['Folha de Pagamento'] || []),
-            ];
-            allObligations.forEach((ob) => {
-              const k = `${client.id}::${ob}::${comp}`;
-              map[k] = 'OK';
-            });
-          }
-        });
-      });
-
-      // Sobrescreve com os registros reais do banco (se houver edição pelo usuário)
+      // Mapeia estritamente os registros reais do banco
       recList.forEach((r) => {
         const key = `${r.client_id}::${r.obrigacao}::${r.competencia}`;
         map[key] = r.valor || '';
@@ -245,13 +224,19 @@ export const Apuracao: React.FC = () => {
     return true;
   }, []);
 
-  // Clientes pertencentes ao escopo da aba ativa
+  // Clientes pertencentes ao escopo da aba ativa (todos os clientes ativos cadastrados no regime)
   const tabClients = useMemo(() => {
     const scopeSet = APURACAO_CLIENT_IDS[activeTab];
     return clients.filter((c) => {
       const statusNorm = (c.status || '').trim().toUpperCase();
       if (statusNorm !== 'ATIVO') return false;
-      return scopeSet ? scopeSet.has(c.id) : false;
+
+      // Se estiver na lista oficial do escopo, inclui
+      if (scopeSet && scopeSet.has(c.id)) return true;
+
+      // Se foi cadastrado no sistema com o regime ou tipo de serviço correspondente
+      const regimeMatch = c.regime_tributario === activeTab || c.tipo_servico === activeTab;
+      return regimeMatch;
     });
   }, [clients, activeTab]);
 
@@ -364,22 +349,6 @@ export const Apuracao: React.FC = () => {
     [activeTab, user?.id, toast]
   );
 
-  // Auxiliar: checa se uma competência (ex: "jan/26") é de um mês anterior
-  const isPastCompetencia = useCallback((compStr: string) => {
-    const parts = compStr.toLowerCase().split('/');
-    if (parts.length !== 2) return false;
-    const mIdx = MONTH_NAMES_SHORT.findIndex((m) => m.toLowerCase() === parts[0]);
-    if (mIdx === -1) return false;
-    let y = parseInt(parts[1], 10);
-    if (y < 100) y += 2000;
-
-    const now = new Date();
-    const curY = now.getFullYear();
-    const curM = now.getMonth();
-
-    return y < curY || (y === curY && mIdx < curM);
-  }, []);
-
   // Clientes considerados no cálculo da matriz (se filtrado por cliente, considera apenas ele)
   const activeScopedClients = useMemo(() => {
     if (selectedClientIdFilter) {
@@ -402,19 +371,13 @@ export const Apuracao: React.FC = () => {
       const total = applicable.length;
       if (total === 0) return { total: 0, okCount: 0, percent: 100 };
 
-      const isPast = isPastCompetencia(competencia);
-
       let okCount = 0;
       applicable.forEach((c) => {
         const key = `${c.id}::${obrigacao}::${competencia}`;
         const val = inputValues[key];
 
-        // Se tiver valor no map (ou no banco), respeita o valor. Se não tiver registro e for mês anterior, considera OK (100%).
-        if (val !== undefined) {
-          if ((val || '').trim().toUpperCase() === 'OK') {
-            okCount++;
-          }
-        } else if (isPast) {
+        // Reflete estritamente o status real gravado no sistema
+        if (val !== undefined && (val || '').trim().toUpperCase() === 'OK') {
           okCount++;
         }
       });
@@ -422,7 +385,7 @@ export const Apuracao: React.FC = () => {
       const percent = Math.round((okCount / total) * 100);
       return { total, okCount, percent };
     },
-    [activeScopedClients, isObligationEnabled, inputValues, isPastCompetencia]
+    [activeScopedClients, isObligationEnabled, inputValues]
   );
 
   // Auxiliar: verifica se o mês está validado pelo ADM
@@ -455,21 +418,44 @@ export const Apuracao: React.FC = () => {
     [currentFilteredClient, activeScopedClients, isObligationEnabled, validations]
   );
 
+  // Auxiliar: verifica se o cliente ou obrigação possui apontamento de pendência (NEEDS_REVIEW)
+  const isMonthNeedsReview = useCallback(
+    (competencia: string, obrigacao?: string) => {
+      const isClientReview = (c: Client) => {
+        const k = buildValidationKey(c.id, competencia);
+        const valRec = validations[k];
+        if (!valRec || valRec.status !== 'NEEDS_REVIEW') return false;
+        if (obrigacao && valRec.pending_obligations && valRec.pending_obligations.length > 0) {
+          return valRec.pending_obligations.includes(obrigacao);
+        }
+        return true;
+      };
+
+      if (currentFilteredClient) {
+        return isClientReview(currentFilteredClient);
+      }
+
+      const applicableClients = obrigacao
+        ? activeScopedClients.filter((c) => isObligationEnabled(c, obrigacao))
+        : activeScopedClients;
+
+      return applicableClients.some((c) => isClientReview(c));
+    },
+    [currentFilteredClient, activeScopedClients, isObligationEnabled, validations]
+  );
+
   // Calcula o status de conclusão e validação de um cliente na competência corrente
   const getClientCurrentMonthSummary = useCallback(
     (client: Client) => {
       const applicable = currentObligations.filter((ob) => isObligationEnabled(client, ob));
-      if (applicable.length === 0) return { percent: 100, is100: true, isValidated: false };
+      if (applicable.length === 0) return { percent: 100, is100: true, isValidated: false, isNeedsReview: false };
 
-      const isPast = isPastCompetencia(currentMonthCompetencia);
       let okCount = 0;
 
       applicable.forEach((ob) => {
         const key = `${client.id}::${ob}::${currentMonthCompetencia}`;
         const val = inputValues[key];
-        if (val !== undefined) {
-          if ((val || '').trim().toUpperCase() === 'OK') okCount++;
-        } else if (isPast) {
+        if (val !== undefined && (val || '').trim().toUpperCase() === 'OK') {
           okCount++;
         }
       });
@@ -478,10 +464,11 @@ export const Apuracao: React.FC = () => {
       const is100 = percent === 100;
       const vKey = buildValidationKey(client.id, currentMonthCompetencia);
       const isValidated = is100 && validations[vKey]?.status === 'APPROVED';
+      const isNeedsReview = validations[vKey]?.status === 'NEEDS_REVIEW';
 
-      return { percent, is100, isValidated };
+      return { percent, is100, isValidated, isNeedsReview };
     },
-    [currentObligations, isObligationEnabled, currentMonthCompetencia, isPastCompetencia, inputValues, validations]
+    [currentObligations, isObligationEnabled, currentMonthCompetencia, inputValues, validations]
   );
 
   // Mapeamento dos clientes do regime com seu status de conclusão do mês atual
@@ -497,16 +484,17 @@ export const Apuracao: React.FC = () => {
     return clientsWithStatus.filter((c) => c.is100 && !c.isValidated).length;
   }, [clientsWithStatus]);
 
-  // Lista de clientes disponíveis no select (considera filtro de "apenas prontos para validar")
-  const selectableClients = useMemo(() => {
-    const list = onlyReadyForValidationFilter
-      ? clientsWithStatus.filter((c) => c.is100 && !c.isValidated)
-      : [...clientsWithStatus];
+  // Lista de clientes com 100% apurados
+  const clients100Percent = useMemo(() => {
+    return clientsWithStatus.filter((c) => c.is100).map((c) => c.client);
+  }, [clientsWithStatus]);
 
-    return list.sort((a, b) => {
+  // Lista de clientes disponíveis no select ordenados alfabeticamente
+  const selectableClients = useMemo(() => {
+    return [...clientsWithStatus].sort((a, b) => {
       return (a.client.razao_social || '').localeCompare(b.client.razao_social || '', 'pt-BR');
     });
-  }, [clientsWithStatus, onlyReadyForValidationFilter]);
+  }, [clientsWithStatus]);
 
 
 
@@ -655,7 +643,8 @@ export const Apuracao: React.FC = () => {
             const count = clients.filter((c) => {
               const statusNorm = (c.status || '').trim().toUpperCase();
               if (statusNorm !== 'ATIVO') return false;
-              return scopeSet ? scopeSet.has(c.id) : false;
+              if (scopeSet && scopeSet.has(c.id)) return true;
+              return c.regime_tributario === regime.value || c.tipo_servico === regime.value;
             }).length;
 
             return (
@@ -684,34 +673,23 @@ export const Apuracao: React.FC = () => {
 
         <div className="flex items-center flex-wrap gap-2">
           {/* Botão de Filtro Rápido: Clientes 100% Prontos para Validar */}
-          {readyForValidationCount > 0 && (
+          {clients100Percent.length > 0 && (
             <button
               type="button"
               onClick={() => {
-                const nextVal = !onlyReadyForValidationFilter;
-                setOnlyReadyForValidationFilter(nextVal);
-                if (nextVal) {
-                  // Seleciona automaticamente o primeiro cliente da lista para validar
-                  const firstReady = clientsWithStatus.find((c) => c.is100 && !c.isValidated);
-                  if (firstReady) {
-                    setSelectedClientIdFilter(firstReady.client.id);
-                  }
+                const firstReady = clientsWithStatus.find((c) => c.is100 && !c.isValidated)?.client || clients100Percent[0];
+                if (firstReady) {
+                  setClientToValidate(firstReady);
+                  setCompToValidate(currentMonthCompetencia);
+                  setValidationModalOpen(true);
                 }
               }}
-              className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-2xl text-xs font-bold transition-all shadow-2xs cursor-pointer border ${
-                onlyReadyForValidationFilter
-                  ? 'bg-amber-500 text-white border-amber-600 ring-2 ring-amber-300'
-                  : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
-              }`}
-              title="Filtrar clientes que estão 100% apurados aguardando validação do ADM"
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-2xl text-xs font-bold transition-all shadow-2xs cursor-pointer border bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200"
+              title="Abrir formulário de validação dos clientes que estão 100% apurados"
             >
-              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-amber-700" />
               <span>100% Para Validar</span>
-              <span
-                className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-                  onlyReadyForValidationFilter ? 'bg-amber-700 text-white' : 'bg-amber-200 text-amber-900'
-                }`}
-              >
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-amber-200 text-amber-900">
                 {readyForValidationCount}
               </span>
             </button>
@@ -729,9 +707,7 @@ export const Apuracao: React.FC = () => {
               className="bg-transparent text-xs font-semibold text-stone-800 focus:outline-none max-w-[200px] sm:max-w-[280px] truncate cursor-pointer"
             >
               <option value="">
-                {onlyReadyForValidationFilter
-                  ? `Prontos para validar (${selectableClients.length})`
-                  : `Todos os clientes (${tabClients.length})`}
+                {`Todos os clientes (${tabClients.length})`}
               </option>
               {selectableClients.map(({ client: c }) => {
                 return (
@@ -788,7 +764,7 @@ export const Apuracao: React.FC = () => {
             </div>
           )}
 
-          {!selectedClientIdFilter && !onlyReadyForValidationFilter && (
+          {!selectedClientIdFilter && (
             <div className="text-xs text-stone-400 font-medium px-2 hidden lg:inline">
               <span>{tabClients.length} clientes ativos monitorados</span>
             </div>
@@ -873,6 +849,7 @@ export const Apuracao: React.FC = () => {
                       const is100 = stats.percent === 100;
                       const isZero = stats.percent === 0;
                       const isValidated = is100 && isMonthValidated(compStr, obrigacao);
+                      const isNeedsReview = isMonthNeedsReview(compStr, obrigacao);
 
                       return (
                         <td
@@ -880,7 +857,9 @@ export const Apuracao: React.FC = () => {
                           onClick={() => handleOpenDrilldown(obrigacao, compStr)}
                           className="py-2 px-1 text-center cursor-pointer hover:bg-amber-50/60 transition-colors"
                           title={`${obrigacao} em ${compStr}: ${stats.percent}% (${stats.okCount}/${stats.total} clientes). ${
-                            is100
+                            isNeedsReview
+                              ? 'Atenção: Há pendência apontada pelo ADM para revisão!'
+                              : is100
                               ? isValidated
                                 ? '100% Apurado e Validado pelo ADM.'
                                 : '100% Apurado (Aguardando Validação do ADM).'
@@ -891,7 +870,9 @@ export const Apuracao: React.FC = () => {
                             {/* Badge Porcentual */}
                             <span
                               className={`inline-flex items-center space-x-0.5 px-2 py-0.5 rounded-lg text-[10px] tracking-tight shadow-2xs transition-transform hover:scale-105 ${
-                                is100
+                                isNeedsReview
+                                  ? 'bg-rose-100 text-rose-800 border border-rose-300 font-extrabold ring-1 ring-rose-400'
+                                  : is100
                                   ? isValidated
                                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold'
                                     : 'bg-slate-100 text-slate-700 border border-slate-300 font-bold'
@@ -901,13 +882,15 @@ export const Apuracao: React.FC = () => {
                               }`}
                             >
                               <span>{stats.percent}%</span>
-                              {is100 && (
+                              {isNeedsReview ? (
+                                <AlertTriangle className="w-2.5 h-2.5 text-rose-600 shrink-0 animate-pulse" />
+                              ) : is100 ? (
                                 isValidated ? (
                                   <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
                                 ) : (
                                   <Clock className="w-2.5 h-2.5 text-slate-400 shrink-0" />
                                 )
-                              )}
+                              ) : null}
                             </span>
 
                             {/* Contagem discreta */}
@@ -936,6 +919,12 @@ export const Apuracao: React.FC = () => {
 
           {/* Legenda de Conclusão */}
           <div className="flex items-center space-x-3 text-[11px]">
+            <div className="flex items-center space-x-1.5" title="Há pendência apontada pelo ADM aguardando revisão">
+              <span className="w-3 h-3 rounded-md bg-rose-100 border border-rose-400 flex items-center justify-center">
+                <AlertTriangle className="w-2 h-2 text-rose-700" />
+              </span>
+              <span className="font-semibold text-rose-900">Pendência Apontada</span>
+            </div>
             <div className="flex items-center space-x-1.5" title="Apuração 100% concluída e homologada pelo ADM">
               <span className="w-3 h-3 rounded-md bg-emerald-100 border border-emerald-400 flex items-center justify-center">
                 <CheckCircle2 className="w-2 h-2 text-emerald-700" />
@@ -986,6 +975,8 @@ export const Apuracao: React.FC = () => {
           obligations={currentObligations.filter((ob) =>
             clientToValidate ? isObligationEnabled(clientToValidate, ob) : true
           )}
+          clients100Percent={clients100Percent}
+          onSelectClient={(newCli) => setClientToValidate(newCli)}
           onValidationSuccess={fetchApuracaoData}
         />
       )}

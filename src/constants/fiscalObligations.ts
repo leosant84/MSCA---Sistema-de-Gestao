@@ -16,7 +16,7 @@ export const FISCAL_OBLIGATIONS: Record<FiscalRegimeType, string[]> = {
     "BAIXAR OS XML'S",
     'IMPORTAR DOMINIO',
     'GERAR OS DAS',
-    'PARC.',
+    'Parc. Ativo',
   ],
   'Lucro Presumido': [
     'GUIA DE ISS TOMADOS',
@@ -30,7 +30,7 @@ export const FISCAL_OBLIGATIONS: Record<FiscalRegimeType, string[]> = {
     'GUIAS - PARC. CSLL',
     'REINF',
     'DCTFweb',
-    'PARCELAM. ATIVO',
+    'Parc. Ativo',
     'DCTF',
     'EFD CONTR.',
     'EFD ICMS',
