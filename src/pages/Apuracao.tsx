@@ -1160,14 +1160,10 @@ export const Apuracao: React.FC = () => {
             setClientForApuracoesModal(null);
           }}
           client={clientForApuracoesModal}
-          regime={clientForApuracoesModal.regime_tributario || activeTab}
+          regime={activeTab}
           year={selectedYear}
           yearCompetencias={yearCompetencias}
-          obligations={
-            (clientForApuracoesModal.regime_tributario &&
-              FISCAL_OBLIGATIONS[clientForApuracoesModal.regime_tributario as FiscalRegimeType]) ||
-            currentObligations
-          }
+          obligations={currentObligations}
           inputValues={inputValues}
           validations={validations}
           onStatusChange={handleClientStatusChange}

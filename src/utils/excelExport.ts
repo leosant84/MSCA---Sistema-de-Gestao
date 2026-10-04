@@ -38,6 +38,21 @@ function formatDate(dateStr?: string | null): string {
 }
 
 /**
+ * Normaliza e padroniza status com a primeira letra maiúscula e as demais minúsculas (ex: "Ativo", "Inativo", "Recebido", "Pendente")
+ */
+function formatStatusTitleCase(statusStr?: string | null): string {
+  if (!statusStr) return '';
+  const clean = statusStr.trim();
+  if (!clean) return '';
+  // Trata palavras compostas ou com sublinhado/espaço se houver (ex: EM_ABERTO -> Em Aberto)
+  return clean
+    .toLowerCase()
+    .split(/[\s_]+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/**
  * Normaliza exibição de banco para Itaú (c/c) e Cora (c/c)
  */
 function normalizeBanco(bancoStr?: string | null): string {
@@ -108,7 +123,7 @@ export function exportClientsToExcel(
 
     // Status posicionado obrigatoriamente como primeira coluna
     if (fieldKeys.includes('status')) {
-      row['Status'] = c.status || '';
+      row['Status'] = formatStatusTitleCase(c.status);
     }
     if (fieldKeys.includes('numero_pasta')) {
       row['Nº Domínio'] = c.numero_pasta || '';
@@ -170,7 +185,7 @@ export function exportFinancialEntriesToExcel(
       'Cliente': clientName,
       'Conta Contábil / Categoria': e.conta_contabil || '',
       'Valor (R$)': Number(e.valor || 0),
-      'Status': e.status || '',
+      'Status': formatStatusTitleCase(e.status),
       'Banco': normalizeBanco(e.banco),
       'Data Recebimento': formatDate(e.data_recebimento),
       'Observação': e.observacao || '',
@@ -211,7 +226,7 @@ export function exportFinancialExpensesToExcel(
       'Descrição / Fornecedor': e.descricao_pagamento || '',
       'Conta Contábil / Categoria': e.conta_contabil || '',
       'Valor (R$)': Number(e.valor || 0),
-      'Status': e.status || '',
+      'Status': formatStatusTitleCase(e.status),
       'Banco': normalizeBanco(e.banco),
       'Previsão / Pagamento': formatDate(e.data_pagamento_previsao),
       'Observação': e.observacao || '',

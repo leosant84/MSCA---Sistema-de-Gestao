@@ -120,15 +120,8 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
 
   if (!isOpen || !client) return null;
 
-  // Obrigações habilitadas para este cliente com restrição de perfil ADM:
-  // Administrador visualiza SOMENTE: PRO LAB / INSS, GERAR OS DAS e Parc. Ativo
-  const clientObligations = obligations.filter((ob) => {
-    if (isAdmin) {
-      const allowedAdminObligations = ['PRO LAB / INSS', 'GUIA INSS', 'PRO-LAB. / FOPAG', 'GERAR OS DAS', 'Parc. Ativo'];
-      if (!allowedAdminObligations.includes(ob)) return false;
-    }
-    return isObligationEnabled(client, ob);
-  });
+  // Obrigações habilitadas para este cliente no regime/aba ativa:
+  const clientObligations = obligations.filter((ob) => isObligationEnabled(client, ob));
 
   // Estatísticas no mês selecionado
   const totalInMonth = clientObligations.length;
