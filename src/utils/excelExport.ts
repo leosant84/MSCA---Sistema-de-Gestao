@@ -64,6 +64,7 @@ export const AVAILABLE_CLIENT_EXPORT_FIELDS: ClientExportFieldOption[] = [
   { key: 'razao_social', label: 'Razão Social / Nome', defaultChecked: true },
   { key: 'cnpj', label: 'CNPJ', defaultChecked: true },
   { key: 'cpf', label: 'CPF', defaultChecked: true },
+  { key: 'status', label: 'Status', defaultChecked: true },
   { key: 'regime_tributario', label: 'Regime Tributário', defaultChecked: true },
   { key: 'puro_ou_hibrido', label: 'Puro ou Híbrido', defaultChecked: true },
   { key: 'fator_r', label: 'Fator R', defaultChecked: true },
@@ -89,6 +90,7 @@ export function exportClientsToExcel(
     'razao_social': 42,
     'cnpj': 22,
     'cpf': 18,
+    'status': 14,
     'regime_tributario': 24,
     'puro_ou_hibrido': 16,
     'fator_r': 12,
@@ -110,6 +112,9 @@ export function exportClientsToExcel(
     }
     if (fieldKeys.includes('cpf')) {
       row['CPF'] = c.cpf || '';
+    }
+    if (fieldKeys.includes('status')) {
+      row['Status'] = c.status || '';
     }
     if (fieldKeys.includes('regime_tributario')) {
       row['Regime Tributário'] = c.regime_tributario || '';

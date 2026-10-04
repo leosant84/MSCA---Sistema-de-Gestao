@@ -83,25 +83,45 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   // Clientes com pendência apontada
   const clientsWithReview = applicableClients.filter(checkClientNeedsReview);
 
-  // Filtrar por busca textual e pendência
-  const searchedClients = applicableClients.filter((c) => {
-    if (filterNeedsReviewOnly && !checkClientNeedsReview(c)) {
-      return false;
-    }
-    if (!searchTerm.trim()) return true;
-    const term = searchTerm.toLowerCase();
-    const rawCnpj = (c.cnpj || '').replace(/\D/g, '');
-    return (
-      (c.razao_social || '').toLowerCase().includes(term) ||
-      rawCnpj.includes(term.replace(/\D/g, '')) ||
-      (c.localidade || '').toLowerCase().includes(term) ||
-      (c.numero_pasta || '').toLowerCase().includes(term)
-    );
-  });
+  // Função utilitária para normalizar strings (remover acentos e minúsculas)
+  const normalizeText = (text?: string | null) =>
+    (text || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
 
-  // Ordenação das colunas
+  // Filtragem por busca textual, pendência e ordenação das colunas
   const filteredClients = useMemo(() => {
-    return [...searchedClients].sort((a, b) => {
+    const rawTerm = searchTerm.trim();
+    const normTerm = normalizeText(rawTerm);
+    const cleanNumbers = rawTerm.replace(/\D/g, '');
+
+    // 1. Filtro
+    const searched = applicableClients.filter((c) => {
+      if (filterNeedsReviewOnly && !checkClientNeedsReview(c)) {
+        return false;
+      }
+
+      if (!normTerm && !cleanNumbers) return true;
+
+      const normRazao = normalizeText(c.razao_social);
+      const normLoc = normalizeText(c.localidade);
+      const normPasta = normalizeText(c.numero_pasta);
+      const rawCnpj = (c.cnpj || '').replace(/\D/g, '');
+      const rawCpf = (c.cpf || '').replace(/\D/g, '');
+
+      const matchesRazao = normTerm ? normRazao.includes(normTerm) : false;
+      const matchesLoc = normTerm ? normLoc.includes(normTerm) : false;
+      const matchesPasta = normTerm ? normPasta.includes(normTerm) : false;
+      const matchesCnpj = cleanNumbers ? rawCnpj.includes(cleanNumbers) : false;
+      const matchesCpf = cleanNumbers ? rawCpf.includes(cleanNumbers) : false;
+
+      return matchesRazao || matchesLoc || matchesPasta || matchesCnpj || matchesCpf;
+    });
+
+    // 2. Ordenação
+    return [...searched].sort((a, b) => {
       let comparison = 0;
 
       switch (sortField) {
@@ -143,7 +163,16 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
 
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [searchedClients, sortField, sortDirection, inputValues, obrigacaoName, competencia]);
+  }, [
+    applicableClients,
+    filterNeedsReviewOnly,
+    searchTerm,
+    sortField,
+    sortDirection,
+    inputValues,
+    obrigacaoName,
+    competencia,
+  ]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -289,8 +318,18 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Buscar por razão social, CNPJ ou cidade..."
-              className="w-full pl-8 pr-2.5 py-1 text-xs bg-white border border-stone-200 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:outline-none"
+              className="w-full pl-8 pr-7 py-1 text-xs bg-white border border-stone-200 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:outline-none"
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 p-0.5 rounded cursor-pointer"
+                title="Limpar busca"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
           </div>
 
           <div className="flex items-center space-x-2">
