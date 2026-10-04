@@ -447,6 +447,38 @@ export const Apuracao: React.FC = () => {
             competencia: comp,
             obrigacao,
           });
+
+          const clientRegime = client.regime_tributario || activeTab;
+          const clientObligations =
+            (clientRegime && FISCAL_OBLIGATIONS[clientRegime as FiscalRegimeType]) || currentObligations;
+          const clientEnabledObligations = clientObligations.filter((ob) =>
+            isObligationEnabled(client, ob)
+          );
+
+          // Verificar se todas as obrigações habilitadas estão OK (considerando a nova)
+          const isAllOk = clientEnabledObligations.every((ob) => {
+            if (ob === obrigacao) return true;
+            const obKey = `${client.id}::${ob}::${comp}`;
+            const val = inputValues[obKey] || '';
+            return val.trim().toUpperCase() === 'OK';
+          });
+
+          if (isAllOk) {
+            // Disparar notificação para ADM validar
+            await notificationService.notifyAdmin100Percent({
+              client_id: client.id,
+              client_name: client.razao_social,
+              competencia: comp,
+              regime: activeTab,
+              operator_id: user?.id,
+              operator_name: profile?.full_name || 'Analista',
+            });
+            toast(
+              `Cliente ${client.razao_social} atingiu 100% no mês! Notificação enviada ao ADM para homologação.`,
+              'success',
+              'Validação Enviada'
+            );
+          }
         } else {
           // Se a apuração foi desfeita, limpa ou rebaixa a validação do ADM
           await apuracaoValidationService.clearObligationValidation({
@@ -479,7 +511,7 @@ export const Apuracao: React.FC = () => {
         toast('Erro ao sincronizar apuração com o servidor.', 'error');
       }
     },
-    [activeTab, user?.id, toast]
+    [activeTab, currentObligations, isObligationEnabled, inputValues, user?.id, profile?.full_name, toast]
   );
 
   // Clientes considerados no cálculo da matriz (se filtrado por cliente, considera apenas ele)

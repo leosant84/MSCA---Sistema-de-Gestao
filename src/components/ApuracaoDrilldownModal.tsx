@@ -70,6 +70,9 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   const [pendingReason, setPendingReason] = useState('');
   const [pendingSubmitting, setPendingSubmitting] = useState(false);
 
+  // Buffer local para edições parciais no input sem gravar valores incompletos imediatamente no banco
+  const [localInputBuffer, setLocalInputBuffer] = useState<Record<string, string>>({});
+
   if (!isOpen) return null;
 
   // Auxiliar para checar se a obrigação do cliente foi validada/aprovada pelo ADM
@@ -257,12 +260,40 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   }).length;
   const percent = total > 0 ? Math.round((okCount / total) * 100) : 100;
 
-  const handleInputChange = (client: Client, rawValue: string) => {
-    const trimmed = rawValue.trim();
-    // Se o usuário digitar "OK" (ou minúsculo "ok"), normaliza para "OK"
-    const isOkTyped = trimmed.toUpperCase() === 'OK';
-    const finalValue = isOkTyped ? 'OK' : rawValue;
+  const normalizeStatusInput = (raw: string): string => {
+    const trimmed = raw.trim().toUpperCase();
+    if (!trimmed) return '';
+    // Aceita variações comuns de confirmação (OK, O, SIM, S, X, V, 1)
+    if (['OK', 'O', 'SIM', 'S', 'X', 'V', '1'].includes(trimmed)) {
+      return 'OK';
+    }
+    return raw.trim();
+  };
 
+  const handleInputChange = (client: Client, rawValue: string) => {
+    const trimmed = rawValue.trim().toUpperCase();
+    const key = `${client.id}::${obrigacaoName}::${competencia}`;
+    if (trimmed === 'OK') {
+      setLocalInputBuffer((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      onStatusChange(client, obrigacaoName, 'OK');
+    } else {
+      // Atualiza localmente no buffer sem disparar salvamento precoce como OBS
+      setLocalInputBuffer((prev) => ({ ...prev, [key]: rawValue }));
+    }
+  };
+
+  const handleInputBlurOrSubmit = (client: Client, rawValue: string) => {
+    const key = `${client.id}::${obrigacaoName}::${competencia}`;
+    setLocalInputBuffer((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    const finalValue = normalizeStatusInput(rawValue);
     onStatusChange(client, obrigacaoName, finalValue);
   };
 
@@ -692,7 +723,8 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                   const key = `${client.id}::${obrigacaoName}::${competencia}`;
                   const keyLegacy = `${client.id}::${obrigacaoName}`;
                   const val = inputValues[key] !== undefined ? inputValues[key] : (inputValues[keyLegacy] || '');
-                  const isOk = (val || '').trim().toUpperCase() === 'OK';
+                  const displayVal = localInputBuffer[key] !== undefined ? localInputBuffer[key] : val;
+                  const isOk = (displayVal || '').trim().toUpperCase() === 'OK';
                   const isReviewFlagged = checkClientNeedsReview(client);
 
                   const isClientVal = checkClientValidated(client);
@@ -765,8 +797,14 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                           <div className="relative">
                             <input
                               type="text"
-                              value={val}
+                              value={displayVal}
                               onChange={(e) => handleInputChange(client, e.target.value)}
+                              onBlur={(e) => handleInputBlurOrSubmit(client, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.currentTarget.blur();
+                                }
+                              }}
                               placeholder="OK"
                               className={`w-14 px-2 py-0.5 text-center text-xs font-mono font-bold rounded border uppercase transition-colors focus:outline-none focus:ring-1 ${
                                 isOk

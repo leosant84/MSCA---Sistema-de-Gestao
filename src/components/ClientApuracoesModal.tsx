@@ -80,6 +80,9 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   const [pendingReason, setPendingReason] = useState('');
   const [pendingSubmitting, setPendingSubmitting] = useState(false);
 
+  // Buffer local para edições parciais no input sem gravar valores incompletos imediatamente no banco
+  const [localInputBuffer, setLocalInputBuffer] = useState<Record<string, string>>({});
+
   // Lista de navegação ordenada alfabeticamente:
   // Prioriza clientes 100% apurados se houver mais de 1, caso contrário permite navegar entre os clientes disponíveis (allClients)
   const navigationClients = useMemo(() => {
@@ -183,10 +186,39 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   });
   const percentInYear = totalInYear > 0 ? Math.round((okCountInYear / totalInYear) * 100) : 0;
 
+  const normalizeStatusInput = (raw: string): string => {
+    const trimmed = raw.trim().toUpperCase();
+    if (!trimmed) return '';
+    if (['OK', 'O', 'SIM', 'S', 'X', 'V', '1'].includes(trimmed)) {
+      return 'OK';
+    }
+    return raw.trim();
+  };
+
   const handleInputChange = (obrigacao: string, rawValue: string) => {
-    const trimmed = rawValue.trim();
-    const isOkTyped = trimmed.toUpperCase() === 'OK';
-    const finalVal = isOkTyped ? 'OK' : rawValue;
+    const trimmed = rawValue.trim().toUpperCase();
+    const key = `${client.id}::${obrigacao}::${selectedComp}`;
+    if (trimmed === 'OK') {
+      setLocalInputBuffer((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      onStatusChange(client, obrigacao, selectedComp, 'OK');
+    } else {
+      // Atualiza localmente no buffer sem disparar salvamento precoce como OBS
+      setLocalInputBuffer((prev) => ({ ...prev, [key]: rawValue }));
+    }
+  };
+
+  const handleInputBlurOrSubmit = (obrigacao: string, rawValue: string) => {
+    const key = `${client.id}::${obrigacao}::${selectedComp}`;
+    setLocalInputBuffer((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    const finalVal = normalizeStatusInput(rawValue);
     onStatusChange(client, obrigacao, selectedComp, finalVal);
   };
 
@@ -531,7 +563,8 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                 clientObligations.map((obrigacao, index) => {
                   const key = `${client.id}::${obrigacao}::${selectedComp}`;
                   const val = inputValues[key] !== undefined ? inputValues[key] : '';
-                  const isOk = (val || '').trim().toUpperCase() === 'OK';
+                  const displayVal = localInputBuffer[key] !== undefined ? localInputBuffer[key] : val;
+                  const isOk = (displayVal || '').trim().toUpperCase() === 'OK';
                   const isItemValidated = isObligationValidated(obrigacao);
                   const isReviewFlagged =
                     !isItemValidated &&
@@ -575,8 +608,14 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                         <div className="inline-flex items-center justify-center space-x-1.5">
                           <input
                             type="text"
-                            value={val}
+                            value={displayVal}
                             onChange={(e) => handleInputChange(obrigacao, e.target.value)}
+                            onBlur={(e) => handleInputBlurOrSubmit(obrigacao, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.currentTarget.blur();
+                              }
+                            }}
                             placeholder="OK"
                             className={`w-14 px-2 py-0.5 text-center text-xs font-mono font-bold rounded border uppercase transition-colors focus:outline-none focus:ring-1 ${
                               isOk
