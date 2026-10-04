@@ -96,20 +96,23 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     senha_posto_fiscal: clientToEdit?.senha_posto_fiscal || '',
     parcelamento_ativo: Boolean(clientToEdit?.parcelamento_ativo),
     tipo_servico: (clientToEdit?.tipo_servico as FiscalRegimeType) || 
-      (clientToEdit?.regime_tributario === 'Lucro Presumido' ? 'Lucro Presumido' : 'Simples Nacional'),
+      (clientToEdit?.regime_tributario as FiscalRegimeType) || 
+      'Simples Nacional',
     obrigacoes_habilitadas: (() => {
-      const raw = (clientToEdit?.obrigacoes_habilitadas as string[]) || 
-        FISCAL_OBLIGATIONS[(clientToEdit?.regime_tributario === 'Lucro Presumido' ? 'Lucro Presumido' : 'Simples Nacional') as FiscalRegimeType] || [];
-      // Se tiver PRO-LAB. / FOPAG ou GUIA INSS, substitui pela rubrica unificada PRO LAB / INSS
-      const list = raw.map((ob) => {
-        const obNorm = (ob || '').trim().toUpperCase();
-        if (obNorm === 'PRO-LAB. / FOPAG' || obNorm === 'GUIA INSS') {
-          return 'PRO LAB / INSS';
-        }
-        return ob;
-      });
-      // Remove duplicatas caso ambas existissem
-      return Array.from(new Set(list));
+      if (clientToEdit) {
+        const raw = (clientToEdit.obrigacoes_habilitadas as string[]) || [];
+        // Se tiver PRO-LAB. / FOPAG ou GUIA INSS, substitui pela rubrica unificada PRO LAB / INSS
+        const list = raw.map((ob) => {
+          const obNorm = (ob || '').trim().toUpperCase();
+          if (obNorm === 'PRO-LAB. / FOPAG' || obNorm === 'GUIA INSS') {
+            return 'PRO LAB / INSS';
+          }
+          return ob;
+        });
+        return Array.from(new Set(list));
+      }
+      // Para novo cliente, inicializa com as obrigações do Simples Nacional por padrão
+      return FISCAL_OBLIGATIONS['Simples Nacional'] || [];
     })(),
   });
 
@@ -159,15 +162,13 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       return;
     }
 
-    // Se for o campo de regime tributário, sincroniza com tipo_servico e reseta as obrigações para as pertinentes
+    // Se for o campo de regime tributário, sincroniza com tipo_servico preservando o estado atual das marcações de obrigações
     if (name === 'regime_tributario') {
       const regimeVal = value as FiscalRegimeType;
-      const defaultObligations = FISCAL_OBLIGATIONS[regimeVal] || [];
       setFormData((prev) => ({
         ...prev,
         regime_tributario: value,
         tipo_servico: regimeVal,
-        obrigacoes_habilitadas: defaultObligations,
       }));
       return;
     }
