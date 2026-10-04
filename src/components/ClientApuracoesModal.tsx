@@ -534,7 +534,9 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                   const val = inputValues[key] !== undefined ? inputValues[key] : '';
                   const isOk = (val || '').trim().toUpperCase() === 'OK';
                   const isItemValidated = isObligationValidated(obrigacao);
-                  const isReviewFlagged = currentValidation?.pending_obligations?.includes(obrigacao);
+                  const isReviewFlagged =
+                    !isItemValidated &&
+                    Boolean(currentValidation?.pending_obligations?.includes(obrigacao));
 
                   return (
                     <tr

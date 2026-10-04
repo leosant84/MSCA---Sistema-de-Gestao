@@ -72,25 +72,6 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Auxiliar para checar se cliente possui pendência apontada na obrigação/competência
-  const checkClientNeedsReview = (c: Client) => {
-    const k = buildValidationKey(c.id, competencia);
-    const v = validations[k];
-    if (!v || v.status !== 'NEEDS_REVIEW') return false;
-    if (v.pending_obligations && v.pending_obligations.length > 0) {
-      if (v.pending_obligations.includes(obrigacaoName)) return true;
-      const obNorm = (obrigacaoName || '').trim().toUpperCase();
-      if (obNorm === 'PRO LAB / INSS') {
-        return (
-          v.pending_obligations.includes('GUIA INSS') ||
-          v.pending_obligations.includes('PRO-LAB. / FOPAG')
-        );
-      }
-      return false;
-    }
-    return true;
-  };
-
   // Auxiliar para checar se a obrigação do cliente foi validada/aprovada pelo ADM
   const checkClientValidated = (c: Client) => {
     const k = buildValidationKey(c.id, competencia);
@@ -108,6 +89,28 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
       }
     }
     return false;
+  };
+
+  // Auxiliar para checar se cliente possui pendência apontada na obrigação/competência
+  // Mutuamente exclusivo com a validação/aprovação: se já foi validado/aprovado, a pendência anterior é ignorada
+  const checkClientNeedsReview = (c: Client) => {
+    if (checkClientValidated(c)) return false;
+
+    const k = buildValidationKey(c.id, competencia);
+    const v = validations[k];
+    if (!v || v.status !== 'NEEDS_REVIEW') return false;
+    if (v.pending_obligations && v.pending_obligations.length > 0) {
+      if (v.pending_obligations.includes(obrigacaoName)) return true;
+      const obNorm = (obrigacaoName || '').trim().toUpperCase();
+      if (obNorm === 'PRO LAB / INSS') {
+        return (
+          v.pending_obligations.includes('GUIA INSS') ||
+          v.pending_obligations.includes('PRO-LAB. / FOPAG')
+        );
+      }
+      return false;
+    }
+    return true;
   };
 
   // Filtrar clientes que necessitam desta apuração específica (obrigação habilitada)

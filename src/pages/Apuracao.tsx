@@ -377,8 +377,14 @@ export const Apuracao: React.FC = () => {
 
         if (error) throw error;
 
-        // Se marcou como OK, verificar se o cliente atingiu 100% no mês
+        // Se marcou como OK, limpar qualquer pendência anterior desta obrigação
         if (isOk) {
+          await apuracaoValidationService.clearObligationPending({
+            clientId: client.id,
+            competencia,
+            obrigacao,
+          });
+
           const clientEnabledObligations = currentObligations.filter((ob) =>
             isObligationEnabled(client, ob)
           );
@@ -427,6 +433,14 @@ export const Apuracao: React.FC = () => {
       try {
         const isOk = newValue.trim().toUpperCase() === 'OK';
         const status = isOk ? 'OK' : newValue.trim() ? 'OBS' : 'PENDENTE';
+
+        if (isOk) {
+          await apuracaoValidationService.clearObligationPending({
+            clientId: client.id,
+            competencia: comp,
+            obrigacao,
+          });
+        }
 
         const payload = {
           client_id: client.id,

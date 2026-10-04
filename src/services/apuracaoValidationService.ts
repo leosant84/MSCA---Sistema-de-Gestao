@@ -148,20 +148,30 @@ export const apuracaoValidationService = {
         : []
     );
 
+    let currentPending = new Set<string>(existing?.pending_obligations || []);
+
     if (params.validated) {
       currentValidated.add(params.obrigacao);
+      // Ao validar/aprovar, limpa a pendência desta obrigação (inclusive rubricas unificadas)
+      currentPending.delete(params.obrigacao);
+      const obNorm = (params.obrigacao || '').trim().toUpperCase();
+      if (obNorm === 'PRO LAB / INSS') {
+        currentPending.delete('GUIA INSS');
+        currentPending.delete('PRO-LAB. / FOPAG');
+      }
     } else {
       currentValidated.delete(params.obrigacao);
     }
 
     const validatedArray = Array.from(currentValidated);
+    const pendingArray = Array.from(currentPending);
     const totalObligations = params.allClientObligations.length;
     const isAllValidated =
       totalObligations > 0 &&
       params.allClientObligations.every((ob) => currentValidated.has(ob));
 
     // Se desmarcou e não sobrou nenhuma validada, e não havia pendências registradas
-    if (validatedArray.length === 0 && (!existing?.pending_obligations || existing.pending_obligations.length === 0)) {
+    if (validatedArray.length === 0 && pendingArray.length === 0) {
       delete localMap[key];
       saveLocalValidations(localMap);
       window.dispatchEvent(
@@ -181,7 +191,7 @@ export const apuracaoValidationService = {
 
     const newStatus: 'APPROVED' | 'PENDING' | 'NEEDS_REVIEW' = isAllValidated
       ? 'APPROVED'
-      : existing?.status === 'NEEDS_REVIEW'
+      : pendingArray.length > 0
       ? 'NEEDS_REVIEW'
       : 'PENDING';
 
@@ -194,8 +204,8 @@ export const apuracaoValidationService = {
       reviewed_by: params.adminId || existing?.reviewed_by || null,
       reviewed_by_name: params.adminName || existing?.reviewed_by_name || 'Gestor ADM',
       reviewed_at: now,
-      review_notes: existing?.review_notes || null,
-      pending_obligations: existing?.pending_obligations || [],
+      review_notes: pendingArray.length > 0 ? existing?.review_notes || null : null,
+      pending_obligations: pendingArray,
       validated_obligations: validatedArray,
       created_at: existing?.created_at || now,
       updated_at: now,
@@ -220,8 +230,8 @@ export const apuracaoValidationService = {
             reviewed_by: params.adminId || null,
             reviewed_by_name: params.adminName || 'Gestor ADM',
             reviewed_at: now,
-            review_notes: existing?.review_notes || null,
-            pending_obligations: existing?.pending_obligations || [],
+            review_notes: pendingArray.length > 0 ? existing?.review_notes || null : null,
+            pending_obligations: pendingArray,
             updated_at: now,
           },
           { onConflict: 'client_id,competencia' }
@@ -231,6 +241,70 @@ export const apuracaoValidationService = {
     }
 
     return record;
+  },
+
+  /**
+   * Limpa a pendência de uma obrigação específica quando o usuário a apura novamente (OK).
+   * Se não restarem mais pendências no cliente, o status NEEDS_REVIEW é removido.
+   */
+  async clearObligationPending(params: {
+    clientId: string;
+    competencia: string;
+    obrigacao: string;
+  }): Promise<ClientApuracaoValidation | null> {
+    const key = buildValidationKey(params.clientId, params.competencia);
+    const localMap = getLocalValidations();
+    const existing = localMap[key];
+    if (!existing || existing.status !== 'NEEDS_REVIEW') return null;
+
+    const obNorm = (params.obrigacao || '').trim().toUpperCase();
+    const currentPending = (existing.pending_obligations || []).filter((ob) => {
+      if (ob === params.obrigacao) return false;
+      if (obNorm === 'PRO LAB / INSS' && (ob === 'GUIA INSS' || ob === 'PRO-LAB. / FOPAG')) return false;
+      return true;
+    });
+
+    const now = new Date().toISOString();
+    const remainingPendingCount = currentPending.length;
+
+    const newStatus: 'APPROVED' | 'PENDING' | 'NEEDS_REVIEW' = remainingPendingCount > 0
+      ? 'NEEDS_REVIEW'
+      : 'PENDING';
+
+    const updatedRecord: ClientApuracaoValidation = {
+      ...existing,
+      status: newStatus,
+      review_notes: remainingPendingCount > 0 ? existing.review_notes : null,
+      pending_obligations: currentPending,
+      updated_at: now,
+    };
+
+    localMap[key] = updatedRecord;
+    saveLocalValidations(localMap);
+
+    window.dispatchEvent(
+      new CustomEvent('msca_apuracao_validated', { detail: { key, record: updatedRecord } })
+    );
+
+    try {
+      await supabase
+        .from('client_apuracao_validations')
+        .upsert(
+          {
+            client_id: params.clientId,
+            competencia: params.competencia,
+            status: newStatus,
+            review_notes: remainingPendingCount > 0 ? existing.review_notes : null,
+            pending_obligations: currentPending,
+            updated_at: now,
+          },
+          { onConflict: 'client_id,competencia' }
+        );
+    } catch {
+      // ignore
+    }
+
+    return updatedRecord;
   },
 
   /**
