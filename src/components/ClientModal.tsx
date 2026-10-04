@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, Shield, Globe, Building, CheckSquare, ListChecks } from 'lucide-react';
+import { X, Plus, Trash2, Shield, Globe, Building, ListChecks } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { createClientFoldersInDrive } from '../services/googleDriveService';
-import { FISCAL_OBLIGATIONS, FISCAL_REGIME_OPTIONS } from '../constants/fiscalObligations';
+import { FISCAL_OBLIGATIONS } from '../constants/fiscalObligations';
 import type { FiscalRegimeType } from '../constants/fiscalObligations';
 import type { Client } from '../types';
 
@@ -175,16 +175,6 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     setFormData((prev) => ({
       ...prev,
       [name]: value,
-    }));
-  };
-
-  const handleRegimeServiceChange = (newRegime: FiscalRegimeType) => {
-    const defaultObligations = FISCAL_OBLIGATIONS[newRegime] || [];
-    setFormData((prev) => ({
-      ...prev,
-      tipo_servico: newRegime,
-      regime_tributario: newRegime,
-      obrigacoes_habilitadas: defaultObligations,
     }));
   };
 
@@ -657,36 +647,6 @@ export const ClientModal: React.FC<ClientModalProps> = ({
                     Desmarcar Todas
                   </button>
                 </div>
-              </div>
-
-              {/* Seletor de Regime / Tipo de Serviço */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                  Regime / Tipo de Serviço para Apuração *
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {FISCAL_REGIME_OPTIONS.map((regime) => {
-                    const isSelected = formData.tipo_servico === regime.value;
-                    return (
-                      <button
-                        key={regime.value}
-                        type="button"
-                        onClick={() => handleRegimeServiceChange(regime.value)}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between cursor-pointer ${
-                          isSelected
-                            ? 'bg-[#C5A059] text-white border-[#C5A059] shadow-xs'
-                            : 'bg-white text-gray-700 border-gray-200 hover:border-[#C5A059] hover:bg-amber-50/40'
-                        }`}
-                      >
-                        <span>{regime.label}</span>
-                        {isSelected && <CheckSquare className="w-3.5 h-3.5 text-white" />}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-[10px] text-gray-500 mt-1">
-                  Selecione o regime para exibir o checklist de obrigações aplicáveis a este cliente.
-                </p>
               </div>
 
               {/* Checklist de Obrigações Habilitadas */}
