@@ -116,6 +116,49 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     })(),
   });
 
+  // Mapa de obrigações por regime para preservar com precisão o estado de marcações ao trocar de regime
+  const [regimeObligationsMap, setRegimeObligationsMap] = useState<Record<FiscalRegimeType, string[]>>(() => {
+    const currentRegime = ((clientToEdit?.tipo_servico as FiscalRegimeType) ||
+      (clientToEdit?.regime_tributario as FiscalRegimeType) ||
+      'Simples Nacional') as FiscalRegimeType;
+
+    const savedRaw = (clientToEdit?.obrigacoes_habilitadas as string[]) || [];
+    const normalizedSaved = Array.from(
+      new Set(
+        savedRaw.map((ob) => {
+          const obNorm = (ob || '').trim().toUpperCase();
+          if (obNorm === 'PRO-LAB. / FOPAG' || obNorm === 'GUIA INSS') {
+            return 'PRO LAB / INSS';
+          }
+          return ob;
+        })
+      )
+    );
+
+    const getObligationsForRegime = (regime: FiscalRegimeType): string[] => {
+      const regimeAll = FISCAL_OBLIGATIONS[regime] || [];
+      if (clientToEdit) {
+        // Se este for o regime atual salvo do cliente no banco, usamos exatamente o que está salvo
+        if (regime === currentRegime) {
+          return normalizedSaved;
+        }
+        // Se o cliente tem obrigações salvas que pertencem a este regime, preservamos a intersecção
+        const matching = normalizedSaved.filter((item) => regimeAll.includes(item));
+        if (matching.length > 0) {
+          return matching;
+        }
+      }
+      // Padrão para novo cliente ou regime ainda sem configuração prévia: todas ativas
+      return regimeAll;
+    };
+
+    return {
+      'Simples Nacional': getObligationsForRegime('Simples Nacional'),
+      'Lucro Presumido': getObligationsForRegime('Lucro Presumido'),
+      'Folha de Pagamento': getObligationsForRegime('Folha de Pagamento'),
+    };
+  });
+
   // Flag para controlar se o Posto Fiscal foi adicionado/habilitado
   const [hasPostoFiscal, setHasPostoFiscal] = useState<boolean>(() => {
     return Boolean(clientToEdit?.login_posto_fiscal || clientToEdit?.senha_posto_fiscal);
@@ -162,13 +205,15 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       return;
     }
 
-    // Se for o campo de regime tributário, sincroniza com tipo_servico preservando o estado atual das marcações de obrigações
+    // Se for o campo de regime tributário, restaura o estado exato preservado para o novo regime
     if (name === 'regime_tributario') {
       const regimeVal = value as FiscalRegimeType;
+      const preservedForRegime = regimeObligationsMap[regimeVal] || FISCAL_OBLIGATIONS[regimeVal] || [];
       setFormData((prev) => ({
         ...prev,
         regime_tributario: value,
         tipo_servico: regimeVal,
+        obrigacoes_habilitadas: preservedForRegime,
       }));
       return;
     }
@@ -180,10 +225,18 @@ export const ClientModal: React.FC<ClientModalProps> = ({
   };
 
   const handleToggleObligation = (obligation: string) => {
+    const currentRegime = (formData.tipo_servico as FiscalRegimeType) || 'Simples Nacional';
     setFormData((prev) => {
       const current = prev.obrigacoes_habilitadas || [];
       const exists = current.includes(obligation);
       const updated = exists ? current.filter((o) => o !== obligation) : [...current, obligation];
+      
+      // Atualiza também o cache por regime
+      setRegimeObligationsMap((regPrev) => ({
+        ...regPrev,
+        [currentRegime]: updated,
+      }));
+
       return {
         ...prev,
         obrigacoes_habilitadas: updated,
@@ -192,7 +245,12 @@ export const ClientModal: React.FC<ClientModalProps> = ({
   };
 
   const handleSelectAllObligations = () => {
-    const all = FISCAL_OBLIGATIONS[formData.tipo_servico as FiscalRegimeType] || [];
+    const currentRegime = (formData.tipo_servico as FiscalRegimeType) || 'Simples Nacional';
+    const all = FISCAL_OBLIGATIONS[currentRegime] || [];
+    setRegimeObligationsMap((regPrev) => ({
+      ...regPrev,
+      [currentRegime]: all,
+    }));
     setFormData((prev) => ({
       ...prev,
       obrigacoes_habilitadas: all,
@@ -200,6 +258,11 @@ export const ClientModal: React.FC<ClientModalProps> = ({
   };
 
   const handleClearAllObligations = () => {
+    const currentRegime = (formData.tipo_servico as FiscalRegimeType) || 'Simples Nacional';
+    setRegimeObligationsMap((regPrev) => ({
+      ...regPrev,
+      [currentRegime]: [],
+    }));
     setFormData((prev) => ({
       ...prev,
       obrigacoes_habilitadas: [],
