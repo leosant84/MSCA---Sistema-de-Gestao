@@ -117,20 +117,30 @@ export const Apuracao: React.FC = () => {
       const loadedClients = (clientsData || []) as Client[];
       setClients(loadedClients);
 
-      // 2. Busca registros fiscais das 12 competências do ano selecionado
+      // 2. Busca registros fiscais das 12 competências do ano selecionado (com paginação para carregar todos os registros além do limite de 1000)
       const shortYearStr = String(selectedYear).slice(-2);
-      const { data: recordsData, error: recErr } = await supabase
-        .from('fiscal_records')
-        .select('*')
-        .like('competencia', `%/${shortYearStr}`);
+      const allRecords: FiscalRecord[] = [];
+      let from = 0;
+      const step = 1000;
 
-      if (recErr) throw recErr;
-      const recList = (recordsData || []) as FiscalRecord[];
+      while (true) {
+        const { data: pageData, error: pageErr } = await supabase
+          .from('fiscal_records')
+          .select('*')
+          .like('competencia', `%/${shortYearStr}`)
+          .range(from, from + step - 1);
+
+        if (pageErr) throw pageErr;
+        if (!pageData || pageData.length === 0) break;
+        allRecords.push(...(pageData as FiscalRecord[]));
+        if (pageData.length < step) break;
+        from += step;
+      }
 
       const map: Record<string, string> = {};
 
       // Mapeia os registros reais do banco
-      recList.forEach((r) => {
+      allRecords.forEach((r) => {
         const key = `${r.client_id}::${r.obrigacao}::${r.competencia}`;
         map[key] = r.valor || '';
 
@@ -213,6 +223,48 @@ export const Apuracao: React.FC = () => {
 
     window.addEventListener('msca_apuracao_validated', handleValidated);
     return () => window.removeEventListener('msca_apuracao_validated', handleValidated);
+  }, []);
+
+  // Sincronização em tempo real (Supabase Realtime) para refletir instantaneamente apurações feitas por outros usuários/perfis
+  useEffect(() => {
+    const channel = supabase
+      .channel('realtime_fiscal_records')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fiscal_records' },
+        (payload) => {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const r = payload.new as FiscalRecord;
+            if (r && r.client_id && r.obrigacao && r.competencia) {
+              const key = `${r.client_id}::${r.obrigacao}::${r.competencia}`;
+              setInputValues((prev) => {
+                const next = { ...prev, [key]: r.valor || '' };
+                const obNorm = (r.obrigacao || '').trim().toUpperCase();
+                if (obNorm === 'PRO-LAB. / FOPAG' || obNorm === 'GUIA INSS') {
+                  const unifiedKey = `${r.client_id}::PRO LAB / INSS::${r.competencia}`;
+                  next[unifiedKey] = r.valor || '';
+                }
+                return next;
+              });
+            }
+          } else if (payload.eventType === 'DELETE') {
+            const old = payload.old as Partial<FiscalRecord>;
+            if (old && old.client_id && old.obrigacao && old.competencia) {
+              const key = `${old.client_id}::${old.obrigacao}::${old.competencia}`;
+              setInputValues((prev) => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+              });
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
