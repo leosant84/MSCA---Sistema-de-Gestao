@@ -11,10 +11,15 @@ import {
   ArrowDown,
   Check,
   AlertTriangle,
+  ShieldCheck,
+  Filter,
 } from 'lucide-react';
 import { RawCnpjCopyButton } from './RawCnpjCopyButton';
 import { useToast } from '../contexts/ToastContext';
-import { buildValidationKey } from '../services/apuracaoValidationService';
+import { useAuth } from '../contexts/AuthContext';
+import { apuracaoValidationService, buildValidationKey } from '../services/apuracaoValidationService';
+import { notificationService } from '../services/notificationService';
+import { FISCAL_OBLIGATIONS, type FiscalRegimeType } from '../constants/fiscalObligations';
 import type { Client, ClientApuracaoValidation } from '../types';
 
 interface ApuracaoDrilldownModalProps {
@@ -29,6 +34,7 @@ interface ApuracaoDrilldownModalProps {
   onStatusChange: (client: Client, obrigacao: string, newValue: string) => void;
   isObligationEnabled: (client: Client, obrigacao: string) => boolean;
   initialShowPendingOnly?: boolean;
+  onRefreshData?: () => void;
 }
 
 type SortField = 'numero_pasta' | 'razao_social' | 'cnpj' | 'localidade' | 'status';
@@ -46,12 +52,23 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   onStatusChange,
   isObligationEnabled,
   initialShowPendingOnly = false,
+  onRefreshData,
 }) => {
   const { toast } = useToast();
+  const { profile, user, role, isAdmin: authIsAdmin } = useAuth();
+  const isAdmin = authIsAdmin || profile?.role === 'admin' || role === 'admin';
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterNeedsReviewOnly, setFilterNeedsReviewOnly] = useState(initialShowPendingOnly);
+  const [filterApuradosOnly, setFilterApuradosOnly] = useState(false);
   const [sortField, setSortField] = useState<SortField>('razao_social');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+  // Estados para Modal de Apontamento de Pendência do ADM
+  const [pendingModalOpen, setPendingModalOpen] = useState(false);
+  const [pendingClientTarget, setPendingClientTarget] = useState<Client | null>(null);
+  const [pendingReason, setPendingReason] = useState('');
+  const [pendingSubmitting, setPendingSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
@@ -74,6 +91,25 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
     return true;
   };
 
+  // Auxiliar para checar se a obrigação do cliente foi validada/aprovada pelo ADM
+  const checkClientValidated = (c: Client) => {
+    const k = buildValidationKey(c.id, competencia);
+    const v = validations[k];
+    if (!v) return false;
+    if (v.status === 'APPROVED') return true;
+    if (v.validated_obligations && Array.isArray(v.validated_obligations)) {
+      if (v.validated_obligations.includes(obrigacaoName)) return true;
+      const obNorm = (obrigacaoName || '').trim().toUpperCase();
+      if (obNorm === 'PRO LAB / INSS') {
+        return (
+          v.validated_obligations.includes('GUIA INSS') ||
+          v.validated_obligations.includes('PRO-LAB. / FOPAG')
+        );
+      }
+    }
+    return false;
+  };
+
   // Filtrar clientes que necessitam desta apuração específica (obrigação habilitada)
   // Caso nenhum cliente do regime possua a lista explicitamente cadastrada para essa obrigação,
   // exibe todos os clientes do regime para permitir a apuração consistente (comportamento idêntico ao Simples Nacional)
@@ -83,6 +119,14 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   // Clientes com pendência apontada
   const clientsWithReview = applicableClients.filter(checkClientNeedsReview);
 
+  // Clientes com apuração realizada (OK)
+  const clientsApurados = applicableClients.filter((c) => {
+    const key = `${c.id}::${obrigacaoName}::${competencia}`;
+    const keyLegacy = `${c.id}::${obrigacaoName}`;
+    const val = inputValues[key] !== undefined ? inputValues[key] : (inputValues[keyLegacy] || '');
+    return (val || '').trim().toUpperCase() === 'OK';
+  });
+
   // Função utilitária para normalizar strings (remover acentos e minúsculas)
   const normalizeText = (text?: string | null) =>
     (text || '')
@@ -91,7 +135,7 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
       .toLowerCase()
       .trim();
 
-  // Filtragem por busca textual, pendência e ordenação das colunas
+  // Filtragem por busca textual, pendência, apurados e ordenação das colunas
   const filteredClients = useMemo(() => {
     const rawTerm = searchTerm.trim();
     const normTerm = normalizeText(rawTerm);
@@ -101,6 +145,15 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
     const searched = applicableClients.filter((c) => {
       if (filterNeedsReviewOnly && !checkClientNeedsReview(c)) {
         return false;
+      }
+
+      if (filterApuradosOnly) {
+        const key = `${c.id}::${obrigacaoName}::${competencia}`;
+        const keyLegacy = `${c.id}::${obrigacaoName}`;
+        const val = inputValues[key] !== undefined ? inputValues[key] : (inputValues[keyLegacy] || '');
+        if ((val || '').trim().toUpperCase() !== 'OK') {
+          return false;
+        }
       }
 
       if (!normTerm && !cleanNumbers) return true;
@@ -166,6 +219,7 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   }, [
     applicableClients,
     filterNeedsReviewOnly,
+    filterApuradosOnly,
     searchTerm,
     sortField,
     sortDirection,
@@ -214,6 +268,139 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
       }
     });
     toast(`Todos os ${filteredClients.length} clientes visíveis marcados como OK!`, 'success');
+  };
+
+  // ADM: Aprovar individualmente a obrigação do cliente
+  const handleApproveClientObligation = async (client: Client) => {
+    if (!isAdmin) {
+      toast('Apenas administradores podem homologar apurações.', 'info');
+      return;
+    }
+
+    const clientRegime = client.regime_tributario || regime;
+    const clientObligations =
+      (clientRegime && FISCAL_OBLIGATIONS[clientRegime as FiscalRegimeType]) || [obrigacaoName];
+
+    await apuracaoValidationService.toggleObligationValidation({
+      clientId: client.id,
+      competencia,
+      regime: clientRegime,
+      obrigacao: obrigacaoName,
+      allClientObligations: clientObligations,
+      validated: true,
+      adminId: user?.id,
+      adminName: profile?.full_name || 'Gestor ADM',
+    });
+
+    toast(`${client.razao_social}: Obrigação "${obrigacaoName}" aprovada!`, 'success');
+    onRefreshData?.();
+  };
+
+  // ADM: Abrir modal de apontamento de pendência
+  const handleOpenPendingModal = (client: Client) => {
+    if (!isAdmin) {
+      toast('Apenas administradores podem apontar pendências.', 'info');
+      return;
+    }
+    setPendingClientTarget(client);
+    setPendingReason('');
+    setPendingModalOpen(true);
+  };
+
+  // ADM: Confirmar pendência para o cliente
+  const handleConfirmPending = async () => {
+    if (!pendingClientTarget) return;
+    setPendingSubmitting(true);
+    try {
+      const targetClient = pendingClientTarget;
+      const clientRegime = targetClient.regime_tributario || regime;
+      const clientObligations =
+        (clientRegime && FISCAL_OBLIGATIONS[clientRegime as FiscalRegimeType]) || [obrigacaoName];
+
+      // 1. Desabilita o status OK da apuração
+      onStatusChange(targetClient, obrigacaoName, '');
+
+      // 2. Desvalida a obrigação
+      await apuracaoValidationService.toggleObligationValidation({
+        clientId: targetClient.id,
+        competencia,
+        regime: clientRegime,
+        obrigacao: obrigacaoName,
+        allClientObligations: clientObligations,
+        validated: false,
+        adminId: user?.id,
+        adminName: profile?.full_name || 'Gestor ADM',
+      });
+
+      // 3. Marca como NEEDS_REVIEW no registro de validação
+      await apuracaoValidationService.setValidationNeedsReview({
+        clientId: targetClient.id,
+        competencia,
+        regime: clientRegime,
+        adminId: user?.id,
+        adminName: profile?.full_name || 'Gestor ADM',
+        reviewNotes: pendingReason.trim() || `Pendência apontada na obrigação: ${obrigacaoName}`,
+        pendingObligations: [obrigacaoName],
+      });
+
+      // 4. Dispara notificação imediata para o operador/analista responsável
+      await notificationService.notifyOperatorReviewNeeded({
+        client_id: targetClient.id,
+        client_name: targetClient.razao_social,
+        competencia,
+        regime: clientRegime,
+        admin_id: user?.id,
+        admin_name: profile?.full_name || 'Gestor ADM',
+        review_notes: pendingReason.trim() || `Pendência apontada na obrigação: ${obrigacaoName}`,
+        pending_obligations: [obrigacaoName],
+      });
+
+      toast(`Pendência registrada para ${targetClient.razao_social} e notificação enviada!`, 'info');
+      setPendingModalOpen(false);
+      setPendingClientTarget(null);
+      setPendingReason('');
+      onRefreshData?.();
+    } catch {
+      toast('Erro ao registrar pendência.', 'error');
+    } finally {
+      setPendingSubmitting(false);
+    }
+  };
+
+  // ADM: Aprovar todos os clientes visíveis que já foram apurados (com status OK)
+  const handleApproveAllVisibleOk = async () => {
+    if (!isAdmin) return;
+    const okClients = filteredClients.filter((c) => {
+      const key = `${c.id}::${obrigacaoName}::${competencia}`;
+      const keyLegacy = `${c.id}::${obrigacaoName}`;
+      const val = inputValues[key] !== undefined ? inputValues[key] : (inputValues[keyLegacy] || '');
+      return (val || '').trim().toUpperCase() === 'OK';
+    });
+
+    if (okClients.length === 0) {
+      toast('Nenhum cliente com apuração realizada (OK) para aprovar.', 'info');
+      return;
+    }
+
+    for (const c of okClients) {
+      const clientRegime = c.regime_tributario || regime;
+      const clientObligations =
+        (clientRegime && FISCAL_OBLIGATIONS[clientRegime as FiscalRegimeType]) || [obrigacaoName];
+
+      await apuracaoValidationService.toggleObligationValidation({
+        clientId: c.id,
+        competencia,
+        regime: clientRegime,
+        obrigacao: obrigacaoName,
+        allClientObligations: clientObligations,
+        validated: true,
+        adminId: user?.id,
+        adminName: profile?.full_name || 'Gestor ADM',
+      });
+    }
+
+    toast(`${okClients.length} clientes aprovados com sucesso pelo Administrador!`, 'success');
+    onRefreshData?.();
   };
 
   const handlePromptUnmarkAll = () => {
@@ -332,7 +519,37 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
             )}
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center flex-wrap gap-2">
+            {/* Filtro Rápido para ADM: Somente Apurados (OK) */}
+            {isAdmin && clientsApurados.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilterApuradosOnly((prev) => !prev)}
+                className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border shadow-2xs ${
+                  filterApuradosOnly
+                    ? 'bg-amber-600 text-white border-amber-700'
+                    : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
+                }`}
+                title="Filtrar apenas clientes com apuração já realizada (OK) para validação"
+              >
+                <Filter className="w-3.5 h-3.5" />
+                <span>Apurados ({clientsApurados.length})</span>
+              </button>
+            )}
+
+            {/* Ação em Lote do ADM: Homologar/Aprovar Todos os Apurados Visíveis */}
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={handleApproveAllVisibleOk}
+                className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all cursor-pointer shadow-xs"
+                title="Aprovar e homologar como Administrador todos os clientes com apuração OK visíveis na lista"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Aprovar Todos Apurados</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleMarkAllVisibleOk}
@@ -443,12 +660,19 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                     )}
                   </button>
                 </th>
+
+                {/* Validação / Homologação (ADM) */}
+                {isAdmin && (
+                  <th className="py-1.5 px-3 text-right whitespace-nowrap">
+                    <span className="font-bold text-emerald-800">Homologação (ADM)</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100 text-xs text-stone-700">
               {filteredClients.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-10 text-center text-stone-400">
+                  <td colSpan={isAdmin ? 6 : 5} className="py-10 text-center text-stone-400">
                     <Building className="w-6 h-6 text-stone-300 mx-auto mb-1.5" />
                     <span className="text-xs">Nenhum cliente localizado para esta apuração.</span>
                   </td>
@@ -461,14 +685,18 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                   const isOk = (val || '').trim().toUpperCase() === 'OK';
                   const isReviewFlagged = checkClientNeedsReview(client);
 
+                  const isClientVal = checkClientValidated(client);
+
                   return (
                     <tr
                       key={client.id}
                       className={`hover:bg-amber-50/20 transition-colors ${
                         isReviewFlagged
                           ? 'bg-rose-50/40 border-l-4 border-l-rose-500'
+                          : isClientVal
+                          ? 'bg-emerald-50/25'
                           : isOk
-                          ? 'bg-emerald-50/15'
+                          ? 'bg-emerald-50/10'
                           : ''
                       }`}
                     >
@@ -483,6 +711,12 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                           <span className="font-semibold text-stone-900 leading-tight text-xs">
                             {client.razao_social}
                           </span>
+                          {isClientVal && (
+                            <span className="inline-flex items-center space-x-0.5 text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded-full">
+                              <ShieldCheck className="w-2.5 h-2.5 text-emerald-600" />
+                              <span>Validado</span>
+                            </span>
+                          )}
                           {isReviewFlagged && (
                             <span className="inline-flex items-center space-x-0.5 text-[9px] font-bold bg-rose-100 text-rose-800 border border-rose-300 px-1.5 py-0.2 rounded-full">
                               <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
@@ -566,6 +800,43 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                           </button>
                         </div>
                       </td>
+
+                      {/* Coluna de Homologação / Validação para Perfil ADM com Botões Diretos Aprovado / Pendente */}
+                      {isAdmin && (
+                        <td className="py-1 px-3 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center justify-end space-x-1.5">
+                            {/* Botão Aprovado */}
+                            <button
+                              type="button"
+                              onClick={() => handleApproveClientObligation(client)}
+                              className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
+                                isClientVal
+                                  ? 'bg-emerald-600 text-white border-emerald-700 shadow-emerald-200'
+                                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 hover:border-emerald-300'
+                              }`}
+                              title={`Homologar e aprovar ${obrigacaoName} para ${client.razao_social}`}
+                            >
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                              <span>Aprovado</span>
+                            </button>
+
+                            {/* Botão Pendente */}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPendingModal(client)}
+                              className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
+                                isReviewFlagged
+                                  ? 'bg-rose-600 text-white border-rose-700 shadow-rose-200'
+                                  : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 hover:border-rose-300'
+                              }`}
+                              title={`Apontar pendência e notificar analista responsável sobre ${client.razao_social}`}
+                            >
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              <span>Pendente</span>
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })
@@ -624,6 +895,71 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
               >
                 <X className="w-3.5 h-3.5" />
                 <span>Sim, Desmarcar Todos</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE APONTAMENTO DE PENDÊNCIA DO ADM */}
+      {pendingModalOpen && pendingClientTarget && (
+        <div className="fixed inset-0 z-60 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl p-5 max-w-md w-full shadow-2xl border border-stone-200 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start space-x-3.5 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-bold text-stone-900">Confirmar Apontamento de Pendência</h4>
+                <p className="text-xs text-stone-500">
+                  {pendingClientTarget.razao_social} • {competencia.toUpperCase()}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-stone-50 rounded-xl p-3 border border-stone-200 text-xs text-stone-700 mb-4 space-y-1">
+              <p>
+                <strong>Obrigação:</strong> <span className="font-semibold text-rose-700">{obrigacaoName}</span>
+              </p>
+              <p className="text-[11px] text-stone-500">
+                Ao confirmar, o status &quot;OK&quot; atual da apuração será <strong>desabilitado</strong> e uma notificação imediata será disparada para o operador responsável com os detalhes do cliente e da obrigação.
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-stone-700 mb-1">
+                Motivo / Detalhes da Pendência (opcional):
+              </label>
+              <textarea
+                value={pendingReason}
+                onChange={(e) => setPendingReason(e.target.value)}
+                placeholder="Ex: Valor diverge da folha, favor recalcular..."
+                rows={3}
+                className="w-full text-xs rounded-xl border border-stone-300 p-2.5 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-stone-100">
+              <button
+                type="button"
+                disabled={pendingSubmitting}
+                onClick={() => {
+                  setPendingModalOpen(false);
+                  setPendingClientTarget(null);
+                  setPendingReason('');
+                }}
+                className="px-4 py-2 text-xs font-semibold text-stone-600 hover:text-stone-800 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={pendingSubmitting}
+                onClick={handleConfirmPending}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>{pendingSubmitting ? 'Registrando...' : 'Confirmar Pendência'}</span>
               </button>
             </div>
           </div>

@@ -1106,6 +1106,7 @@ export const Apuracao: React.FC = () => {
           initialShowPendingOnly={drilldownInitialShowPending}
           onStatusChange={handleStatusChange}
           isObligationEnabled={isObligationEnabled}
+          onRefreshData={fetchApuracaoData}
         />
       )}
 
