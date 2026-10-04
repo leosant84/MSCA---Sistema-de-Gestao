@@ -718,6 +718,7 @@ export const Clients: React.FC = () => {
       {/* Modal de Criação / Edição */}
       {isModalOpen && (
         <ClientModal
+          key={selectedClient?.id || 'new-client'}
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           onSuccess={fetchClients}

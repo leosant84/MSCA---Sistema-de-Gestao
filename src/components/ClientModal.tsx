@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { createClientFoldersInDrive } from '../services/googleDriveService';
-import { FISCAL_OBLIGATIONS } from '../constants/fiscalObligations';
+import { FISCAL_OBLIGATIONS, normalizeRegime } from '../constants/fiscalObligations';
 import type { FiscalRegimeType } from '../constants/fiscalObligations';
 import type { Client } from '../types';
 
@@ -75,6 +75,32 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     return clean;
   };
 
+  // Normaliza o regime tributário inicial
+  const clientInitialRegime = normalizeRegime(
+    clientToEdit?.tipo_servico || clientToEdit?.regime_tributario
+  );
+
+  // Normaliza as obrigações salvas do cliente (se existirem salvas no banco)
+  const clientInitialSavedObligations = (() => {
+    if (!clientToEdit) return null;
+    if (clientToEdit.obrigacoes_habilitadas !== undefined && clientToEdit.obrigacoes_habilitadas !== null) {
+      const raw = Array.isArray(clientToEdit.obrigacoes_habilitadas)
+        ? (clientToEdit.obrigacoes_habilitadas as string[])
+        : [];
+      const list = raw
+        .map((ob) => {
+          const obNorm = (ob || '').trim().toUpperCase();
+          if (obNorm === 'PRO-LAB. / FOPAG' || obNorm === 'GUIA INSS') {
+            return 'PRO LAB / INSS';
+          }
+          return (ob || '').trim();
+        })
+        .filter(Boolean);
+      return Array.from(new Set(list));
+    }
+    return null;
+  })();
+
   // Campos principais de cliente
   const [formData, setFormData] = useState({
     razao_social: clientToEdit?.razao_social || '',
@@ -84,7 +110,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     numero_pasta: clientToEdit?.numero_pasta || '',
     sieg: clientToEdit?.sieg || 'Não',
     nire: clientToEdit?.nire || '',
-    regime_tributario: clientToEdit?.regime_tributario || 'Simples Nacional',
+    regime_tributario: clientInitialRegime,
     puro_ou_hibrido: clientToEdit?.puro_ou_hibrido || 'Puro',
     fator_r: clientToEdit?.fator_r || 'Não',
     codigo_acesso_simples: clientToEdit?.codigo_acesso_simples || '',
@@ -95,67 +121,50 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     login_posto_fiscal: clientToEdit?.login_posto_fiscal || '',
     senha_posto_fiscal: clientToEdit?.senha_posto_fiscal || '',
     parcelamento_ativo: Boolean(clientToEdit?.parcelamento_ativo),
-    tipo_servico: (clientToEdit?.tipo_servico as FiscalRegimeType) || 
-      (clientToEdit?.regime_tributario as FiscalRegimeType) || 
-      'Simples Nacional',
+    tipo_servico: clientInitialRegime,
     obrigacoes_habilitadas: (() => {
       if (clientToEdit) {
-        const raw = (clientToEdit.obrigacoes_habilitadas as string[]) || [];
-        // Se tiver PRO-LAB. / FOPAG ou GUIA INSS, substitui pela rubrica unificada PRO LAB / INSS
-        const list = raw.map((ob) => {
-          const obNorm = (ob || '').trim().toUpperCase();
-          if (obNorm === 'PRO-LAB. / FOPAG' || obNorm === 'GUIA INSS') {
-            return 'PRO LAB / INSS';
-          }
-          return ob;
-        });
-        return Array.from(new Set(list));
+        // Se o cliente tem obrigações salvas no banco (mesmo array vazio []), respeita rigorosamente
+        if (clientInitialSavedObligations !== null) {
+          return clientInitialSavedObligations;
+        }
       }
-      // Para novo cliente, inicializa com as obrigações do Simples Nacional por padrão
-      return FISCAL_OBLIGATIONS['Simples Nacional'] || [];
+      // Para novo cliente, inicializa com as obrigações do regime selecionado
+      return FISCAL_OBLIGATIONS[clientInitialRegime] || [];
     })(),
   });
 
-  // Mapa de obrigações por regime para preservar com precisão o estado de marcações ao trocar de regime
+  // Mapa de obrigações por regime para preservar com precisão o estado de marcações ao alternar entre regimes
   const [regimeObligationsMap, setRegimeObligationsMap] = useState<Record<FiscalRegimeType, string[]>>(() => {
-    const currentRegime = ((clientToEdit?.tipo_servico as FiscalRegimeType) ||
-      (clientToEdit?.regime_tributario as FiscalRegimeType) ||
-      'Simples Nacional') as FiscalRegimeType;
+    if (clientToEdit) {
+      // Cliente existente:
+      // Para o regime salvo do cliente, usamos EXATAMENTE o que está salvo no banco (mesmo se for [])
+      const initialClientList = clientInitialSavedObligations !== null
+        ? clientInitialSavedObligations
+        : (FISCAL_OBLIGATIONS[clientInitialRegime] || []);
 
-    const savedRaw = (clientToEdit?.obrigacoes_habilitadas as string[]) || [];
-    const normalizedSaved = Array.from(
-      new Set(
-        savedRaw.map((ob) => {
-          const obNorm = (ob || '').trim().toUpperCase();
-          if (obNorm === 'PRO-LAB. / FOPAG' || obNorm === 'GUIA INSS') {
-            return 'PRO LAB / INSS';
-          }
-          return ob;
-        })
-      )
-    );
-
-    const getObligationsForRegime = (regime: FiscalRegimeType): string[] => {
-      const regimeAll = FISCAL_OBLIGATIONS[regime] || [];
-      if (clientToEdit) {
-        // Se este for o regime atual salvo do cliente no banco, usamos exatamente o que está salvo
-        if (regime === currentRegime) {
-          return normalizedSaved;
+      const getInitialForOtherRegime = (otherRegime: FiscalRegimeType): string[] => {
+        if (otherRegime === clientInitialRegime) {
+          return initialClientList;
         }
-        // Se o cliente tem obrigações salvas que pertencem a este regime, preservamos a intersecção
-        const matching = normalizedSaved.filter((item) => regimeAll.includes(item));
-        if (matching.length > 0) {
-          return matching;
-        }
-      }
-      // Padrão para novo cliente ou regime ainda sem configuração prévia: todas ativas
-      return regimeAll;
-    };
+        // Para os outros regimes, preserva apenas as obrigações do cliente que existem naquele regime.
+        // NUNCA marca todas as obrigações automaticamente!
+        const otherAll = FISCAL_OBLIGATIONS[otherRegime] || [];
+        return initialClientList.filter((item) => otherAll.includes(item));
+      };
 
+      return {
+        'Simples Nacional': getInitialForOtherRegime('Simples Nacional'),
+        'Lucro Presumido': getInitialForOtherRegime('Lucro Presumido'),
+        'Folha de Pagamento': getInitialForOtherRegime('Folha de Pagamento'),
+      };
+    }
+
+    // Para novo cliente que acabou de ser criado:
     return {
-      'Simples Nacional': getObligationsForRegime('Simples Nacional'),
-      'Lucro Presumido': getObligationsForRegime('Lucro Presumido'),
-      'Folha de Pagamento': getObligationsForRegime('Folha de Pagamento'),
+      'Simples Nacional': FISCAL_OBLIGATIONS['Simples Nacional'] || [],
+      'Lucro Presumido': FISCAL_OBLIGATIONS['Lucro Presumido'] || [],
+      'Folha de Pagamento': FISCAL_OBLIGATIONS['Folha de Pagamento'] || [],
     };
   });
 
@@ -205,15 +214,34 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       return;
     }
 
-    // Se for o campo de regime tributário, restaura o estado exato preservado para o novo regime
+    // Se for o campo de regime tributário, preserva o estado de marcações anterior e restaura o do novo regime
     if (name === 'regime_tributario') {
-      const regimeVal = value as FiscalRegimeType;
-      const preservedForRegime = regimeObligationsMap[regimeVal] || FISCAL_OBLIGATIONS[regimeVal] || [];
+      const newRegime = normalizeRegime(value);
+      const oldRegime = normalizeRegime(formData.tipo_servico || formData.regime_tributario);
+
+      // Salva o estado atual das marcações do regime anterior antes de trocar
+      const currentObligations = formData.obrigacoes_habilitadas || [];
+      const updatedMap = {
+        ...regimeObligationsMap,
+        [oldRegime]: currentObligations,
+      };
+
+      // Obtém as obrigações para o novo regime
+      // Se já existia configuração no cache deste regime, restaura ela
+      // Senão, preserva apenas as obrigações comuns que pertençam ao novo regime (nunca marca tudo automaticamente)
+      let preservedForNewRegime = updatedMap[newRegime];
+      if (preservedForNewRegime === undefined) {
+        const newRegimeAll = FISCAL_OBLIGATIONS[newRegime] || [];
+        preservedForNewRegime = currentObligations.filter((item) => newRegimeAll.includes(item));
+        updatedMap[newRegime] = preservedForNewRegime;
+      }
+
+      setRegimeObligationsMap(updatedMap);
       setFormData((prev) => ({
         ...prev,
-        regime_tributario: value,
-        tipo_servico: regimeVal,
-        obrigacoes_habilitadas: preservedForRegime,
+        regime_tributario: newRegime,
+        tipo_servico: newRegime,
+        obrigacoes_habilitadas: preservedForNewRegime,
       }));
       return;
     }
@@ -225,7 +253,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
   };
 
   const handleToggleObligation = (obligation: string) => {
-    const currentRegime = (formData.tipo_servico as FiscalRegimeType) || 'Simples Nacional';
+    const currentRegime = normalizeRegime(formData.tipo_servico || formData.regime_tributario);
     setFormData((prev) => {
       const current = prev.obrigacoes_habilitadas || [];
       const exists = current.includes(obligation);
@@ -245,7 +273,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
   };
 
   const handleSelectAllObligations = () => {
-    const currentRegime = (formData.tipo_servico as FiscalRegimeType) || 'Simples Nacional';
+    const currentRegime = normalizeRegime(formData.tipo_servico || formData.regime_tributario);
     const all = FISCAL_OBLIGATIONS[currentRegime] || [];
     setRegimeObligationsMap((regPrev) => ({
       ...regPrev,
@@ -258,7 +286,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
   };
 
   const handleClearAllObligations = () => {
-    const currentRegime = (formData.tipo_servico as FiscalRegimeType) || 'Simples Nacional';
+    const currentRegime = normalizeRegime(formData.tipo_servico || formData.regime_tributario);
     setRegimeObligationsMap((regPrev) => ({
       ...regPrev,
       [currentRegime]: [],
@@ -338,6 +366,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         }
       }
 
+      const finalRegime = normalizeRegime(formData.regime_tributario || formData.tipo_servico);
       const payload = {
         razao_social: formData.razao_social.trim(),
         cnpj: cleanCnpj,
@@ -346,7 +375,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         numero_pasta: formData.numero_pasta.trim() || null,
         sieg: formData.sieg || 'Não',
         nire: formData.nire.trim() || null,
-        regime_tributario: formData.regime_tributario || null,
+        regime_tributario: finalRegime,
         puro_ou_hibrido: formData.puro_ou_hibrido || null,
         fator_r: formData.fator_r || null,
         codigo_acesso_simples: formData.codigo_acesso_simples.trim() || null,
@@ -357,7 +386,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         login_posto_fiscal: hasPostoFiscal ? (formData.login_posto_fiscal.trim() || null) : null,
         senha_posto_fiscal: hasPostoFiscal ? (formData.senha_posto_fiscal.trim() || null) : null,
         parcelamento_ativo: Boolean(formData.obrigacoes_habilitadas?.includes('Parc. Ativo')),
-        tipo_servico: formData.tipo_servico || 'Simples Nacional',
+        tipo_servico: finalRegime,
         obrigacoes_habilitadas: formData.obrigacoes_habilitadas || [],
       };
 
@@ -446,7 +475,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         toast('Cliente atualizado com sucesso!', 'success');
       }
 
-      onSuccess();
+      await onSuccess();
       onClose();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Falha ao salvar dados do cliente.';
@@ -720,12 +749,14 @@ export const ClientModal: React.FC<ClientModalProps> = ({
                     Obrigações Ativas no Módulo de Apuração:
                   </span>
                   <span className="text-[10px] font-semibold text-stone-500">
-                    {formData.obrigacoes_habilitadas?.length || 0} de {FISCAL_OBLIGATIONS[formData.tipo_servico as FiscalRegimeType]?.length || 0} ativas
+                    {formData.obrigacoes_habilitadas?.length || 0} de{' '}
+                    {FISCAL_OBLIGATIONS[normalizeRegime(formData.tipo_servico || formData.regime_tributario)]?.length || 0}{' '}
+                    ativas
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                  {FISCAL_OBLIGATIONS[formData.tipo_servico as FiscalRegimeType]?.map((obrigacao) => {
+                  {FISCAL_OBLIGATIONS[normalizeRegime(formData.tipo_servico || formData.regime_tributario)]?.map((obrigacao) => {
                     const isChecked = formData.obrigacoes_habilitadas?.includes(obrigacao);
                     return (
                       <label

@@ -8,6 +8,18 @@ export const FISCAL_REGIME_OPTIONS: { value: FiscalRegimeType; label: string }[]
   { value: 'Folha de Pagamento', label: 'Folha de Pagamento' },
 ];
 
+export const normalizeRegime = (val?: string | null): FiscalRegimeType => {
+  if (!val) return 'Simples Nacional';
+  const clean = val.trim().toUpperCase();
+  if (clean.includes('PRESUMIDO')) {
+    return 'Lucro Presumido';
+  }
+  if (clean.includes('FOLHA')) {
+    return 'Folha de Pagamento';
+  }
+  return 'Simples Nacional';
+};
+
 export const FISCAL_OBLIGATIONS: Record<FiscalRegimeType, string[]> = {
   'Simples Nacional': [
     'PRO LAB / INSS',
