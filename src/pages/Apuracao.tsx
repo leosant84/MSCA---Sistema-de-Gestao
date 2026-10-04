@@ -619,12 +619,12 @@ export const Apuracao: React.FC = () => {
 
 
 
-  // Percentual total do que já foi apurado no mês corrente (competência atual)
+  // Percentual total do que já foi apurado no mês corrente (respeitando o filtro de cliente caso aplicado)
   const totalApuradoPercent = useMemo(() => {
     let totalItems = 0;
     let okItems = 0;
 
-    tabClients.forEach((client) => {
+    activeScopedClients.forEach((client) => {
       const applicable = currentObligations.filter((ob) => isObligationEnabled(client, ob));
       applicable.forEach((ob) => {
         totalItems++;
@@ -638,14 +638,14 @@ export const Apuracao: React.FC = () => {
 
     if (totalItems === 0) return 0;
     return Math.round((okItems / totalItems) * 100);
-  }, [tabClients, currentObligations, isObligationEnabled, currentMonthCompetencia, inputValues]);
+  }, [activeScopedClients, currentObligations, isObligationEnabled, currentMonthCompetencia, inputValues]);
 
-  // Percentual total do que já foi validado pelo ADM no mês corrente
+  // Percentual total do que já foi validado pelo ADM no mês corrente (respeitando o filtro de cliente caso aplicado)
   const totalValidadoPercent = useMemo(() => {
     let totalItems = 0;
     let validatedItems = 0;
 
-    tabClients.forEach((client) => {
+    activeScopedClients.forEach((client) => {
       const applicable = currentObligations.filter((ob) => isObligationEnabled(client, ob));
       const vKey = buildValidationKey(client.id, currentMonthCompetencia);
       const valRec = validations[vKey];
@@ -668,7 +668,7 @@ export const Apuracao: React.FC = () => {
 
     if (totalItems === 0) return 0;
     return Math.round((validatedItems / totalItems) * 100);
-  }, [tabClients, currentObligations, isObligationEnabled, currentMonthCompetencia, validations]);
+  }, [activeScopedClients, currentObligations, isObligationEnabled, currentMonthCompetencia, validations]);
 
   // Abrir Modal de Drilldown para uma apuração
   const handleOpenDrilldown = (obrigacao: string, comp: string, isNeedsReview?: boolean) => {
@@ -752,7 +752,9 @@ export const Apuracao: React.FC = () => {
               />
             </div>
             <div className="text-[11px] text-stone-400 font-medium mt-1.5">
-              {activeTab} • Progresso geral de apuração no mês
+              {currentFilteredClient
+                ? `Cliente: ${currentFilteredClient.razao_social} • Progresso no mês`
+                : `${activeTab} • Progresso geral de apuração no mês`}
             </div>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-amber-50 text-[#C5A059] flex items-center justify-center border border-amber-200/60 shadow-2xs shrink-0">
@@ -778,7 +780,9 @@ export const Apuracao: React.FC = () => {
               />
             </div>
             <div className="text-[11px] text-stone-400 font-medium mt-1.5">
-              Homologado pela Administração no mês
+              {currentFilteredClient
+                ? `Cliente: ${currentFilteredClient.razao_social} • Homologado no mês`
+                : 'Homologado pela Administração no mês'}
             </div>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200 shadow-2xs shrink-0">

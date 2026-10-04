@@ -60,11 +60,11 @@ export interface ClientExportFieldOption {
 }
 
 export const AVAILABLE_CLIENT_EXPORT_FIELDS: ClientExportFieldOption[] = [
+  { key: 'status', label: 'Status', defaultChecked: true },
   { key: 'numero_pasta', label: 'Nº Domínio', defaultChecked: true },
   { key: 'razao_social', label: 'Razão Social / Nome', defaultChecked: true },
   { key: 'cnpj', label: 'CNPJ', defaultChecked: true },
   { key: 'cpf', label: 'CPF', defaultChecked: true },
-  { key: 'status', label: 'Status', defaultChecked: true },
   { key: 'regime_tributario', label: 'Regime Tributário', defaultChecked: true },
   { key: 'puro_ou_hibrido', label: 'Puro ou Híbrido', defaultChecked: true },
   { key: 'fator_r', label: 'Fator R', defaultChecked: true },
@@ -81,16 +81,21 @@ export function exportClientsToExcel(
   selectedFieldKeys?: string[]
 ) {
   // Se não informar lista, usa todos os campos disponíveis
-  const fieldKeys = selectedFieldKeys && selectedFieldKeys.length > 0
+  const rawKeys = selectedFieldKeys && selectedFieldKeys.length > 0
     ? selectedFieldKeys
     : AVAILABLE_CLIENT_EXPORT_FIELDS.map((f) => f.key);
 
+  // Garante obrigatoriamente que 'status', se selecionado, seja posicionado como a primeira coluna
+  const fieldKeys = rawKeys.includes('status')
+    ? ['status', ...rawKeys.filter((k) => k !== 'status')]
+    : rawKeys;
+
   const columnWidthsMap: Record<string, number> = {
+    'status': 14,
     'numero_pasta': 14,
     'razao_social': 42,
     'cnpj': 22,
     'cpf': 18,
-    'status': 14,
     'regime_tributario': 24,
     'puro_ou_hibrido': 16,
     'fator_r': 12,
@@ -101,6 +106,10 @@ export function exportClientsToExcel(
   const rows = clients.map((c) => {
     const row: Record<string, string> = {};
 
+    // Status posicionado obrigatoriamente como primeira coluna
+    if (fieldKeys.includes('status')) {
+      row['Status'] = c.status || '';
+    }
     if (fieldKeys.includes('numero_pasta')) {
       row['Nº Domínio'] = c.numero_pasta || '';
     }
@@ -112,9 +121,6 @@ export function exportClientsToExcel(
     }
     if (fieldKeys.includes('cpf')) {
       row['CPF'] = c.cpf || '';
-    }
-    if (fieldKeys.includes('status')) {
-      row['Status'] = c.status || '';
     }
     if (fieldKeys.includes('regime_tributario')) {
       row['Regime Tributário'] = c.regime_tributario || '';
