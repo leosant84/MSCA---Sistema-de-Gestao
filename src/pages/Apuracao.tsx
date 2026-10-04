@@ -413,6 +413,13 @@ export const Apuracao: React.FC = () => {
               'Validação Enviada'
             );
           }
+        } else {
+          // Se a apuração foi desfeita, limpa ou rebaixa a validação do ADM
+          await apuracaoValidationService.clearObligationValidation({
+            clientId: client.id,
+            competencia,
+            obrigacao,
+          });
         }
       } catch (err) {
         console.error('Erro ao salvar apuração:', err);
@@ -436,6 +443,13 @@ export const Apuracao: React.FC = () => {
 
         if (isOk) {
           await apuracaoValidationService.clearObligationPending({
+            clientId: client.id,
+            competencia: comp,
+            obrigacao,
+          });
+        } else {
+          // Se a apuração foi desfeita, limpa ou rebaixa a validação do ADM
+          await apuracaoValidationService.clearObligationValidation({
             clientId: client.id,
             competencia: comp,
             obrigacao,
@@ -510,9 +524,17 @@ export const Apuracao: React.FC = () => {
   // Auxiliar: verifica se o mês está validado pelo ADM
   // Se houver cliente único filtrado, checa se a apuração daquele cliente no mês foi validada (ou a obrigação específica)
   // Se não houver cliente filtrado, checa se todos os clientes aplicáveis foram validados pelo ADM
+  // Estritamente vinculado à existência da apuração ativa (OK): se a apuração foi desfeita, não é considerada validada
   const isMonthValidated = useCallback(
     (competencia: string, obrigacao?: string) => {
       const isClientVal = (c: Client) => {
+        // Se checando uma obrigação específica, ela DEVE estar apurada (OK)
+        if (obrigacao) {
+          const obKey = `${c.id}::${obrigacao}::${competencia}`;
+          const val = inputValues[obKey];
+          if ((val || '').trim().toUpperCase() !== 'OK') return false;
+        }
+
         const k = buildValidationKey(c.id, competencia);
         const valRec = validations[k];
         if (!valRec) return false;
@@ -542,7 +564,7 @@ export const Apuracao: React.FC = () => {
 
       return applicableClients.every((c) => isClientVal(c));
     },
-    [currentFilteredClient, activeScopedClients, isObligationEnabled, validations]
+    [currentFilteredClient, activeScopedClients, isObligationEnabled, validations, inputValues]
   );
 
   // Auxiliar: verifica se o cliente ou obrigação possui apontamento de pendência (NEEDS_REVIEW)
@@ -655,6 +677,7 @@ export const Apuracao: React.FC = () => {
   }, [activeScopedClients, currentObligations, isObligationEnabled, currentMonthCompetencia, inputValues]);
 
   // Percentual total do que já foi validado pelo ADM no mês corrente (respeitando o filtro de cliente caso aplicado)
+  // Estritamente condicionado a apuração estar ativa e concluída (OK): se a apuração foi desfeita, o item NÃO é contado como validado
   const totalValidadoPercent = useMemo(() => {
     let totalItems = 0;
     let validatedItems = 0;
@@ -666,7 +689,11 @@ export const Apuracao: React.FC = () => {
 
       applicable.forEach((ob) => {
         totalItems++;
-        if (valRec) {
+        const key = `${client.id}::${ob}::${currentMonthCompetencia}`;
+        const isOk = (inputValues[key] || '').trim().toUpperCase() === 'OK';
+
+        // Somente pode ser considerado validado se a apuração estiver ativa (OK)
+        if (isOk && valRec) {
           if (valRec.status === 'APPROVED') {
             validatedItems++;
           } else if (
@@ -682,7 +709,7 @@ export const Apuracao: React.FC = () => {
 
     if (totalItems === 0) return 0;
     return Math.round((validatedItems / totalItems) * 100);
-  }, [activeScopedClients, currentObligations, isObligationEnabled, currentMonthCompetencia, validations]);
+  }, [activeScopedClients, currentObligations, isObligationEnabled, currentMonthCompetencia, validations, inputValues]);
 
   // Abrir Modal de Drilldown para uma apuração
   const handleOpenDrilldown = (obrigacao: string, comp: string, isNeedsReview?: boolean) => {

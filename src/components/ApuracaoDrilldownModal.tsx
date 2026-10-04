@@ -73,7 +73,14 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   if (!isOpen) return null;
 
   // Auxiliar para checar se a obrigação do cliente foi validada/aprovada pelo ADM
+  // Estritamente vinculada à existência da apuração ativa: se a apuração foi desfeita/não está OK, não pode ser considerada validada
   const checkClientValidated = (c: Client) => {
+    const obKey = `${c.id}::${obrigacaoName}::${competencia}`;
+    const obKeyLegacy = `${c.id}::${obrigacaoName}`;
+    const val = inputValues[obKey] !== undefined ? inputValues[obKey] : (inputValues[obKeyLegacy] || '');
+    const isOk = (val || '').trim().toUpperCase() === 'OK';
+    if (!isOk) return false;
+
     const k = buildValidationKey(c.id, competencia);
     const v = validations[k];
     if (!v) return false;

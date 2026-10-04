@@ -146,7 +146,13 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   const isNeedsReview = currentValidation?.status === 'NEEDS_REVIEW';
 
   // Verifica se uma obrigação específica está validada pelo ADM
+  // Estritamente vinculada à existência da apuração ativa: se a apuração foi desfeita, não é validada
   const isObligationValidated = (obrigacao: string) => {
+    const key = `${client.id}::${obrigacao}::${selectedComp}`;
+    const val = inputValues[key];
+    const isOk = (val || '').trim().toUpperCase() === 'OK';
+    if (!isOk) return false;
+
     if (!currentValidation) return false;
     if (currentValidation.validated_obligations && Array.isArray(currentValidation.validated_obligations)) {
       if (currentValidation.validated_obligations.includes(obrigacao)) return true;

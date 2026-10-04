@@ -308,6 +308,90 @@ export const apuracaoValidationService = {
   },
 
   /**
+   * Remove a validação de uma obrigação específica quando ela é removida/desfeita (não está mais OK).
+   * Garante que o status de validação/homologação do ADM não continue ativo se a apuração não existir.
+   */
+  async clearObligationValidation(params: {
+    clientId: string;
+    competencia: string;
+    obrigacao: string;
+  }): Promise<ClientApuracaoValidation | null> {
+    const key = buildValidationKey(params.clientId, params.competencia);
+    const localMap = getLocalValidations();
+    const existing = localMap[key];
+    if (!existing) return null;
+
+    const obNorm = (params.obrigacao || '').trim().toUpperCase();
+
+    // Remove a obrigação do conjunto de validadas
+    const remainingValidated = (existing.validated_obligations || []).filter((ob) => {
+      if (ob === params.obrigacao) return false;
+      if (obNorm === 'PRO LAB / INSS' && (ob === 'GUIA INSS' || ob === 'PRO-LAB. / FOPAG')) return false;
+      return true;
+    });
+
+    const hasPending = (existing.pending_obligations || []).length > 0;
+    const now = new Date().toISOString();
+
+    // Se não há mais obrigações validadas e nenhuma pendência, limpa completamente o registro
+    if (remainingValidated.length === 0 && !hasPending) {
+      delete localMap[key];
+      saveLocalValidations(localMap);
+      window.dispatchEvent(
+        new CustomEvent('msca_apuracao_validated', { detail: { key, record: null } })
+      );
+      try {
+        await supabase
+          .from('client_apuracao_validations')
+          .delete()
+          .eq('client_id', params.clientId)
+          .eq('competencia', params.competencia);
+      } catch {
+        // ignore
+      }
+      return null;
+    }
+
+    // Se ainda há pendências ou outras obrigações validadas, rebaixa APPROVED para PENDING ou NEEDS_REVIEW
+    const newStatus: 'APPROVED' | 'PENDING' | 'NEEDS_REVIEW' = hasPending
+      ? 'NEEDS_REVIEW'
+      : 'PENDING';
+
+    const updatedRecord: ClientApuracaoValidation = {
+      ...existing,
+      status: newStatus,
+      validated_obligations: remainingValidated,
+      updated_at: now,
+    };
+
+    localMap[key] = updatedRecord;
+    saveLocalValidations(localMap);
+
+    window.dispatchEvent(
+      new CustomEvent('msca_apuracao_validated', { detail: { key, record: updatedRecord } })
+    );
+
+    try {
+      await supabase
+        .from('client_apuracao_validations')
+        .upsert(
+          {
+            client_id: params.clientId,
+            competencia: params.competencia,
+            status: newStatus,
+            validated_obligations: remainingValidated,
+            updated_at: now,
+          },
+          { onConflict: 'client_id,competencia' }
+        );
+    } catch {
+      // ignore
+    }
+
+    return updatedRecord;
+  },
+
+  /**
    * Registra a sinalização de pendência / revisão pelo ADM.
    */
   async setValidationNeedsReview(params: {
