@@ -159,6 +159,19 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       return;
     }
 
+    // Se for o campo de regime tributário, sincroniza com tipo_servico e reseta as obrigações para as pertinentes
+    if (name === 'regime_tributario') {
+      const regimeVal = value as FiscalRegimeType;
+      const defaultObligations = FISCAL_OBLIGATIONS[regimeVal] || [];
+      setFormData((prev) => ({
+        ...prev,
+        regime_tributario: value,
+        tipo_servico: regimeVal,
+        obrigacoes_habilitadas: defaultObligations,
+      }));
+      return;
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -170,8 +183,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     setFormData((prev) => ({
       ...prev,
       tipo_servico: newRegime,
-      // Se for Simples ou Lucro Presumido, sincroniza também o regime_tributario caso aplicável
-      regime_tributario: newRegime === 'Folha de Pagamento' ? prev.regime_tributario : newRegime,
+      regime_tributario: newRegime,
       obrigacoes_habilitadas: defaultObligations,
     }));
   };
@@ -571,8 +583,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
                 >
                   <option value="Simples Nacional">Simples Nacional</option>
                   <option value="Lucro Presumido">Lucro Presumido</option>
-                  <option value="Lucro Real">Lucro Real</option>
-                  <option value="MEI">MEI</option>
+                  <option value="Folha de Pagamento">Folha de Pagamento</option>
                 </select>
               </div>
 

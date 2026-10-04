@@ -278,6 +278,7 @@ export const Apuracao: React.FC = () => {
   // Clientes pertencentes ao escopo da aba ativa (todos os clientes ativos cadastrados no regime)
   const tabClients = useMemo(() => {
     const scopeSet = APURACAO_CLIENT_IDS[activeTab];
+    const activeTabNorm = activeTab.trim().toUpperCase();
     return clients.filter((c) => {
       const statusNorm = (c.status || '').trim().toUpperCase();
       if (statusNorm !== 'ATIVO') return false;
@@ -285,9 +286,10 @@ export const Apuracao: React.FC = () => {
       // Se estiver na lista oficial do escopo, inclui
       if (scopeSet && scopeSet.has(c.id)) return true;
 
-      // Se foi cadastrado no sistema com o regime ou tipo de serviço correspondente
-      const regimeMatch = c.regime_tributario === activeTab || c.tipo_servico === activeTab;
-      return regimeMatch;
+      // Se foi cadastrado no sistema com o regime ou tipo de serviço correspondente (insensível a maiúsculas)
+      const cRegimeNorm = (c.regime_tributario || '').trim().toUpperCase();
+      const cTipoNorm = (c.tipo_servico || '').trim().toUpperCase();
+      return cRegimeNorm === activeTabNorm || cTipoNorm === activeTabNorm;
     });
   }, [clients, activeTab]);
 
@@ -739,11 +741,14 @@ export const Apuracao: React.FC = () => {
           {FISCAL_REGIME_OPTIONS.map((regime) => {
             const isActive = activeTab === regime.value;
             const scopeSet = APURACAO_CLIENT_IDS[regime.value];
+            const regNorm = regime.value.trim().toUpperCase();
             const count = clients.filter((c) => {
               const statusNorm = (c.status || '').trim().toUpperCase();
               if (statusNorm !== 'ATIVO') return false;
               if (scopeSet && scopeSet.has(c.id)) return true;
-              return c.regime_tributario === regime.value || c.tipo_servico === regime.value;
+              const cRegimeNorm = (c.regime_tributario || '').trim().toUpperCase();
+              const cTipoNorm = (c.tipo_servico || '').trim().toUpperCase();
+              return cRegimeNorm === regNorm || cTipoNorm === regNorm;
             }).length;
 
             return (
