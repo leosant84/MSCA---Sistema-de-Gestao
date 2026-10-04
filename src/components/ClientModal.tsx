@@ -147,10 +147,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         if (otherRegime === clientInitialRegime) {
           return initialClientList;
         }
-        // Para os outros regimes, preserva apenas as obrigações do cliente que existem naquele regime.
-        // NUNCA marca todas as obrigações automaticamente!
-        const otherAll = FISCAL_OBLIGATIONS[otherRegime] || [];
-        return initialClientList.filter((item) => otherAll.includes(item));
+        // Para os outros regimes, nunca auto-marca nenhuma obrigação
+        return [];
       };
 
       return {
@@ -163,8 +161,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     // Para novo cliente que acabou de ser criado:
     return {
       'Simples Nacional': FISCAL_OBLIGATIONS['Simples Nacional'] || [],
-      'Lucro Presumido': FISCAL_OBLIGATIONS['Lucro Presumido'] || [],
-      'Folha de Pagamento': FISCAL_OBLIGATIONS['Folha de Pagamento'] || [],
+      'Lucro Presumido': [],
+      'Folha de Pagamento': [],
     };
   });
 
@@ -228,11 +226,10 @@ export const ClientModal: React.FC<ClientModalProps> = ({
 
       // Obtém as obrigações para o novo regime
       // Se já existia configuração no cache deste regime, restaura ela
-      // Senão, preserva apenas as obrigações comuns que pertençam ao novo regime (nunca marca tudo automaticamente)
+      // Senão, novo regime inicia vazio (sem nenhuma obrigação auto-marcada)
       let preservedForNewRegime = updatedMap[newRegime];
       if (preservedForNewRegime === undefined) {
-        const newRegimeAll = FISCAL_OBLIGATIONS[newRegime] || [];
-        preservedForNewRegime = currentObligations.filter((item) => newRegimeAll.includes(item));
+        preservedForNewRegime = [];
         updatedMap[newRegime] = preservedForNewRegime;
       }
 
