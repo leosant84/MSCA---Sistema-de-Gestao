@@ -24,6 +24,7 @@ import { PortalsDropdown } from '../components/PortalsDropdown';
 import { ClientModal } from '../components/ClientModal';
 import { ExportClientsModal } from '../components/ExportClientsModal';
 import { isEntryOverdue } from '../utils/competencia';
+import { hasClientFolha, normalizeRegime } from '../constants/fiscalObligations';
 import type { Client, FinancialEntry } from '../types';
 
 export const Clients: React.FC = () => {
@@ -599,13 +600,18 @@ export const Clients: React.FC = () => {
                           )}
                         </div>
 
-                        {/* Regime Tributário / Tipo de Serviço discreto abaixo do nome */}
+                        {/* Regime Tributário e Folha de Pagamento discretos abaixo do nome */}
                         {c.tipo_servico || c.regime_tributario ? (
                           <div className="flex items-center flex-wrap gap-1 text-[10px] text-stone-500 font-medium">
                             <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500/70"></span>
                             <span className="tracking-tight text-stone-700 bg-amber-50/60 px-1.5 py-0.2 rounded border border-amber-200/60 font-semibold">
-                              {c.tipo_servico || c.regime_tributario}
+                              {normalizeRegime(c.regime_tributario || c.tipo_servico)}
                             </span>
+                            {hasClientFolha(c) && (
+                              <span className="tracking-tight text-blue-800 bg-blue-50/80 px-1.5 py-0.2 rounded border border-blue-200/80 font-semibold">
+                                Folha
+                              </span>
+                            )}
                             {c.puro_ou_hibrido && (
                               <span className="text-[9px] text-stone-500 bg-stone-50 px-1 rounded border border-stone-200">
                                 {c.puro_ou_hibrido}

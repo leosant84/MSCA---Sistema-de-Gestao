@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { Client, FinancialEntry, FinancialExpense } from '../types';
+import { hasClientFolha } from '../constants/fiscalObligations';
 
 /**
  * Função utilitária para acionar o download do buffer gerado no navegador
@@ -81,6 +82,7 @@ export const AVAILABLE_CLIENT_EXPORT_FIELDS: ClientExportFieldOption[] = [
   { key: 'cnpj', label: 'CNPJ', defaultChecked: true },
   { key: 'cpf', label: 'CPF', defaultChecked: true },
   { key: 'regime_tributario', label: 'Regime Tributário', defaultChecked: true },
+  { key: 'folha_pagamento', label: 'Folha de Pagamento', defaultChecked: true },
   { key: 'puro_ou_hibrido', label: 'Puro ou Híbrido', defaultChecked: true },
   { key: 'fator_r', label: 'Fator R', defaultChecked: true },
   { key: 'localidade', label: 'Localidade', defaultChecked: true },
@@ -112,6 +114,7 @@ export function exportClientsToExcel(
     'cnpj': 22,
     'cpf': 18,
     'regime_tributario': 24,
+    'folha_pagamento': 20,
     'puro_ou_hibrido': 16,
     'fator_r': 12,
     'localidade': 26,
@@ -139,6 +142,9 @@ export function exportClientsToExcel(
     }
     if (fieldKeys.includes('regime_tributario')) {
       row['Regime Tributário'] = c.regime_tributario || '';
+    }
+    if (fieldKeys.includes('folha_pagamento')) {
+      row['Folha de Pagamento'] = hasClientFolha(c) ? 'Sim' : 'Não';
     }
     if (fieldKeys.includes('puro_ou_hibrido')) {
       row['Puro/Híbrido'] = c.puro_ou_hibrido || '';

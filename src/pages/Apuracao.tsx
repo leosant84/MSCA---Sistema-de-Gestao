@@ -22,6 +22,8 @@ import { formatCompetencia } from '../utils/competencia';
 import {
   FISCAL_OBLIGATIONS,
   FISCAL_REGIME_OPTIONS,
+  FOLHA_PAGAMENTO_OBLIGATIONS,
+  hasClientFolha,
 } from '../constants/fiscalObligations';
 import { APURACAO_CLIENT_IDS } from '../constants/apuracaoScope';
 import { ApuracaoDrilldownModal } from '../components/ApuracaoDrilldownModal';
@@ -298,13 +300,23 @@ export const Apuracao: React.FC = () => {
       return true;
     }
 
-    // Tratamento para PRO LAB / INSS (unificação de PRO-LAB. / FOPAG e GUIA INSS)
+    // Obrigações de Folha de Pagamento
+    const isFolhaObligation = FOLHA_PAGAMENTO_OBLIGATIONS.some(
+      (f) => f.toUpperCase() === obNorm
+    );
+    if (isFolhaObligation) {
+      if (!hasClientFolha(client)) return false;
+      if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
+        return client.obrigacoes_habilitadas.some((o) => (o || '').trim().toUpperCase() === obNorm);
+      }
+      return true;
+    }
+
+    // Tratamento para PRO LAB / INSS (Simples Nacional)
     if (
       obNorm === 'PRO LAB / INSS' ||
       obNorm === 'PRO-LAB / INSS' ||
-      obNorm === 'PRO LAB/INSS' ||
-      obNorm === 'PRO-LAB. / FOPAG' ||
-      obNorm === 'GUIA INSS'
+      obNorm === 'PRO LAB/INSS'
     ) {
       if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
         return client.obrigacoes_habilitadas.some((o) => {
@@ -313,8 +325,7 @@ export const Apuracao: React.FC = () => {
             n === 'PRO LAB / INSS' ||
             n === 'PRO-LAB / INSS' ||
             n === 'PRO LAB/INSS' ||
-            n === 'PRO-LAB. / FOPAG' ||
-            n === 'GUIA INSS'
+            n === 'PRO-LAB. / FOPAG'
           );
         });
       }
@@ -327,23 +338,50 @@ export const Apuracao: React.FC = () => {
     return true;
   }, []);
 
-  // Clientes pertencentes ao escopo da aba ativa (todos os clientes ativos cadastrados no regime)
-  const tabClients = useMemo(() => {
-    const scopeSet = APURACAO_CLIENT_IDS[activeTab];
-    const activeTabNorm = activeTab.trim().toUpperCase();
-    return clients.filter((c) => {
-      const statusNorm = (c.status || '').trim().toUpperCase();
-      if (statusNorm !== 'ATIVO') return false;
+  // Auxiliar: checa se um cliente pertence ao escopo da aba especificada
+  const isClientInScope = useCallback((c: Client, tab: FiscalRegimeType): boolean => {
+    const statusNorm = (c.status || '').trim().toUpperCase();
+    if (statusNorm !== 'ATIVO') return false;
 
-      // Se estiver na lista oficial do escopo, inclui
-      if (scopeSet && scopeSet.has(c.id)) return true;
+    // Aba Folha de Pagamento: todos os clientes com Folha = Sim (independente do regime fiscal)
+    if (tab === 'Folha de Pagamento') {
+      return hasClientFolha(c);
+    }
 
-      // Se foi cadastrado no sistema com o regime ou tipo de serviço correspondente (insensível a maiúsculas)
+    // Aba Lucro Presumido: todos os clientes cujo regime seja Lucro Presumido
+    if (tab === 'Lucro Presumido') {
       const cRegimeNorm = (c.regime_tributario || '').trim().toUpperCase();
       const cTipoNorm = (c.tipo_servico || '').trim().toUpperCase();
-      return cRegimeNorm === activeTabNorm || cTipoNorm === activeTabNorm;
-    });
-  }, [clients, activeTab]);
+      return (
+        cRegimeNorm.includes('PRESUMIDO') ||
+        cTipoNorm.includes('PRESUMIDO') ||
+        Boolean(APURACAO_CLIENT_IDS['Lucro Presumido']?.has(c.id))
+      );
+    }
+
+    // Aba Simples Nacional: todos os clientes cujo regime seja Simples Nacional (com ou sem folha)
+    const cRegimeNorm = (c.regime_tributario || '').trim().toUpperCase();
+    const cTipoNorm = (c.tipo_servico || '').trim().toUpperCase();
+    const isPresumido =
+      cRegimeNorm.includes('PRESUMIDO') ||
+      cTipoNorm.includes('PRESUMIDO') ||
+      Boolean(APURACAO_CLIENT_IDS['Lucro Presumido']?.has(c.id));
+    if (isPresumido) return false;
+
+    return (
+      cRegimeNorm.includes('SIMPLES') ||
+      cTipoNorm.includes('SIMPLES') ||
+      Boolean(APURACAO_CLIENT_IDS['Simples Nacional']?.has(c.id)) ||
+      (!cRegimeNorm && !cTipoNorm) ||
+      cRegimeNorm.includes('FOLHA') ||
+      cTipoNorm.includes('FOLHA')
+    );
+  }, []);
+
+  // Clientes pertencentes ao escopo da aba ativa
+  const tabClients = useMemo(() => {
+    return clients.filter((c) => isClientInScope(c, activeTab));
+  }, [clients, activeTab, isClientInScope]);
 
   // Salvar alteração de status de apuração (chamado pelo modal de drilldown)
   const handleStatusChange = useCallback(
@@ -869,16 +907,7 @@ export const Apuracao: React.FC = () => {
         <div className="flex items-center space-x-1.5 bg-stone-100/80 p-1 rounded-2xl overflow-x-auto scrollbar-none">
           {FISCAL_REGIME_OPTIONS.map((regime) => {
             const isActive = activeTab === regime.value;
-            const scopeSet = APURACAO_CLIENT_IDS[regime.value];
-            const regNorm = regime.value.trim().toUpperCase();
-            const count = clients.filter((c) => {
-              const statusNorm = (c.status || '').trim().toUpperCase();
-              if (statusNorm !== 'ATIVO') return false;
-              if (scopeSet && scopeSet.has(c.id)) return true;
-              const cRegimeNorm = (c.regime_tributario || '').trim().toUpperCase();
-              const cTipoNorm = (c.tipo_servico || '').trim().toUpperCase();
-              return cRegimeNorm === regNorm || cTipoNorm === regNorm;
-            }).length;
+            const count = clients.filter((c) => isClientInScope(c, regime.value)).length;
 
             return (
               <button

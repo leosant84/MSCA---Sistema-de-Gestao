@@ -1,11 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X, Plus, Trash2, Shield, Globe, Building, ListChecks } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { createClientFoldersInDrive } from '../services/googleDriveService';
-import { FISCAL_OBLIGATIONS, normalizeRegime } from '../constants/fiscalObligations';
-import type { FiscalRegimeType } from '../constants/fiscalObligations';
+import {
+  FISCAL_OBLIGATIONS,
+  FOLHA_PAGAMENTO_OBLIGATIONS,
+  normalizeRegime,
+  hasClientFolha,
+} from '../constants/fiscalObligations';
+import type { ClientTaxRegime } from '../constants/fiscalObligations';
 import type { Client } from '../types';
 
 interface ClientModalProps {
@@ -75,10 +80,13 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     return clean;
   };
 
-  // Normaliza o regime tributário inicial
+  // Normaliza o regime tributário inicial (estritamente Simples Nacional ou Lucro Presumido)
   const clientInitialRegime = normalizeRegime(
-    clientToEdit?.tipo_servico || clientToEdit?.regime_tributario
+    clientToEdit?.regime_tributario || clientToEdit?.tipo_servico
   );
+
+  // Inicializa flag de Folha de Pagamento (padrão: Não)
+  const clientInitialFolha = hasClientFolha(clientToEdit) ? 'Sim' : 'Não';
 
   // Normaliza as obrigações salvas do cliente (se existirem salvas no banco)
   const clientInitialSavedObligations = (() => {
@@ -90,7 +98,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       const list = raw
         .map((ob) => {
           const obNorm = (ob || '').trim().toUpperCase();
-          if (obNorm === 'PRO-LAB. / FOPAG' || obNorm === 'GUIA INSS') {
+          if (obNorm === 'PRO-LAB. / FOPAG') {
             return 'PRO LAB / INSS';
           }
           return (ob || '').trim();
@@ -111,6 +119,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     sieg: clientToEdit?.sieg || 'Não',
     nire: clientToEdit?.nire || '',
     regime_tributario: clientInitialRegime,
+    folha_pagamento: clientInitialFolha,
     puro_ou_hibrido: clientToEdit?.puro_ou_hibrido || 'Puro',
     fator_r: clientToEdit?.fator_r || 'Não',
     codigo_acesso_simples: clientToEdit?.codigo_acesso_simples || '',
@@ -129,40 +138,31 @@ export const ClientModal: React.FC<ClientModalProps> = ({
           return clientInitialSavedObligations;
         }
       }
-      // Para novo cliente, inicializa com as obrigações do regime selecionado
-      return FISCAL_OBLIGATIONS[clientInitialRegime] || [];
+      // Para novo cliente, inicializa com as obrigações do regime selecionado + folha se ativa
+      const base = FISCAL_OBLIGATIONS[clientInitialRegime] || [];
+      if (clientInitialFolha === 'Sim') {
+        return [...base, ...FOLHA_PAGAMENTO_OBLIGATIONS];
+      }
+      return base;
     })(),
   });
 
-  // Mapa de obrigações por regime para preservar com precisão o estado de marcações ao alternar entre regimes
-  const [regimeObligationsMap, setRegimeObligationsMap] = useState<Record<FiscalRegimeType, string[]>>(() => {
+  // Mapa de obrigações por regime tributário para preservar o estado de marcações fiscais ao alternar
+  const [regimeObligationsMap, setRegimeObligationsMap] = useState<Record<ClientTaxRegime, string[]>>(() => {
     if (clientToEdit) {
-      // Cliente existente:
-      // Para o regime salvo do cliente, usamos EXATAMENTE o que está salvo no banco (mesmo se for [])
-      const initialClientList = clientInitialSavedObligations !== null
-        ? clientInitialSavedObligations
+      const initialFiscalList = clientInitialSavedObligations !== null
+        ? clientInitialSavedObligations.filter((o) => !FOLHA_PAGAMENTO_OBLIGATIONS.includes(o) || o === 'GUIA INSS')
         : (FISCAL_OBLIGATIONS[clientInitialRegime] || []);
 
-      const getInitialForOtherRegime = (otherRegime: FiscalRegimeType): string[] => {
-        if (otherRegime === clientInitialRegime) {
-          return initialClientList;
-        }
-        // Para os outros regimes, nunca auto-marca nenhuma obrigação
-        return [];
-      };
-
       return {
-        'Simples Nacional': getInitialForOtherRegime('Simples Nacional'),
-        'Lucro Presumido': getInitialForOtherRegime('Lucro Presumido'),
-        'Folha de Pagamento': getInitialForOtherRegime('Folha de Pagamento'),
+        'Simples Nacional': clientInitialRegime === 'Simples Nacional' ? initialFiscalList : (FISCAL_OBLIGATIONS['Simples Nacional'] || []),
+        'Lucro Presumido': clientInitialRegime === 'Lucro Presumido' ? initialFiscalList : [],
       };
     }
 
-    // Para novo cliente que acabou de ser criado:
     return {
       'Simples Nacional': FISCAL_OBLIGATIONS['Simples Nacional'] || [],
       'Lucro Presumido': [],
-      'Folha de Pagamento': [],
     };
   });
 
@@ -212,34 +212,54 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       return;
     }
 
-    // Se for o campo de regime tributário, preserva o estado de marcações anterior e restaura o do novo regime
+    // Se for o campo de regime tributário, preserva o estado de marcações fiscais anterior e restaura o do novo regime
     if (name === 'regime_tributario') {
       const newRegime = normalizeRegime(value);
-      const oldRegime = normalizeRegime(formData.tipo_servico || formData.regime_tributario);
+      const oldRegime = normalizeRegime(formData.regime_tributario);
 
-      // Salva o estado atual das marcações do regime anterior antes de trocar
+      if (newRegime === oldRegime) return;
+
       const currentObligations = formData.obrigacoes_habilitadas || [];
+      const currentFiscal = currentObligations.filter((o) => !FOLHA_PAGAMENTO_OBLIGATIONS.includes(o));
+      const currentFolha = currentObligations.filter((o) => FOLHA_PAGAMENTO_OBLIGATIONS.includes(o));
+
       const updatedMap = {
         ...regimeObligationsMap,
-        [oldRegime]: currentObligations,
+        [oldRegime]: currentFiscal,
       };
 
-      // Obtém as obrigações para o novo regime
-      // Se já existia configuração no cache deste regime, restaura ela
-      // Senão, novo regime inicia vazio (sem nenhuma obrigação auto-marcada)
-      let preservedForNewRegime = updatedMap[newRegime];
-      if (preservedForNewRegime === undefined) {
-        preservedForNewRegime = [];
-        updatedMap[newRegime] = preservedForNewRegime;
-      }
+      const restoredFiscal = updatedMap[newRegime] !== undefined ? updatedMap[newRegime] : (FISCAL_OBLIGATIONS[newRegime] || []);
 
       setRegimeObligationsMap(updatedMap);
       setFormData((prev) => ({
         ...prev,
         regime_tributario: newRegime,
         tipo_servico: newRegime,
-        obrigacoes_habilitadas: preservedForNewRegime,
+        obrigacoes_habilitadas: Array.from(new Set([...restoredFiscal, ...currentFolha])),
       }));
+      return;
+    }
+
+    // Se for o campo de Folha de Pagamento (Sim / Não)
+    if (name === 'folha_pagamento') {
+      setFormData((prev) => {
+        let updated = [...(prev.obrigacoes_habilitadas || [])];
+        if (value === 'Sim') {
+          // Ao ativar folha de pagamento, se não havia nenhuma de folha marcada, inclui as obrigações da folha
+          const hasAnyFolha = FOLHA_PAGAMENTO_OBLIGATIONS.some((o) => updated.includes(o));
+          if (!hasAnyFolha) {
+            updated = Array.from(new Set([...updated, ...FOLHA_PAGAMENTO_OBLIGATIONS]));
+          }
+        } else {
+          // Ao desativar folha de pagamento, remove as obrigações da folha
+          updated = updated.filter((o) => !FOLHA_PAGAMENTO_OBLIGATIONS.includes(o));
+        }
+        return {
+          ...prev,
+          folha_pagamento: value,
+          obrigacoes_habilitadas: updated,
+        };
+      });
       return;
     }
 
@@ -249,19 +269,31 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     }));
   };
 
+  // Obrigações base do regime selecionado
+  const baseRegime = normalizeRegime(formData.regime_tributario);
+  const regimeFiscalObligations = useMemo(() => {
+    return FISCAL_OBLIGATIONS[baseRegime] || [];
+  }, [baseRegime]);
+
+  // Lista cumulativa de obrigações visíveis para seleção (Regime + Folha se ativa)
+  const visibleObligations = useMemo(() => {
+    if (formData.folha_pagamento === 'Sim') {
+      return Array.from(new Set([...regimeFiscalObligations, ...FOLHA_PAGAMENTO_OBLIGATIONS]));
+    }
+    return regimeFiscalObligations;
+  }, [regimeFiscalObligations, formData.folha_pagamento]);
+
+  // Contagem dinâmica de obrigações visíveis ativas
+  const activeVisibleCount = useMemo(() => {
+    const activeSet = new Set(formData.obrigacoes_habilitadas || []);
+    return visibleObligations.filter((o) => activeSet.has(o)).length;
+  }, [visibleObligations, formData.obrigacoes_habilitadas]);
+
   const handleToggleObligation = (obligation: string) => {
-    const currentRegime = normalizeRegime(formData.tipo_servico || formData.regime_tributario);
     setFormData((prev) => {
       const current = prev.obrigacoes_habilitadas || [];
       const exists = current.includes(obligation);
       const updated = exists ? current.filter((o) => o !== obligation) : [...current, obligation];
-      
-      // Atualiza também o cache por regime
-      setRegimeObligationsMap((regPrev) => ({
-        ...regPrev,
-        [currentRegime]: updated,
-      }));
-
       return {
         ...prev,
         obrigacoes_habilitadas: updated,
@@ -270,28 +302,24 @@ export const ClientModal: React.FC<ClientModalProps> = ({
   };
 
   const handleSelectAllObligations = () => {
-    const currentRegime = normalizeRegime(formData.tipo_servico || formData.regime_tributario);
-    const all = FISCAL_OBLIGATIONS[currentRegime] || [];
-    setRegimeObligationsMap((regPrev) => ({
-      ...regPrev,
-      [currentRegime]: all,
-    }));
-    setFormData((prev) => ({
-      ...prev,
-      obrigacoes_habilitadas: all,
-    }));
+    setFormData((prev) => {
+      const set = new Set(prev.obrigacoes_habilitadas || []);
+      visibleObligations.forEach((ob) => set.add(ob));
+      return {
+        ...prev,
+        obrigacoes_habilitadas: Array.from(set),
+      };
+    });
   };
 
   const handleClearAllObligations = () => {
-    const currentRegime = normalizeRegime(formData.tipo_servico || formData.regime_tributario);
-    setRegimeObligationsMap((regPrev) => ({
-      ...regPrev,
-      [currentRegime]: [],
-    }));
-    setFormData((prev) => ({
-      ...prev,
-      obrigacoes_habilitadas: [],
-    }));
+    setFormData((prev) => {
+      const visibleSet = new Set(visibleObligations);
+      return {
+        ...prev,
+        obrigacoes_habilitadas: (prev.obrigacoes_habilitadas || []).filter((ob) => !visibleSet.has(ob)),
+      };
+    });
   };
 
   const handleAddCredential = () => {
@@ -364,7 +392,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       }
 
       const finalRegime = normalizeRegime(formData.regime_tributario || formData.tipo_servico);
-      const payload = {
+      const payload: any = {
         razao_social: formData.razao_social.trim(),
         cnpj: cleanCnpj,
         cpf: cleanCpf,
@@ -373,6 +401,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         sieg: formData.sieg || 'Não',
         nire: formData.nire.trim() || null,
         regime_tributario: finalRegime,
+        folha_pagamento: formData.folha_pagamento,
         puro_ou_hibrido: formData.puro_ou_hibrido || null,
         fator_r: formData.fator_r || null,
         codigo_acesso_simples: formData.codigo_acesso_simples.trim() || null,
@@ -390,23 +419,41 @@ export const ClientModal: React.FC<ClientModalProps> = ({
       let clientId = clientToEdit?.id;
 
       if (clientToEdit) {
-        // Atualização
-        const { error } = await supabase
+        // Atualização com fallback resiliente
+        let { error } = await supabase
           .from('clients')
           .update(payload)
           .eq('id', clientToEdit.id);
 
+        if (error && error.message?.includes('folha_pagamento')) {
+          const { folha_pagamento, ...safePayload } = payload;
+          const retry = await supabase
+            .from('clients')
+            .update(safePayload)
+            .eq('id', clientToEdit.id);
+          error = retry.error;
+        }
+
         if (error) throw error;
       } else {
-        // Inserção
-        const { data, error } = await supabase
+        // Inserção com fallback resiliente
+        let res = await supabase
           .from('clients')
           .insert([payload])
           .select('id')
           .single();
 
-        if (error) throw error;
-        clientId = data.id;
+        if (res.error && res.error.message?.includes('folha_pagamento')) {
+          const { folha_pagamento, ...safePayload } = payload;
+          res = await supabase
+            .from('clients')
+            .insert([safePayload])
+            .select('id')
+            .single();
+        }
+
+        if (res.error) throw res.error;
+        clientId = res.data?.id;
       }
 
       // Sincronização de credenciais adicionais
@@ -663,7 +710,21 @@ export const ClientModal: React.FC<ClientModalProps> = ({
                 >
                   <option value="Simples Nacional">Simples Nacional</option>
                   <option value="Lucro Presumido">Lucro Presumido</option>
-                  <option value="Folha de Pagamento">Folha de Pagamento</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Folha de Pagamento
+                </label>
+                <select
+                  name="folha_pagamento"
+                  value={formData.folha_pagamento}
+                  onChange={handleInputChange}
+                  className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-[#C5A059] focus:border-[#C5A059]"
+                >
+                  <option value="Não">Não</option>
+                  <option value="Sim">Sim</option>
                 </select>
               </div>
 
@@ -713,7 +774,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
             </div>
 
             {/* Subseção: Regime / Escopo e Obrigações Habilitadas para Apuração */}
-            <div className="mt-4 p-4 rounded-2xl bg-amber-50/30 border border-amber-200/70 space-y-3">
+            <div className="mt-4 p-4 rounded-2xl bg-amber-50/30 border border-amber-200/70 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-amber-200/60 pb-2.5">
                 <div className="flex items-center space-x-2">
                   <ListChecks className="w-4 h-4 text-[#C5A059]" />
@@ -739,21 +800,24 @@ export const ClientModal: React.FC<ClientModalProps> = ({
                 </div>
               </div>
 
-              {/* Checklist de Obrigações Habilitadas */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-bold text-gray-700">
-                    Obrigações Ativas no Módulo de Apuração:
-                  </span>
-                  <span className="text-[10px] font-semibold text-stone-500">
-                    {formData.obrigacoes_habilitadas?.length || 0} de{' '}
-                    {FISCAL_OBLIGATIONS[normalizeRegime(formData.tipo_servico || formData.regime_tributario)]?.length || 0}{' '}
-                    ativas
-                  </span>
-                </div>
+              {/* Contagem Dinâmica de Obrigações Ativas */}
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-gray-700">
+                  Obrigações Ativas no Módulo de Apuração:
+                </span>
+                <span className="text-[10px] font-semibold text-stone-500">
+                  {activeVisibleCount} de {visibleObligations.length} ativas
+                </span>
+              </div>
 
+              {/* Bloco 1: Obrigações do Regime Tributário Selecionado */}
+              <div className="space-y-2">
+                <div className="text-[11px] font-bold text-stone-700 flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                  <span>Obrigações Fiscais - {formData.regime_tributario}</span>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                  {FISCAL_OBLIGATIONS[normalizeRegime(formData.tipo_servico || formData.regime_tributario)]?.map((obrigacao) => {
+                  {regimeFiscalObligations.map((obrigacao) => {
                     const isChecked = formData.obrigacoes_habilitadas?.includes(obrigacao);
                     return (
                       <label
@@ -776,6 +840,39 @@ export const ClientModal: React.FC<ClientModalProps> = ({
                   })}
                 </div>
               </div>
+
+              {/* Bloco 2: Obrigações Cumulativas da Folha de Pagamento (se Folha = "Sim") */}
+              {formData.folha_pagamento === 'Sim' && (
+                <div className="pt-3 border-t border-amber-200/60 space-y-2">
+                  <div className="text-[11px] font-bold text-blue-900 flex items-center space-x-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    <span>Obrigações da Folha de Pagamento (FOPAG)</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {FOLHA_PAGAMENTO_OBLIGATIONS.map((obrigacao) => {
+                      const isChecked = formData.obrigacoes_habilitadas?.includes(obrigacao);
+                      return (
+                        <label
+                          key={obrigacao}
+                          className={`flex items-center space-x-2 p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
+                            isChecked
+                              ? 'bg-blue-50/80 border-blue-300 text-blue-900 font-semibold'
+                              : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => handleToggleObligation(obrigacao)}
+                            className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                          />
+                          <span className="truncate" title={obrigacao}>{obrigacao}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

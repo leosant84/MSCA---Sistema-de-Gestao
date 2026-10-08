@@ -318,14 +318,14 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
       return;
     }
 
-    const clientRegime = client.regime_tributario || regime;
+    const effectiveRegime = (regime as FiscalRegimeType) || (client.regime_tributario as FiscalRegimeType) || 'Simples Nacional';
     const clientObligations =
-      (clientRegime && FISCAL_OBLIGATIONS[clientRegime as FiscalRegimeType]) || [obrigacaoName];
+      FISCAL_OBLIGATIONS[effectiveRegime] || [obrigacaoName];
 
     await apuracaoValidationService.toggleObligationValidation({
       clientId: client.id,
       competencia,
-      regime: clientRegime,
+      regime: effectiveRegime,
       obrigacao: obrigacaoName,
       allClientObligations: clientObligations,
       validated: true,
@@ -354,9 +354,9 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
     setPendingSubmitting(true);
     try {
       const targetClient = pendingClientTarget;
-      const clientRegime = targetClient.regime_tributario || regime;
+      const effectiveRegime = (regime as FiscalRegimeType) || (targetClient.regime_tributario as FiscalRegimeType) || 'Simples Nacional';
       const clientObligations =
-        (clientRegime && FISCAL_OBLIGATIONS[clientRegime as FiscalRegimeType]) || [obrigacaoName];
+        FISCAL_OBLIGATIONS[effectiveRegime] || [obrigacaoName];
 
       // 1. Desabilita o status OK da apuração
       onStatusChange(targetClient, obrigacaoName, '');
@@ -365,7 +365,7 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
       await apuracaoValidationService.toggleObligationValidation({
         clientId: targetClient.id,
         competencia,
-        regime: clientRegime,
+        regime: effectiveRegime,
         obrigacao: obrigacaoName,
         allClientObligations: clientObligations,
         validated: false,
@@ -377,7 +377,7 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
       await apuracaoValidationService.setValidationNeedsReview({
         clientId: targetClient.id,
         competencia,
-        regime: clientRegime,
+        regime: effectiveRegime,
         adminId: user?.id,
         adminName: profile?.full_name || 'Gestor ADM',
         reviewNotes: pendingReason.trim() || `Pendência apontada na obrigação: ${obrigacaoName}`,
@@ -389,7 +389,7 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
         client_id: targetClient.id,
         client_name: targetClient.razao_social,
         competencia,
-        regime: clientRegime,
+        regime: effectiveRegime,
         admin_id: user?.id,
         admin_name: profile?.full_name || 'Gestor ADM',
         review_notes: pendingReason.trim() || `Pendência apontada na obrigação: ${obrigacaoName}`,
@@ -424,14 +424,14 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
     }
 
     for (const c of okClients) {
-      const clientRegime = c.regime_tributario || regime;
+      const effectiveRegime = (regime as FiscalRegimeType) || (c.regime_tributario as FiscalRegimeType) || 'Simples Nacional';
       const clientObligations =
-        (clientRegime && FISCAL_OBLIGATIONS[clientRegime as FiscalRegimeType]) || [obrigacaoName];
+        FISCAL_OBLIGATIONS[effectiveRegime] || [obrigacaoName];
 
       await apuracaoValidationService.toggleObligationValidation({
         clientId: c.id,
         competencia,
-        regime: clientRegime,
+        regime: effectiveRegime,
         obrigacao: obrigacaoName,
         allClientObligations: clientObligations,
         validated: true,

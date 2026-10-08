@@ -26,6 +26,7 @@ export interface Client {
   nire?: string | null;
   cpf?: string | null;
   regime_tributario?: string | null;
+  folha_pagamento?: string | boolean | null;
   puro_ou_hibrido?: string | null;
   codigo_acesso_simples?: string | null;
   numero_pasta?: string | null;
