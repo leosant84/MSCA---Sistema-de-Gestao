@@ -130,6 +130,7 @@ export const Apuracao: React.FC = () => {
           .from('fiscal_records')
           .select('*')
           .like('competencia', `%/${shortYearStr}`)
+          .order('id', { ascending: true })
           .range(from, from + step - 1);
 
         if (pageErr) throw pageErr;
@@ -141,18 +142,21 @@ export const Apuracao: React.FC = () => {
 
       const map: Record<string, string> = {};
 
-      // Mapeia os registros reais do banco
+      // 1. Mapeia os registros reais do banco
       allRecords.forEach((r) => {
         const key = `${r.client_id}::${r.obrigacao}::${r.competencia}`;
         map[key] = r.valor || '';
+      });
 
-        // Unificação retrocompatível: se houver registro histórico de "PRO-LAB. / FOPAG" ou "GUIA INSS",
-        // popula também a chave unificada "PRO LAB / INSS" (se ainda não preenchida com OK)
+      // 2. Unificação retrocompatível com chaves canônicas (ex: PRO-LAB. / FOPAG ou GUIA INSS -> PRO LAB / INSS no Simples)
+      allRecords.forEach((r) => {
         const obNorm = (r.obrigacao || '').trim().toUpperCase();
         if (obNorm === 'PRO-LAB. / FOPAG' || obNorm === 'GUIA INSS') {
-          const unifiedKey = `${r.client_id}::PRO LAB / INSS::${r.competencia}`;
-          if (!map[unifiedKey] || (r.valor || '').trim().toUpperCase() === 'OK') {
-            map[unifiedKey] = r.valor || '';
+          if (r.regime !== 'Folha de Pagamento') {
+            const unifiedKey = `${r.client_id}::PRO LAB / INSS::${r.competencia}`;
+            if (!map[unifiedKey] || (r.valor || '').trim().toUpperCase() === 'OK') {
+              map[unifiedKey] = r.valor || '';
+            }
           }
         }
       });
@@ -389,8 +393,18 @@ export const Apuracao: React.FC = () => {
       const competencia = selectedCompForDrilldown;
       const key = `${client.id}::${obrigacao}::${competencia}`;
 
-      // Atualização otimista no estado local
-      setInputValues((prev) => ({ ...prev, [key]: newValue }));
+      // Atualização otimista no estado local (sincronizando chaves unificadas e legadas)
+      setInputValues((prev) => {
+        const next = { ...prev, [key]: newValue };
+        const obNorm = (obrigacao || '').trim().toUpperCase();
+        if (obNorm === 'PRO LAB / INSS' || obNorm === 'PRO-LAB / INSS' || obNorm === 'PRO LAB/INSS') {
+          next[`${client.id}::PRO-LAB. / FOPAG::${competencia}`] = newValue;
+          if (activeTab === 'Simples Nacional') {
+            next[`${client.id}::GUIA INSS::${competencia}`] = newValue;
+          }
+        }
+        return next;
+      });
 
       try {
         const isOk = newValue.trim().toUpperCase() === 'OK';
@@ -414,6 +428,19 @@ export const Apuracao: React.FC = () => {
           .single();
 
         if (error) throw error;
+
+        // Se for Simples Nacional e alterando PRO LAB / INSS, limpa resquícios legados para este cliente/competência
+        // evitando que linhas legadas reescrevam o status em recarregamentos futuros
+        const obNorm = (obrigacao || '').trim().toUpperCase();
+        if (activeTab === 'Simples Nacional' && (obNorm === 'PRO LAB / INSS' || obNorm === 'PRO-LAB / INSS' || obNorm === 'PRO LAB/INSS')) {
+          await supabase
+            .from('fiscal_records')
+            .delete()
+            .eq('client_id', client.id)
+            .eq('competencia', competencia)
+            .eq('regime', 'Simples Nacional')
+            .in('obrigacao', ['GUIA INSS', 'PRO-LAB. / FOPAG']);
+        }
 
         // Se marcou como OK, limpar qualquer pendência anterior desta obrigação
         if (isOk) {
@@ -472,8 +499,18 @@ export const Apuracao: React.FC = () => {
     async (client: Client, obrigacao: string, comp: string, newValue: string) => {
       const key = `${client.id}::${obrigacao}::${comp}`;
 
-      // Atualização otimista no estado local
-      setInputValues((prev) => ({ ...prev, [key]: newValue }));
+      // Atualização otimista no estado local (sincronizando chaves unificadas e legadas)
+      setInputValues((prev) => {
+        const next = { ...prev, [key]: newValue };
+        const obNorm = (obrigacao || '').trim().toUpperCase();
+        if (obNorm === 'PRO LAB / INSS' || obNorm === 'PRO-LAB / INSS' || obNorm === 'PRO LAB/INSS') {
+          next[`${client.id}::PRO-LAB. / FOPAG::${comp}`] = newValue;
+          if (activeTab === 'Simples Nacional') {
+            next[`${client.id}::GUIA INSS::${comp}`] = newValue;
+          }
+        }
+        return next;
+      });
 
       try {
         const isOk = newValue.trim().toUpperCase() === 'OK';
@@ -544,6 +581,18 @@ export const Apuracao: React.FC = () => {
           .single();
 
         if (error) throw error;
+
+        // Se for Simples Nacional e alterando PRO LAB / INSS, limpa resquícios legados para este cliente/competência
+        const obNorm = (obrigacao || '').trim().toUpperCase();
+        if (activeTab === 'Simples Nacional' && (obNorm === 'PRO LAB / INSS' || obNorm === 'PRO-LAB / INSS' || obNorm === 'PRO LAB/INSS')) {
+          await supabase
+            .from('fiscal_records')
+            .delete()
+            .eq('client_id', client.id)
+            .eq('competencia', comp)
+            .eq('regime', 'Simples Nacional')
+            .in('obrigacao', ['GUIA INSS', 'PRO-LAB. / FOPAG']);
+        }
       } catch (err) {
         console.error('Erro ao salvar apuração do cliente:', err);
         toast('Erro ao sincronizar apuração com o servidor.', 'error');
@@ -577,7 +626,14 @@ export const Apuracao: React.FC = () => {
       let okCount = 0;
       applicable.forEach((c) => {
         const key = `${c.id}::${obrigacao}::${competencia}`;
-        const val = inputValues[key];
+        let val = inputValues[key];
+
+        if (val === undefined) {
+          const obNorm = (obrigacao || '').trim().toUpperCase();
+          if (obNorm === 'PRO LAB / INSS' || obNorm === 'PRO-LAB / INSS' || obNorm === 'PRO LAB/INSS') {
+            val = inputValues[`${c.id}::PRO-LAB. / FOPAG::${competencia}`] || inputValues[`${c.id}::GUIA INSS::${competencia}`];
+          }
+        }
 
         // Reflete estritamente o status real gravado no sistema
         if (val !== undefined && (val || '').trim().toUpperCase() === 'OK') {

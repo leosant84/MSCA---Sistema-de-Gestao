@@ -236,26 +236,28 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     }
   };
 
-  const handleMarkAllVisibleOk = () => {
-    clientObligations.forEach((ob) => {
+  const handleMarkAllVisibleOk = async () => {
+    for (const ob of clientObligations) {
       const key = `${client.id}::${ob}::${selectedComp}`;
       const val = inputValues[key];
       if ((val || '').trim().toUpperCase() !== 'OK') {
-        onStatusChange(client, ob, selectedComp, 'OK');
+        await onStatusChange(client, ob, selectedComp, 'OK');
       }
-    });
+    }
     toast(`Todas as ${clientObligations.length} apurações de ${selectedComp.toUpperCase()} marcadas como OK!`, 'success');
+    onRefreshData?.();
   };
 
-  const handleUnmarkAll = () => {
-    clientObligations.forEach((ob) => {
+  const handleUnmarkAll = async () => {
+    for (const ob of clientObligations) {
       const key = `${client.id}::${ob}::${selectedComp}`;
       const val = inputValues[key];
       if ((val || '').trim() !== '') {
-        onStatusChange(client, ob, selectedComp, '');
+        await onStatusChange(client, ob, selectedComp, '');
       }
-    });
+    }
     toast(`Apurações de ${selectedComp.toUpperCase()} desmarcadas (pendentes)!`, 'info');
+    onRefreshData?.();
   };
 
   // Botão Aprovado (homologa individualmente a obrigação)
@@ -263,6 +265,12 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     if (!isAdmin) {
       toast('Apenas gestores administradores podem validar apurações.', 'info');
       return;
+    }
+
+    const key = `${client.id}::${obrigacao}::${selectedComp}`;
+    const val = inputValues[key];
+    if ((val || '').trim().toUpperCase() !== 'OK') {
+      await onStatusChange(client, obrigacao, selectedComp, 'OK');
     }
 
     await apuracaoValidationService.toggleObligationValidation({

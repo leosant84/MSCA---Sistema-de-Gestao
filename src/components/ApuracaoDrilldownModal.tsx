@@ -299,16 +299,19 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
 
   const [confirmUnmarkModalOpen, setConfirmUnmarkModalOpen] = useState(false);
 
-  const handleMarkAllVisibleOk = () => {
-    filteredClients.forEach((c) => {
+  const handleMarkAllVisibleOk = async () => {
+    const toUpdate = filteredClients.filter((c) => {
       const key = `${c.id}::${obrigacaoName}::${competencia}`;
       const keyLegacy = `${c.id}::${obrigacaoName}`;
       const currentVal = inputValues[key] !== undefined ? inputValues[key] : (inputValues[keyLegacy] || '');
-      if ((currentVal || '').trim().toUpperCase() !== 'OK') {
-        onStatusChange(c, obrigacaoName, 'OK');
-      }
+      return (currentVal || '').trim().toUpperCase() !== 'OK';
     });
+
+    for (const c of toUpdate) {
+      await onStatusChange(c, obrigacaoName, 'OK');
+    }
     toast(`Todos os ${filteredClients.length} clientes visíveis marcados como OK!`, 'success');
+    onRefreshData?.();
   };
 
   // ADM: Aprovar individualmente a obrigação do cliente
@@ -321,6 +324,14 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
     const effectiveRegime = (regime as FiscalRegimeType) || (client.regime_tributario as FiscalRegimeType) || 'Simples Nacional';
     const clientObligations =
       FISCAL_OBLIGATIONS[effectiveRegime] || [obrigacaoName];
+
+    // Se o cliente ainda não estiver como OK na apuração, também marcamos como OK no banco
+    const key = `${client.id}::${obrigacaoName}::${competencia}`;
+    const keyLegacy = `${client.id}::${obrigacaoName}`;
+    const currentVal = inputValues[key] !== undefined ? inputValues[key] : (inputValues[keyLegacy] || '');
+    if ((currentVal || '').trim().toUpperCase() !== 'OK') {
+      await onStatusChange(client, obrigacaoName, 'OK');
+    }
 
     await apuracaoValidationService.toggleObligationValidation({
       clientId: client.id,
@@ -461,17 +472,20 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
     setConfirmUnmarkModalOpen(true);
   };
 
-  const handleConfirmUnmarkAll = () => {
-    filteredClients.forEach((c) => {
+  const handleConfirmUnmarkAll = async () => {
+    const toUnmark = filteredClients.filter((c) => {
       const key = `${c.id}::${obrigacaoName}::${competencia}`;
       const keyLegacy = `${c.id}::${obrigacaoName}`;
       const currentVal = inputValues[key] !== undefined ? inputValues[key] : (inputValues[keyLegacy] || '');
-      if ((currentVal || '').trim() !== '') {
-        onStatusChange(c, obrigacaoName, '');
-      }
+      return (currentVal || '').trim() !== '';
     });
+
+    for (const c of toUnmark) {
+      await onStatusChange(c, obrigacaoName, '');
+    }
     setConfirmUnmarkModalOpen(false);
     toast(`Status de ${filteredClients.length} clientes visíveis desmarcado com sucesso!`, 'info');
+    onRefreshData?.();
   };
 
   return (
