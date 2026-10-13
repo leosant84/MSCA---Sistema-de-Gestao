@@ -311,6 +311,14 @@ export const Apuracao: React.FC = () => {
     if (isFolhaObligation) {
       if (!hasClientFolha(client)) return false;
       if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
+        // Se o cliente tem Folha ativa, mas sua lista de obrigações_habilitadas só contém itens fiscais
+        // (nenhuma de folha configurada explicitamente), considera habilitada por padrão
+        const hasAnyFolhaConfigured = client.obrigacoes_habilitadas.some((o) =>
+          FOLHA_PAGAMENTO_OBLIGATIONS.some((f) => f.toUpperCase() === (o || '').trim().toUpperCase())
+        );
+        if (!hasAnyFolhaConfigured) {
+          return true;
+        }
         return client.obrigacoes_habilitadas.some((o) => (o || '').trim().toUpperCase() === obNorm);
       }
       return true;
@@ -619,7 +627,16 @@ export const Apuracao: React.FC = () => {
   const getObligationMonthStats = useCallback(
     (obrigacao: string, competencia: string) => {
       // Clientes aplicáveis a esta obrigação (respeitando o filtro de cliente se houver)
-      const applicable = activeScopedClients.filter((c) => isObligationEnabled(c, obrigacao));
+      // Se a obrigação estiver habilitada no cadastro OU se já houver registro preenchido no mês, inclui o cliente
+      const enabledClients = activeScopedClients.filter((c) => {
+        if (isObligationEnabled(c, obrigacao)) return true;
+        const key = `${c.id}::${obrigacao}::${competencia}`;
+        return Boolean((inputValues[key] || '').trim());
+      });
+
+      // Se nenhum cliente do escopo tiver essa obrigação filtrada explicitamente, exibe todos os clientes do escopo
+      // (comportamento 100% alinhado com o modal de drilldown ApuracaoDrilldownModal)
+      const applicable = enabledClients.length > 0 ? enabledClients : activeScopedClients;
       const total = applicable.length;
       if (total === 0) return { total: 0, okCount: 0, percent: 0 };
 
@@ -683,7 +700,14 @@ export const Apuracao: React.FC = () => {
       }
 
       const applicableClients = obrigacao
-        ? activeScopedClients.filter((c) => isObligationEnabled(c, obrigacao))
+        ? (() => {
+            const enabled = activeScopedClients.filter((c) => {
+              if (isObligationEnabled(c, obrigacao)) return true;
+              const key = `${c.id}::${obrigacao}::${competencia}`;
+              return Boolean((inputValues[key] || '').trim());
+            });
+            return enabled.length > 0 ? enabled : activeScopedClients;
+          })()
         : activeScopedClients;
 
       if (applicableClients.length === 0) return false;
@@ -719,12 +743,19 @@ export const Apuracao: React.FC = () => {
       }
 
       const applicableClients = obrigacao
-        ? activeScopedClients.filter((c) => isObligationEnabled(c, obrigacao))
+        ? (() => {
+            const enabled = activeScopedClients.filter((c) => {
+              if (isObligationEnabled(c, obrigacao)) return true;
+              const key = `${c.id}::${obrigacao}::${competencia}`;
+              return Boolean((inputValues[key] || '').trim());
+            });
+            return enabled.length > 0 ? enabled : activeScopedClients;
+          })()
         : activeScopedClients;
 
       return applicableClients.some((c) => isClientReview(c));
     },
-    [currentFilteredClient, activeScopedClients, isObligationEnabled, validations]
+    [currentFilteredClient, activeScopedClients, isObligationEnabled, validations, inputValues]
   );
 
   // Calcula o status de conclusão e validação de um cliente na competência corrente

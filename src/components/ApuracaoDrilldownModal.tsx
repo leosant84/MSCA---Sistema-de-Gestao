@@ -123,10 +123,14 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
     return true;
   };
 
-  // Filtrar clientes que necessitam desta apuração específica (obrigação habilitada)
+  // Filtrar clientes que necessitam desta apuração específica (obrigação habilitada ou valor já preenchido)
   // Caso nenhum cliente do regime possua a lista explicitamente cadastrada para essa obrigação,
   // exibe todos os clientes do regime para permitir a apuração consistente (comportamento idêntico ao Simples Nacional)
-  const enabledClients = clients.filter((c) => isObligationEnabled(c, obrigacaoName));
+  const enabledClients = clients.filter((c) => {
+    if (isObligationEnabled(c, obrigacaoName)) return true;
+    const key = `${c.id}::${obrigacaoName}::${competencia}`;
+    return Boolean((inputValues[key] || '').trim());
+  });
   const applicableClients = enabledClients.length > 0 ? enabledClients : clients;
 
   // Clientes com pendência apontada
