@@ -123,15 +123,8 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
     return true;
   };
 
-  // Filtrar clientes que necessitam desta apuração específica (obrigação habilitada ou valor já preenchido)
-  // Caso nenhum cliente do regime possua a lista explicitamente cadastrada para essa obrigação,
-  // exibe todos os clientes do regime para permitir a apuração consistente (comportamento idêntico ao Simples Nacional)
-  const enabledClients = clients.filter((c) => {
-    if (isObligationEnabled(c, obrigacaoName)) return true;
-    const key = `${c.id}::${obrigacaoName}::${competencia}`;
-    return Boolean((inputValues[key] || '').trim());
-  });
-  const applicableClients = enabledClients.length > 0 ? enabledClients : clients;
+  // Filtrar estritamente clientes que possuem esta apuração específica habilitada em seu cadastro
+  const applicableClients = clients.filter((c) => isObligationEnabled(c, obrigacaoName));
 
   // Clientes com pendência apontada
   const clientsWithReview = applicableClients.filter(checkClientNeedsReview);
@@ -262,7 +255,7 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
     const val = inputValues[key] !== undefined ? inputValues[key] : (inputValues[keyLegacy] || '');
     return (val || '').trim().toUpperCase() === 'OK';
   }).length;
-  const percent = total > 0 ? Math.round((okCount / total) * 100) : 100;
+  const percent = total > 0 ? Math.round((okCount / total) * 100) : 0;
 
   const normalizeStatusInput = (raw: string): string => {
     const trimmed = raw.trim().toUpperCase();

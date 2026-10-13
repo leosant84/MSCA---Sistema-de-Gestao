@@ -301,7 +301,7 @@ export const Apuracao: React.FC = () => {
           return n === 'GERAR OS DAS' || n === 'GERAR O DAS';
         });
       }
-      return true;
+      return false;
     }
 
     // Obrigações de Folha de Pagamento
@@ -311,17 +311,9 @@ export const Apuracao: React.FC = () => {
     if (isFolhaObligation) {
       if (!hasClientFolha(client)) return false;
       if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
-        // Se o cliente tem Folha ativa, mas sua lista de obrigações_habilitadas só contém itens fiscais
-        // (nenhuma de folha configurada explicitamente), considera habilitada por padrão
-        const hasAnyFolhaConfigured = client.obrigacoes_habilitadas.some((o) =>
-          FOLHA_PAGAMENTO_OBLIGATIONS.some((f) => f.toUpperCase() === (o || '').trim().toUpperCase())
-        );
-        if (!hasAnyFolhaConfigured) {
-          return true;
-        }
         return client.obrigacoes_habilitadas.some((o) => (o || '').trim().toUpperCase() === obNorm);
       }
-      return true;
+      return false;
     }
 
     // Tratamento para PRO LAB / INSS (Simples Nacional)
@@ -341,13 +333,13 @@ export const Apuracao: React.FC = () => {
           );
         });
       }
-      return true;
+      return false;
     }
 
     if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
       return client.obrigacoes_habilitadas.some((o) => (o || '').trim().toUpperCase() === obNorm);
     }
-    return true;
+    return false;
   }, []);
 
   // Auxiliar: checa se um cliente pertence ao escopo da aba especificada
@@ -531,20 +523,19 @@ export const Apuracao: React.FC = () => {
             obrigacao,
           });
 
-          const clientRegime = client.regime_tributario || activeTab;
-          const clientObligations =
-            (clientRegime && FISCAL_OBLIGATIONS[clientRegime as FiscalRegimeType]) || currentObligations;
-          const clientEnabledObligations = clientObligations.filter((ob) =>
+          const clientEnabledObligations = currentObligations.filter((ob) =>
             isObligationEnabled(client, ob)
           );
 
           // Verificar se todas as obrigações habilitadas estão OK (considerando a nova)
-          const isAllOk = clientEnabledObligations.every((ob) => {
-            if (ob === obrigacao) return true;
-            const obKey = `${client.id}::${ob}::${comp}`;
-            const val = inputValues[obKey] || '';
-            return val.trim().toUpperCase() === 'OK';
-          });
+          const isAllOk =
+            clientEnabledObligations.length > 0 &&
+            clientEnabledObligations.every((ob) => {
+              if (ob === obrigacao) return true;
+              const obKey = `${client.id}::${ob}::${comp}`;
+              const val = inputValues[obKey] || '';
+              return val.trim().toUpperCase() === 'OK';
+            });
 
           if (isAllOk) {
             // Disparar notificação para ADM validar
@@ -626,17 +617,8 @@ export const Apuracao: React.FC = () => {
   // Calcula a porcentagem de conclusão de uma Obrigação em uma Competência específica
   const getObligationMonthStats = useCallback(
     (obrigacao: string, competencia: string) => {
-      // Clientes aplicáveis a esta obrigação (respeitando o filtro de cliente se houver)
-      // Se a obrigação estiver habilitada no cadastro OU se já houver registro preenchido no mês, inclui o cliente
-      const enabledClients = activeScopedClients.filter((c) => {
-        if (isObligationEnabled(c, obrigacao)) return true;
-        const key = `${c.id}::${obrigacao}::${competencia}`;
-        return Boolean((inputValues[key] || '').trim());
-      });
-
-      // Se nenhum cliente do escopo tiver essa obrigação filtrada explicitamente, exibe todos os clientes do escopo
-      // (comportamento 100% alinhado com o modal de drilldown ApuracaoDrilldownModal)
-      const applicable = enabledClients.length > 0 ? enabledClients : activeScopedClients;
+      // Clientes aplicáveis estritamente a esta obrigação (respeitando o filtro de cliente se houver)
+      const applicable = activeScopedClients.filter((c) => isObligationEnabled(c, obrigacao));
       const total = applicable.length;
       if (total === 0) return { total: 0, okCount: 0, percent: 0 };
 
@@ -700,14 +682,7 @@ export const Apuracao: React.FC = () => {
       }
 
       const applicableClients = obrigacao
-        ? (() => {
-            const enabled = activeScopedClients.filter((c) => {
-              if (isObligationEnabled(c, obrigacao)) return true;
-              const key = `${c.id}::${obrigacao}::${competencia}`;
-              return Boolean((inputValues[key] || '').trim());
-            });
-            return enabled.length > 0 ? enabled : activeScopedClients;
-          })()
+        ? activeScopedClients.filter((c) => isObligationEnabled(c, obrigacao))
         : activeScopedClients;
 
       if (applicableClients.length === 0) return false;
@@ -743,14 +718,7 @@ export const Apuracao: React.FC = () => {
       }
 
       const applicableClients = obrigacao
-        ? (() => {
-            const enabled = activeScopedClients.filter((c) => {
-              if (isObligationEnabled(c, obrigacao)) return true;
-              const key = `${c.id}::${obrigacao}::${competencia}`;
-              return Boolean((inputValues[key] || '').trim());
-            });
-            return enabled.length > 0 ? enabled : activeScopedClients;
-          })()
+        ? activeScopedClients.filter((c) => isObligationEnabled(c, obrigacao))
         : activeScopedClients;
 
       return applicableClients.some((c) => isClientReview(c));

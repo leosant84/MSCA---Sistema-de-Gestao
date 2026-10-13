@@ -138,12 +138,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({
           return clientInitialSavedObligations;
         }
       }
-      // Para novo cliente, inicializa com as obrigações do regime selecionado + folha se ativa
-      const base = FISCAL_OBLIGATIONS[clientInitialRegime] || [];
-      if (clientInitialFolha === 'Sim') {
-        return [...base, ...FOLHA_PAGAMENTO_OBLIGATIONS];
-      }
-      return base;
+      // Para novo cliente, inicializa com as obrigações fiscais do regime selecionado
+      return FISCAL_OBLIGATIONS[clientInitialRegime] || [];
     })(),
   });
 
@@ -244,13 +240,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     if (name === 'folha_pagamento') {
       setFormData((prev) => {
         let updated = [...(prev.obrigacoes_habilitadas || [])];
-        if (value === 'Sim') {
-          // Ao ativar folha de pagamento, se não havia nenhuma de folha marcada, inclui as obrigações da folha
-          const hasAnyFolha = FOLHA_PAGAMENTO_OBLIGATIONS.some((o) => updated.includes(o));
-          if (!hasAnyFolha) {
-            updated = Array.from(new Set([...updated, ...FOLHA_PAGAMENTO_OBLIGATIONS]));
-          }
-        } else {
+        if (value === 'Não') {
           // Ao desativar folha de pagamento, remove as obrigações da folha
           updated = updated.filter((o) => !FOLHA_PAGAMENTO_OBLIGATIONS.includes(o));
         }
