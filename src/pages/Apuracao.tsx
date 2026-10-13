@@ -281,13 +281,14 @@ export const Apuracao: React.FC = () => {
   const isObligationEnabled = useCallback((client: Client, obrigacao: string) => {
     const obNorm = (obrigacao || '').trim().toUpperCase();
 
-    // Tratamento especial para Parc. Ativo (aceita 'Parc. Ativo', 'PARC.', 'PARCELAM. ATIVO')
+    // Tratamento especial para Parc. Ativo
     if (obNorm === 'PARC. ATIVO' || obNorm === 'PARC.' || obNorm === 'PARCELAM. ATIVO') {
+      if (client.parcelamento_ativo === false) return false;
       if (client.parcelamento_ativo === true) return true;
       if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
         return client.obrigacoes_habilitadas.some((o) => {
           const n = (o || '').trim().toUpperCase();
-          return n === 'PARC. ATIVO' || n === 'PARC.' || n === 'PARCELAM. ATIVO';
+          return n === 'PARC. ATIVO';
         });
       }
       return false;

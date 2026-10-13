@@ -101,9 +101,15 @@ export const ClientModal: React.FC<ClientModalProps> = ({
           if (obNorm === 'PRO-LAB. / FOPAG') {
             return 'PRO LAB / INSS';
           }
+          if (obNorm === 'PARC.' || obNorm === 'PARCELAM. ATIVO' || obNorm === 'PARC. ATIVO') {
+            return clientToEdit.parcelamento_ativo === true ? 'Parc. Ativo' : null;
+          }
           return (ob || '').trim();
         })
-        .filter(Boolean);
+        .filter(Boolean) as string[];
+      if (clientToEdit.parcelamento_ativo === true && !list.includes('Parc. Ativo')) {
+        list.push('Parc. Ativo');
+      }
       return Array.from(new Set(list));
     }
     return null;
@@ -425,6 +431,21 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         }
 
         if (error) throw error;
+
+        // Se alguma obrigação foi desmarcada no cadastro, limpa apurações órfãs geradas no banco
+        const previousObs = Array.isArray(clientToEdit.obrigacoes_habilitadas) ? clientToEdit.obrigacoes_habilitadas : [];
+        const currentObs = formData.obrigacoes_habilitadas || [];
+        const removedObs = previousObs.filter((o) => !currentObs.includes(o));
+        if (!currentObs.includes('Parc. Ativo')) {
+          removedObs.push('Parc. Ativo', 'PARC.', 'PARCELAM. ATIVO');
+        }
+        if (removedObs.length > 0) {
+          await supabase
+            .from('fiscal_records')
+            .delete()
+            .eq('client_id', clientToEdit.id)
+            .in('obrigacao', Array.from(new Set(removedObs)));
+        }
       } else {
         // Inserção com fallback resiliente
         let res = await supabase
