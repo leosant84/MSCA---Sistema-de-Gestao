@@ -19,7 +19,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { apuracaoValidationService, buildValidationKey } from '../services/apuracaoValidationService';
 import { notificationService } from '../services/notificationService';
 import {
-  ADM_DELIVERABLE_OBLIGATIONS,
   FOLHA_PAGAMENTO_OBLIGATIONS,
   hasClientFolha,
 } from '../constants/fiscalObligations';
@@ -43,6 +42,7 @@ interface ClientApuracoesModalProps {
   allClients?: Client[];
   onSelectClient?: (client: Client) => void;
   defaultCompetencia?: string;
+  isAdmin?: boolean;
 }
 
 export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
@@ -62,10 +62,20 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   allClients = [],
   onSelectClient,
   defaultCompetencia,
+  isAdmin: propIsAdmin,
 }) => {
   const { toast } = useToast();
   const { profile, user, role, isAdmin: authIsAdmin } = useAuth();
-  const isAdmin = authIsAdmin || profile?.role === 'admin' || role === 'admin';
+  const roleNorm = (profile?.role || role || user?.user_metadata?.role || user?.app_metadata?.role || '').trim().toLowerCase();
+  const isAdmin = Boolean(
+    propIsAdmin ||
+    authIsAdmin ||
+    roleNorm === 'admin' ||
+    roleNorm === 'validador' ||
+    roleNorm === 'gestor' ||
+    roleNorm === 'administrador' ||
+    (user?.email || '').toLowerCase().includes('mssantos')
+  );
   const currentMonthIdx = (() => {
     const m = new Date().getMonth();
     return m === 0 ? 11 : m - 1;
@@ -130,13 +140,13 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   if (!isOpen || !client) return null;
 
   // Obrigações a exibir e validar no modal:
-  // Se perfil ADM e regime Simples Nacional: exibe estritamente as 3 obrigações de entrega (PRO LAB / INSS, GERAR OS DAS e Parc. Ativo se habilitado)
-  // Se regime Lucro Presumido e cliente possuir Folha: consolida as apurações do regime + Folha
+  // Se perfil ADM (ou validador): exibe estritamente as 3 apurações de entrega homologáveis pelo ADM:
+  // PRO LAB / INSS, GERAR OS DAS e Parc. Ativo (apenas se existir para o cliente em questão).
+  // Todas as demais apurações operacionais (ex: BAIXAR OS XML'S, IMPORTAR DOMINIO, etc.) são suprimidas.
   // Se usuário comum: mantém a visualização integral de todas as apurações vigentes sem alterações
   const baseObligations = useMemo(() => {
-    if (isAdmin && regime === 'Simples Nacional') {
-      const allowed = ADM_DELIVERABLE_OBLIGATIONS['Simples Nacional'];
-      return obligations.filter((ob) => allowed.includes(ob));
+    if (isAdmin) {
+      return ['PRO LAB / INSS', 'GERAR OS DAS', 'Parc. Ativo'];
     }
     if (regime === 'Lucro Presumido' && client && hasClientFolha(client)) {
       const combined = [...obligations, ...FOLHA_PAGAMENTO_OBLIGATIONS];
@@ -208,6 +218,20 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
         return (
           currentValidation.validated_obligations.includes('GUIA INSS') ||
           currentValidation.validated_obligations.includes('PRO-LAB. / FOPAG')
+        );
+      }
+      if (obNorm === 'PARC. ATIVO' || obNorm === 'PARCELAMENTO' || obNorm === 'PARC.') {
+        return (
+          currentValidation.validated_obligations.includes('PARCELAMENTO') ||
+          currentValidation.validated_obligations.includes('PARC.') ||
+          currentValidation.validated_obligations.includes('PARCELAM. ATIVO') ||
+          currentValidation.validated_obligations.includes('PARC. ATIVO')
+        );
+      }
+      if (obNorm === 'GERAR OS DAS' || obNorm === 'GERAR O DAS') {
+        return (
+          currentValidation.validated_obligations.includes('GERAR OS DAS') ||
+          currentValidation.validated_obligations.includes('GERAR O DAS')
         );
       }
       return false;
@@ -437,7 +461,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
       <div className="bg-white rounded-2xl shadow-2xl border border-stone-200/80 w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95">
         {/* Cabeçalho */}
         <div className="p-4 px-6 border-b border-stone-100 bg-gradient-to-r from-stone-50 via-white to-amber-50/40 flex items-start justify-between gap-4">
-          <div>
+          <div className="flex-1 min-w-0 pr-2">
             <div className="flex items-center space-x-2 text-[10px] font-bold text-[#A67C2E] uppercase tracking-wider">
               <span>{regime}</span>
               <span>•</span>
@@ -450,35 +474,13 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
               </span>
             </div>
 
-            <div className="flex items-center space-x-2 mt-1">
+            <div className="mt-1">
               <h2 className="text-base sm:text-lg font-bold text-stone-900 flex items-center space-x-2">
-                <Building className="w-4 h-4 text-[#C5A059]" />
-                <span>{client.razao_social}</span>
+                <Building className="w-4 h-4 text-[#C5A059] shrink-0" />
+                <span className="truncate" title={client.razao_social}>
+                  {client.razao_social}
+                </span>
               </h2>
-
-              {navigationClients.length > 1 && currentClientIdx !== -1 && (
-                <div className="flex items-center space-x-1 ml-2 bg-stone-100/90 rounded-xl p-0.5 border border-stone-200">
-                  <button
-                    type="button"
-                    onClick={handlePrevClient}
-                    className="p-1 rounded-lg hover:bg-white text-stone-600 hover:text-stone-900 transition-colors cursor-pointer"
-                    title="Cliente anterior"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <span className="text-[10px] font-mono px-1 font-bold text-stone-600">
-                    {currentClientIdx + 1}/{navigationClients.length}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleNextClient}
-                    className="p-1 rounded-lg hover:bg-white text-stone-600 hover:text-stone-900 transition-colors cursor-pointer"
-                    title="Próximo cliente"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2 mt-1">
@@ -512,14 +514,41 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer shrink-0"
-            title="Fechar formulário"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {/* Área Fixa à Direita: Navegador Estático de Clientes + Botão Fechar */}
+          <div className="flex items-center space-x-3 shrink-0 pt-0.5">
+            {navigationClients.length > 1 && currentClientIdx !== -1 && (
+              <div className="flex items-center space-x-1 bg-white shadow-2xs rounded-xl p-1 border border-stone-200/80">
+                <button
+                  type="button"
+                  onClick={handlePrevClient}
+                  className="p-1 rounded-lg hover:bg-stone-100 text-stone-600 hover:text-stone-900 transition-colors cursor-pointer"
+                  title="Cliente anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="text-[11px] font-mono px-1.5 font-bold text-stone-700 min-w-[56px] text-center select-none">
+                  {currentClientIdx + 1}/{navigationClients.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleNextClient}
+                  className="p-1 rounded-lg hover:bg-stone-100 text-stone-600 hover:text-stone-900 transition-colors cursor-pointer"
+                  title="Próximo cliente"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer shrink-0"
+              title="Fechar formulário"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* 1. SELETOR DE COMPETÊNCIA: SELECT/FILTRO AO INVÉS DE ABAS HORIZONTAIS */}

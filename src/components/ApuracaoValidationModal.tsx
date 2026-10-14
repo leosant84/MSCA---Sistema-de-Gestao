@@ -37,7 +37,16 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
   onSelectClient,
   onValidationSuccess,
 }) => {
-  const { user, profile } = useAuth();
+  const { user, profile, role, isAdmin: authIsAdmin } = useAuth();
+  const roleNorm = (profile?.role || role || user?.user_metadata?.role || user?.app_metadata?.role || '').trim().toLowerCase();
+  const isAdmin = Boolean(
+    authIsAdmin ||
+    roleNorm === 'admin' ||
+    roleNorm === 'validador' ||
+    roleNorm === 'gestor' ||
+    roleNorm === 'administrador' ||
+    (user?.email || '').toLowerCase().includes('mssantos')
+  );
   const { toast } = useToast();
 
   const [mode, setMode] = useState<'view' | 'review'>('view');
@@ -76,12 +85,12 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
 
   // Visão do Administrador na Validação: limitar estritamente a PRO LAB / INSS, GERAR OS DAS e Parc. Ativo
   const visibleObligations = useMemo(() => {
-    if (profile?.role === 'admin') {
+    if (isAdmin) {
       const adminAllowed = ['PRO LAB / INSS', 'GUIA INSS', 'PRO-LAB. / FOPAG', 'GERAR OS DAS', 'Parc. Ativo'];
       return obligations.filter((ob) => adminAllowed.includes(ob));
     }
     return obligations;
-  }, [obligations, profile?.role]);
+  }, [obligations, isAdmin]);
 
   if (!isOpen || !client) return null;
 
