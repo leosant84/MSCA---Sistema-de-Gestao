@@ -26,17 +26,44 @@ import {
 } from '../constants/fiscalObligations';
 import type { Client, ClientApuracaoValidation } from '../types';
 
-const isOperationalObligation = (obrigacao: string): boolean => {
+const isAdmDeliverable = (obrigacao: string): boolean => {
   const norm = (obrigacao || '').trim().toUpperCase();
-  return (
-    norm.includes('BAIXAR') ||
-    norm.includes('XML') ||
-    norm.includes('IMPORTAR') ||
-    norm.includes('DOMINIO') ||
-    norm.includes('DOMÍNIO') ||
-    norm.includes('EXTRATO') ||
-    norm === 'ENVIO'
-  );
+
+  // 1. PRO LAB / INSS (e variantes como GUIA INSS)
+  if (
+    norm === 'PRO LAB / INSS' ||
+    norm === 'PRO-LAB / INSS' ||
+    norm === 'PRO-LAB. / FOPAG' ||
+    norm === 'PRO LAB/INSS' ||
+    norm === 'GUIA INSS'
+  ) {
+    return true;
+  }
+
+  // 2. GERAR OS DAS (e variantes)
+  if (
+    norm === 'GERAR OS DAS' ||
+    norm === 'GERAR O DAS' ||
+    norm === 'DAS'
+  ) {
+    return true;
+  }
+
+  // 3. PARCELAMENTO (apenas quando houver para o cliente)
+  if (
+    norm === 'PARC. ATIVO' ||
+    norm === 'PARCELAMENTO' ||
+    norm === 'PARC.' ||
+    norm === 'PARCELAM. ATIVO' ||
+    norm === 'PARCELAMENTOS' ||
+    norm === 'GUIAS - PARC. IRPJ' ||
+    norm === 'GUIAS - PARC. CSLL' ||
+    norm.includes('PARC')
+  ) {
+    return true;
+  }
+
+  return false;
 };
 
 interface ClientApuracoesModalProps {
@@ -164,9 +191,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   }, [client.regime_tributario, regime]);
 
   // Obrigações a exibir e validar no modal:
-  // - Para Simples Nacional (ADM): estritamente PRO LAB / INSS, GERAR OS DAS e Parc. Ativo (+ folha se houver).
-  // - Para Lucro Presumido (ADM): todas as guias de impostos/apurações principais + Folha vinculada (se houver) + Parc. Ativo (se houver), ocultando apenas etapas operacionais (ex: BAIXAR OS XML'S, IMPORTAR DOMINIO).
-  // - Para Folha de Pagamento (ADM): todas as apurações de folha vigentes.
+  // - Para Administrador (ADM): estritamente as 3 apurações informadas (PRO LAB / INSS, GERAR OS DAS, PARCELAMENTO).
   // - Para Usuário Comum: mantém a visualização integral de todas as apurações vigentes sem alterações.
   const baseObligations = useMemo(() => {
     // 1. Universo de obrigações potenciais para o regime do cliente
@@ -189,8 +214,14 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     }
 
     allPotential = Array.from(new Set(allPotential));
+
+    // Para o Administrador: restringir desde a base exclusivamente às 3 apurações informadas
+    if (isAdmin) {
+      return allPotential.filter((ob) => isAdmDeliverable(ob));
+    }
+
     return allPotential;
-  }, [effectiveRegime, obligations, client]);
+  }, [isAdmin, effectiveRegime, obligations, client]);
 
   // Obrigações ativas no perfil do cliente
   const clientObligations = useMemo(() => {
@@ -198,40 +229,20 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   }, [baseObligations, client, isObligationEnabled]);
 
   // Filtro Rígido de Exibição para o Perfil ADM / Validador
-  // Oculta estritamente todas as etapas prévias e operacionais (BAIXAR OS XML'S, IMPORTAR DOMINIO, etc.)
-  // e exibe exclusivamente as apurações de entrega e validação final conforme o regime.
+  // Oculta estritamente todas as etapas operacionais e não-homologáveis pelo ADM.
+  // Exibe exclusivamente as 3 apurações informadas:
+  // 1. PRO LAB / INSS (ou GUIA INSS)
+  // 2. GERAR OS DAS
+  // 3. PARCELAMENTO (quando houver para o cliente)
   const displayedObligations = useMemo(() => {
     return clientObligations.filter((obrigacao) => {
       // Usuário comum (colaborador): visualização integral de todas as apurações vigentes
       if (!isAdmin) return true;
 
-      // Se for perfil ADM / Validador:
-      // 1. Elimina categoricamente qualquer tarefa operacional
-      if (isOperationalObligation(obrigacao)) {
-        return false;
-      }
-
-      // 2. Simples Nacional: estritamente PRO LAB / INSS, GERAR OS DAS, Parc. Ativo (+ FOPAG se houver)
-      if (effectiveRegime === 'Simples Nacional') {
-        const obNorm = (obrigacao || '').trim().toUpperCase();
-        const isSimplesDeliverable =
-          obNorm === 'PRO LAB / INSS' ||
-          obNorm === 'PRO-LAB / INSS' ||
-          obNorm === 'PRO-LAB. / FOPAG' ||
-          obNorm === 'GUIA INSS' ||
-          obNorm === 'GERAR OS DAS' ||
-          obNorm === 'GERAR O DAS' ||
-          obNorm === 'PARC. ATIVO' ||
-          obNorm === 'PARCELAMENTO' ||
-          (hasClientFolha(client) && FOLHA_PAGAMENTO_OBLIGATIONS.includes(obrigacao));
-
-        return isSimplesDeliverable;
-      }
-
-      // 3. Lucro Presumido e Folha de Pagamento: exibe guias fiscais e declarações, excluindo etapas operacionais
-      return true;
+      // Para perfil ADM / Validador: estritamente as 3 apurações informadas
+      return isAdmDeliverable(obrigacao);
     });
-  }, [clientObligations, isAdmin, effectiveRegime, client]);
+  }, [clientObligations, isAdmin]);
 
   // Subtotais de Regime e Folha para clientes com Folha consolidada
   const regimeObligations = useMemo(() => {

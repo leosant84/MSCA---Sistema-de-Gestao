@@ -84,21 +84,36 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
     setReviewNotes('');
   };
 
-  // Visão do Administrador na Validação: limitar estritamente a obrigações de entrega por regime
+  // Visão do Administrador na Validação: limitar estritamente às 3 obrigações informadas
   const visibleObligations = useMemo(() => {
     if (isAdmin) {
-      if (regime === 'Simples Nacional') {
-        const adminAllowed = ['PRO LAB / INSS', 'GUIA INSS', 'PRO-LAB. / FOPAG', 'GERAR OS DAS', 'Parc. Ativo'];
-        return obligations.filter((ob) => adminAllowed.includes(ob));
-      }
-      // Para Lucro Presumido e Folha: oculta etapas puramente operacionais (BAIXAR OS XML'S, IMPORTAR DOMINIO)
+      const adminAllowed = [
+        'PRO LAB / INSS',
+        'GUIA INSS',
+        'PRO-LAB / INSS',
+        'PRO-LAB. / FOPAG',
+        'GERAR OS DAS',
+        'GERAR O DAS',
+        'Parc. Ativo',
+        'PARCELAMENTO',
+        'GUIAS - PARC. IRPJ',
+        'GUIAS - PARC. CSLL',
+      ];
       return obligations.filter((ob) => {
         const norm = (ob || '').trim().toUpperCase();
-        return !norm.includes('BAIXAR') && !norm.includes('XML') && !norm.includes('IMPORTAR') && !norm.includes('DOMINIO');
+        return (
+          adminAllowed.includes(ob) ||
+          norm === 'PRO LAB / INSS' ||
+          norm === 'GUIA INSS' ||
+          norm === 'GERAR OS DAS' ||
+          norm === 'PARC. ATIVO' ||
+          norm === 'PARCELAMENTO' ||
+          norm.includes('PARC')
+        );
       });
     }
     return obligations;
-  }, [obligations, isAdmin, regime]);
+  }, [obligations, isAdmin]);
 
   if (!isOpen || !client) return null;
 
