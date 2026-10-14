@@ -522,9 +522,13 @@ export const Apuracao: React.FC = () => {
             obrigacao,
           });
 
-          const clientEnabledObligations = currentObligations.filter((ob) =>
+          let clientEnabledObligations = currentObligations.filter((ob) =>
             isObligationEnabled(client, ob)
           );
+          if (activeTab === 'Lucro Presumido' && hasClientFolha(client)) {
+            const folhaObs = FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => isObligationEnabled(client, ob));
+            clientEnabledObligations = Array.from(new Set([...clientEnabledObligations, ...folhaObs]));
+          }
 
           // Verificar se todas as obrigações habilitadas estão OK (considerando a nova)
           const isAllOk = clientEnabledObligations.every((ob) => {
@@ -595,9 +599,13 @@ export const Apuracao: React.FC = () => {
             obrigacao,
           });
 
-          const clientEnabledObligations = currentObligations.filter((ob) =>
+          let clientEnabledObligations = currentObligations.filter((ob) =>
             isObligationEnabled(client, ob)
           );
+          if (activeTab === 'Lucro Presumido' && hasClientFolha(client)) {
+            const folhaObs = FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => isObligationEnabled(client, ob));
+            clientEnabledObligations = Array.from(new Set([...clientEnabledObligations, ...folhaObs]));
+          }
 
           // Verificar se todas as obrigações habilitadas estão OK (considerando a nova)
           const isAllOk =
@@ -823,21 +831,37 @@ export const Apuracao: React.FC = () => {
 
   // Calcula o status de conclusão e validação de um cliente na competência corrente
   // Para perfil ADM no Simples Nacional: avalia estritamente PRO LAB / INSS, GERAR OS DAS e Parc. Ativo (se habilitado)
+  // Para Lucro Presumido com Folha de Pagamento: consolida Regime + Folha no percentual e na condição de 100%
   // Para usuário comum: avalia integralmente todas as apurações vigentes
   const getClientCurrentMonthSummary = useCallback(
     (client: Client) => {
-      const baseObligations =
-        isAdmin && activeTab === 'Simples Nacional'
-          ? ADM_DELIVERABLE_OBLIGATIONS['Simples Nacional']
-          : currentObligations;
-      const applicable = baseObligations.filter((ob) => isObligationEnabled(client, ob));
+      let applicable: string[] = [];
+
+      if (isAdmin && activeTab === 'Simples Nacional') {
+        applicable = ADM_DELIVERABLE_OBLIGATIONS['Simples Nacional'].filter((ob) =>
+          isObligationEnabled(client, ob)
+        );
+      } else if (activeTab === 'Lucro Presumido' && hasClientFolha(client)) {
+        const regimeObs = currentObligations.filter((ob) => isObligationEnabled(client, ob));
+        const folhaObs = FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => isObligationEnabled(client, ob));
+        applicable = Array.from(new Set([...regimeObs, ...folhaObs]));
+      } else {
+        applicable = currentObligations.filter((ob) => isObligationEnabled(client, ob));
+      }
+
       if (applicable.length === 0) return { percent: 0, is100: false, isValidated: false, isEnviado: false, isNeedsReview: false };
 
       let okCount = 0;
 
       applicable.forEach((ob) => {
         const key = `${client.id}::${ob}::${currentMonthCompetencia}`;
-        const val = inputValues[key];
+        let val = inputValues[key];
+        if (val === undefined) {
+          const obNorm = (ob || '').trim().toUpperCase();
+          if (obNorm === 'PRO LAB / INSS' || obNorm === 'PRO-LAB / INSS' || obNorm === 'PRO LAB/INSS') {
+            val = inputValues[`${client.id}::PRO-LAB. / FOPAG::${currentMonthCompetencia}`] || inputValues[`${client.id}::GUIA INSS::${currentMonthCompetencia}`];
+          }
+        }
         if (val !== undefined && (val || '').trim().toUpperCase() === 'OK') {
           okCount++;
         }
@@ -884,25 +908,69 @@ export const Apuracao: React.FC = () => {
 
 
   // Percentual total do que já foi apurado no mês corrente (respeitando o filtro de cliente caso aplicado)
-  const totalApuradoPercent = useMemo(() => {
+  // Para clientes de Lucro Presumido com Folha de Pagamento, consolida as apurações do Regime + Folha:
+  // % Apuração Total = (Qtd. Apurações Concluídas (Regime + Folha) / Total de Apurações Elegíveis (Regime + Folha)) * 100
+  const totalApuradoStats = useMemo(() => {
     let totalItems = 0;
     let okItems = 0;
 
+    let regimeTotal = 0;
+    let regimeOk = 0;
+    let folhaTotal = 0;
+    let folhaOk = 0;
+
     activeScopedClients.forEach((client) => {
-      const applicable = currentObligations.filter((ob) => isObligationEnabled(client, ob));
-      applicable.forEach((ob) => {
+      // 1. Apurações do regime ativo
+      const applicableRegime = currentObligations.filter((ob) => isObligationEnabled(client, ob));
+      applicableRegime.forEach((ob) => {
         totalItems++;
+        regimeTotal++;
         const key = `${client.id}::${ob}::${currentMonthCompetencia}`;
-        const val = inputValues[key];
+        let val = inputValues[key];
+        if (val === undefined) {
+          const obNorm = (ob || '').trim().toUpperCase();
+          if (obNorm === 'PRO LAB / INSS' || obNorm === 'PRO-LAB / INSS' || obNorm === 'PRO LAB/INSS') {
+            val = inputValues[`${client.id}::PRO-LAB. / FOPAG::${currentMonthCompetencia}`] || inputValues[`${client.id}::GUIA INSS::${currentMonthCompetencia}`];
+          }
+        }
         if (val !== undefined && (val || '').trim().toUpperCase() === 'OK') {
           okItems++;
+          regimeOk++;
         }
       });
+
+      // 2. Apurações adicionais de Folha de Pagamento para clientes do Lucro Presumido com folha
+      if (activeTab === 'Lucro Presumido' && hasClientFolha(client)) {
+        const applicableFolha = FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => isObligationEnabled(client, ob));
+        applicableFolha.forEach((ob) => {
+          totalItems++;
+          folhaTotal++;
+          const key = `${client.id}::${ob}::${currentMonthCompetencia}`;
+          const val = inputValues[key];
+          if (val !== undefined && (val || '').trim().toUpperCase() === 'OK') {
+            okItems++;
+            folhaOk++;
+          }
+        });
+      }
     });
 
-    if (totalItems === 0) return 0;
-    return Math.round((okItems / totalItems) * 100);
-  }, [activeScopedClients, currentObligations, isObligationEnabled, currentMonthCompetencia, inputValues]);
+    const percent = totalItems > 0 ? Math.round((okItems / totalItems) * 100) : 0;
+    const hasFolha = folhaTotal > 0;
+
+    return {
+      totalItems,
+      okItems,
+      percent,
+      regimeTotal,
+      regimeOk,
+      folhaTotal,
+      folhaOk,
+      hasFolha,
+    };
+  }, [activeScopedClients, activeTab, currentObligations, isObligationEnabled, currentMonthCompetencia, inputValues]);
+
+  const totalApuradoPercent = totalApuradoStats.percent;
 
   // Percentual total do que já foi validado pelo ADM no mês corrente (respeitando o filtro de cliente caso aplicado)
   // Fórmula ADM: (Qtd. de itens validados entre PRO LAB, DAS e PARCELAMENTO / Total aplicável desses 3 itens) * 100
@@ -1071,10 +1139,23 @@ export const Apuracao: React.FC = () => {
                 className="bg-[#C5A059] h-full rounded-full transition-all duration-500"
               />
             </div>
-            <div className="text-[11px] text-stone-400 font-medium mt-1.5">
-              {currentFilteredClient
-                ? `Cliente: ${currentFilteredClient.razao_social} • Progresso no mês`
-                : `${activeTab} • Progresso geral de apuração no mês`}
+            <div className="text-[11px] text-stone-400 font-medium mt-1.5 flex flex-wrap items-center justify-between gap-1">
+              <span>
+                {currentFilteredClient
+                  ? `Cliente: ${currentFilteredClient.razao_social} • ${totalApuradoStats.okItems} de ${totalApuradoStats.totalItems} apurados`
+                  : `${activeTab} • ${totalApuradoStats.okItems} de ${totalApuradoStats.totalItems} apurações no mês`}
+              </span>
+              {totalApuradoStats.hasFolha && (
+                <div className="inline-flex items-center space-x-1.5 text-[10px] text-stone-400 font-normal">
+                  <span className="bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded font-mono font-medium">
+                    Regime: {totalApuradoStats.regimeOk}/{totalApuradoStats.regimeTotal}
+                  </span>
+                  <span>•</span>
+                  <span className="bg-amber-50 text-amber-900 border border-amber-200/60 px-1.5 py-0.5 rounded font-mono font-medium">
+                    Folha: {totalApuradoStats.folhaOk}/{totalApuradoStats.folhaTotal}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-amber-50 text-[#C5A059] flex items-center justify-center border border-amber-200/60 shadow-2xs shrink-0">

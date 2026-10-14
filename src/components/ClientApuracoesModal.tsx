@@ -18,7 +18,11 @@ import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { apuracaoValidationService, buildValidationKey } from '../services/apuracaoValidationService';
 import { notificationService } from '../services/notificationService';
-import { ADM_DELIVERABLE_OBLIGATIONS } from '../constants/fiscalObligations';
+import {
+  ADM_DELIVERABLE_OBLIGATIONS,
+  FOLHA_PAGAMENTO_OBLIGATIONS,
+  hasClientFolha,
+} from '../constants/fiscalObligations';
 import type { Client, ClientApuracaoValidation } from '../types';
 
 interface ClientApuracoesModalProps {
@@ -127,18 +131,50 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
 
   // Obrigações a exibir e validar no modal:
   // Se perfil ADM e regime Simples Nacional: exibe estritamente as 3 obrigações de entrega (PRO LAB / INSS, GERAR OS DAS e Parc. Ativo se habilitado)
+  // Se regime Lucro Presumido e cliente possuir Folha: consolida as apurações do regime + Folha
   // Se usuário comum: mantém a visualização integral de todas as apurações vigentes sem alterações
   const baseObligations = useMemo(() => {
     if (isAdmin && regime === 'Simples Nacional') {
       const allowed = ADM_DELIVERABLE_OBLIGATIONS['Simples Nacional'];
       return obligations.filter((ob) => allowed.includes(ob));
     }
+    if (regime === 'Lucro Presumido' && client && hasClientFolha(client)) {
+      const combined = [...obligations, ...FOLHA_PAGAMENTO_OBLIGATIONS];
+      return Array.from(new Set(combined));
+    }
     return obligations;
-  }, [isAdmin, regime, obligations]);
+  }, [isAdmin, regime, obligations, client]);
 
   const clientObligations = useMemo(() => {
     return baseObligations.filter((ob) => isObligationEnabled(client, ob));
   }, [baseObligations, client, isObligationEnabled]);
+
+  // Subtotais de Regime e Folha para clientes com Folha consolidada
+  const regimeObligations = useMemo(() => {
+    return clientObligations.filter((ob) => !FOLHA_PAGAMENTO_OBLIGATIONS.includes(ob));
+  }, [clientObligations]);
+
+  const folhaObligations = useMemo(() => {
+    return clientObligations.filter((ob) => FOLHA_PAGAMENTO_OBLIGATIONS.includes(ob));
+  }, [clientObligations]);
+
+  const okRegimeCountInMonth = useMemo(() => {
+    if (!client) return 0;
+    return regimeObligations.filter((ob) => {
+      const key = `${client.id}::${ob}::${selectedComp}`;
+      const val = inputValues[key];
+      return (val || '').trim().toUpperCase() === 'OK';
+    }).length;
+  }, [client, regimeObligations, selectedComp, inputValues]);
+
+  const okFolhaCountInMonth = useMemo(() => {
+    if (!client) return 0;
+    return folhaObligations.filter((ob) => {
+      const key = `${client.id}::${ob}::${selectedComp}`;
+      const val = inputValues[key];
+      return (val || '').trim().toUpperCase() === 'OK';
+    }).length;
+  }, [client, folhaObligations, selectedComp, inputValues]);
 
   // Estatísticas no mês selecionado
   const totalInMonth = clientObligations.length;
@@ -464,6 +500,15 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
               >
                 Ano {year}: {percentInYear}% concluído ({okCountInYear}/{totalInYear})
               </span>
+
+              {regime === 'Lucro Presumido' && hasClientFolha(client) && folhaObligations.length > 0 && (
+                <div className="inline-flex items-center space-x-1 text-[10px] text-stone-500 bg-stone-50 border border-stone-200/80 px-2 py-0.2 rounded-md">
+                  <span className="text-stone-400">Composição ({selectedComp}):</span>
+                  <span className="font-semibold text-stone-700">Regime: {okRegimeCountInMonth}/{regimeObligations.length}</span>
+                  <span>•</span>
+                  <span className="font-semibold text-amber-800">Folha: {okFolhaCountInMonth}/{folhaObligations.length}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -666,6 +711,11 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                       <td className="py-1.5 px-4 font-semibold text-stone-900">
                         <div className="flex items-center space-x-1.5">
                           <span>{obrigacao}</span>
+                          {FOLHA_PAGAMENTO_OBLIGATIONS.includes(obrigacao) && (
+                            <span className="text-[9px] bg-amber-100 text-amber-900 font-bold px-1.5 py-0.2 rounded border border-amber-300">
+                              FOPAG
+                            </span>
+                          )}
                           {isReviewFlagged && (
                             <span className="text-[9px] bg-rose-100 text-rose-800 font-bold px-1.5 py-0.2 rounded border border-rose-300">
                               Revisar
