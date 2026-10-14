@@ -846,7 +846,22 @@ export const Apuracao: React.FC = () => {
       let applicable: string[] = [];
 
       if (isAdmin && activeTab === 'Simples Nacional') {
-        applicable = ADM_DELIVERABLE_OBLIGATIONS['Simples Nacional'].filter((ob) =>
+        const allowedSimples = [
+          ...ADM_DELIVERABLE_OBLIGATIONS['Simples Nacional'],
+          ...(hasClientFolha(client) ? FOLHA_PAGAMENTO_OBLIGATIONS : []),
+        ];
+        applicable = allowedSimples.filter((ob) => isObligationEnabled(client, ob));
+      } else if (isAdmin && activeTab === 'Lucro Presumido') {
+        const regimeObs = (ADM_DELIVERABLE_OBLIGATIONS['Lucro Presumido'] || []).filter((ob) =>
+          isObligationEnabled(client, ob)
+        );
+        const folhaObs = hasClientFolha(client)
+          ? FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => isObligationEnabled(client, ob))
+          : [];
+        const proLab = isObligationEnabled(client, 'PRO LAB / INSS') ? ['PRO LAB / INSS'] : [];
+        applicable = Array.from(new Set([...regimeObs, ...folhaObs, ...proLab]));
+      } else if (isAdmin && activeTab === 'Folha de Pagamento') {
+        applicable = (ADM_DELIVERABLE_OBLIGATIONS['Folha de Pagamento'] || []).filter((ob) =>
           isObligationEnabled(client, ob)
         );
       } else if (activeTab === 'Lucro Presumido' && hasClientFolha(client)) {

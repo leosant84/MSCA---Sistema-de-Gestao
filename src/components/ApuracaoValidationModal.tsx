@@ -83,14 +83,21 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
     setReviewNotes('');
   };
 
-  // Visão do Administrador na Validação: limitar estritamente a PRO LAB / INSS, GERAR OS DAS e Parc. Ativo
+  // Visão do Administrador na Validação: limitar estritamente a obrigações de entrega por regime
   const visibleObligations = useMemo(() => {
     if (isAdmin) {
-      const adminAllowed = ['PRO LAB / INSS', 'GUIA INSS', 'PRO-LAB. / FOPAG', 'GERAR OS DAS', 'Parc. Ativo'];
-      return obligations.filter((ob) => adminAllowed.includes(ob));
+      if (regime === 'Simples Nacional') {
+        const adminAllowed = ['PRO LAB / INSS', 'GUIA INSS', 'PRO-LAB. / FOPAG', 'GERAR OS DAS', 'Parc. Ativo'];
+        return obligations.filter((ob) => adminAllowed.includes(ob));
+      }
+      // Para Lucro Presumido e Folha: oculta etapas puramente operacionais (BAIXAR OS XML'S, IMPORTAR DOMINIO)
+      return obligations.filter((ob) => {
+        const norm = (ob || '').trim().toUpperCase();
+        return !norm.includes('BAIXAR') && !norm.includes('XML') && !norm.includes('IMPORTAR') && !norm.includes('DOMINIO');
+      });
     }
     return obligations;
-  }, [obligations, isAdmin]);
+  }, [obligations, isAdmin, regime]);
 
   if (!isOpen || !client) return null;
 

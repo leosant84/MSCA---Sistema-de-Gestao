@@ -19,10 +19,25 @@ import { useAuth } from '../contexts/AuthContext';
 import { apuracaoValidationService, buildValidationKey } from '../services/apuracaoValidationService';
 import { notificationService } from '../services/notificationService';
 import {
+  FISCAL_OBLIGATIONS,
   FOLHA_PAGAMENTO_OBLIGATIONS,
   hasClientFolha,
+  type FiscalRegimeType,
 } from '../constants/fiscalObligations';
 import type { Client, ClientApuracaoValidation } from '../types';
+
+const isOperationalObligation = (obrigacao: string): boolean => {
+  const norm = (obrigacao || '').trim().toUpperCase();
+  return (
+    norm.includes('BAIXAR') ||
+    norm.includes('XML') ||
+    norm.includes('IMPORTAR') ||
+    norm.includes('DOMINIO') ||
+    norm.includes('DOMÍNIO') ||
+    norm.includes('EXTRATO') ||
+    norm === 'ENVIO'
+  );
+};
 
 interface ClientApuracoesModalProps {
   isOpen: boolean;
@@ -139,21 +154,65 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
 
   if (!isOpen || !client) return null;
 
+  // Determina o regime fiscal efetivo do cliente ou da aba ativa
+  const effectiveRegime = useMemo((): FiscalRegimeType => {
+    if (regime === 'Folha de Pagamento') return 'Folha de Pagamento';
+    const cReg = (client.regime_tributario || '').trim().toUpperCase();
+    if (cReg.includes('PRESUMIDO') || regime === 'Lucro Presumido') return 'Lucro Presumido';
+    return 'Simples Nacional';
+  }, [client.regime_tributario, regime]);
+
   // Obrigações a exibir e validar no modal:
-  // Se perfil ADM (ou validador): exibe estritamente as 3 apurações de entrega homologáveis pelo ADM:
-  // PRO LAB / INSS, GERAR OS DAS e Parc. Ativo (apenas se existir para o cliente em questão).
-  // Todas as demais apurações operacionais (ex: BAIXAR OS XML'S, IMPORTAR DOMINIO, etc.) são suprimidas.
-  // Se usuário comum: mantém a visualização integral de todas as apurações vigentes sem alterações
+  // - Para Simples Nacional (ADM): estritamente PRO LAB / INSS, GERAR OS DAS e Parc. Ativo (+ folha se houver).
+  // - Para Lucro Presumido (ADM): todas as guias de impostos/apurações principais + Folha vinculada (se houver) + Parc. Ativo (se houver), ocultando apenas etapas operacionais (ex: BAIXAR OS XML'S, IMPORTAR DOMINIO).
+  // - Para Folha de Pagamento (ADM): todas as apurações de folha vigentes.
+  // - Para Usuário Comum: mantém a visualização integral de todas as apurações vigentes sem alterações.
   const baseObligations = useMemo(() => {
+    // 1. Universo de obrigações potenciais para o regime do cliente
+    let allPotential: string[] = [];
+
+    if (effectiveRegime === 'Simples Nacional') {
+      const simplesBase = obligations.length > 0 ? obligations : FISCAL_OBLIGATIONS['Simples Nacional'];
+      allPotential = [...simplesBase];
+      if (hasClientFolha(client)) {
+        allPotential = [...allPotential, ...FOLHA_PAGAMENTO_OBLIGATIONS];
+      }
+    } else if (effectiveRegime === 'Lucro Presumido') {
+      const presumidoBase = obligations.length > 0 ? obligations : FISCAL_OBLIGATIONS['Lucro Presumido'];
+      allPotential = [...presumidoBase, 'PRO LAB / INSS'];
+      if (hasClientFolha(client)) {
+        allPotential = [...allPotential, ...FOLHA_PAGAMENTO_OBLIGATIONS];
+      }
+    } else {
+      allPotential = obligations.length > 0 ? obligations : FOLHA_PAGAMENTO_OBLIGATIONS;
+    }
+
+    allPotential = Array.from(new Set(allPotential));
+
+    // 2. Se perfil ADM (ou validador):
     if (isAdmin) {
-      return ['PRO LAB / INSS', 'GERAR OS DAS', 'Parc. Ativo'];
+      if (effectiveRegime === 'Simples Nacional') {
+        const allowedSimples = new Set([
+          'PRO LAB / INSS',
+          'GERAR OS DAS',
+          'Parc. Ativo',
+          ...(hasClientFolha(client) ? FOLHA_PAGAMENTO_OBLIGATIONS : []),
+        ]);
+        return allPotential.filter((ob) => allowedSimples.has(ob));
+      }
+
+      if (effectiveRegime === 'Lucro Presumido') {
+        // Para Lucro Presumido: oculta estritamente etapas operacionais internas (ex: BAIXAR OS XML'S, IMPORTAR DOMINIO)
+        return allPotential.filter((ob) => !isOperationalObligation(ob));
+      }
+
+      // Folha de Pagamento
+      return allPotential.filter((ob) => !isOperationalObligation(ob));
     }
-    if (regime === 'Lucro Presumido' && client && hasClientFolha(client)) {
-      const combined = [...obligations, ...FOLHA_PAGAMENTO_OBLIGATIONS];
-      return Array.from(new Set(combined));
-    }
-    return obligations;
-  }, [isAdmin, regime, obligations, client]);
+
+    // 3. Usuário Comum: visualização integral
+    return allPotential;
+  }, [isAdmin, effectiveRegime, obligations, client]);
 
   const clientObligations = useMemo(() => {
     return baseObligations.filter((ob) => isObligationEnabled(client, ob));
