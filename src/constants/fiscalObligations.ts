@@ -115,3 +115,35 @@ export const FISCAL_OBLIGATIONS: Record<FiscalRegimeType, string[]> = {
     'RECIBO CESTA BÁSICA',
   ],
 };
+
+export const ADM_DELIVERABLE_OBLIGATIONS: Record<FiscalRegimeType, string[]> = {
+  'Simples Nacional': [
+    'PRO LAB / INSS',
+    'GERAR OS DAS',
+    'Parc. Ativo',
+  ],
+  'Lucro Presumido': [
+    'GUIA DE ISS TOMADOS',
+    'GUIA DE ISS PRESTADOS',
+    'GUIA DE ICMS',
+    'GUIA PIS',
+    'GUIA COFINS',
+    'GUIAS - PARC. IRPJ',
+    'GUIAS - PARC. CSLL',
+    'REINF',
+    'DCTFweb',
+    'Parc. Ativo',
+    'DCTF',
+    'EFD CONTR.',
+    'EFD ICMS',
+  ],
+  'Folha de Pagamento': [
+    'ADIANTAMENTO',
+    'CALCULO FOPAG',
+    'GUIA INSS',
+    'GUIA FGTS',
+    'CONTR. ASSISTENCIAL',
+    'RECIBO VALE TRANSPORTE',
+    'RECIBO CESTA BÁSICA',
+  ],
+};

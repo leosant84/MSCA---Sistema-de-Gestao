@@ -11,12 +11,14 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  Send,
 } from 'lucide-react';
 import { RawCnpjCopyButton } from './RawCnpjCopyButton';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { apuracaoValidationService, buildValidationKey } from '../services/apuracaoValidationService';
 import { notificationService } from '../services/notificationService';
+import { ADM_DELIVERABLE_OBLIGATIONS } from '../constants/fiscalObligations';
 import type { Client, ClientApuracaoValidation } from '../types';
 
 interface ClientApuracoesModalProps {
@@ -123,8 +125,20 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
 
   if (!isOpen || !client) return null;
 
-  // Obrigações habilitadas para este cliente no regime/aba ativa:
-  const clientObligations = obligations.filter((ob) => isObligationEnabled(client, ob));
+  // Obrigações a exibir e validar no modal:
+  // Se perfil ADM e regime Simples Nacional: exibe estritamente as 3 obrigações de entrega (PRO LAB / INSS, GERAR OS DAS e Parc. Ativo se habilitado)
+  // Se usuário comum: mantém a visualização integral de todas as apurações vigentes sem alterações
+  const baseObligations = useMemo(() => {
+    if (isAdmin && regime === 'Simples Nacional') {
+      const allowed = ADM_DELIVERABLE_OBLIGATIONS['Simples Nacional'];
+      return obligations.filter((ob) => allowed.includes(ob));
+    }
+    return obligations;
+  }, [isAdmin, regime, obligations]);
+
+  const clientObligations = useMemo(() => {
+    return baseObligations.filter((ob) => isObligationEnabled(client, ob));
+  }, [baseObligations, client, isObligationEnabled]);
 
   // Estatísticas no mês selecionado
   const totalInMonth = clientObligations.length;
@@ -140,6 +154,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   const currentValidationKey = buildValidationKey(client.id, selectedComp);
   const currentValidation = validations[currentValidationKey];
   const isNeedsReview = currentValidation?.status === 'NEEDS_REVIEW';
+  const isEnviadoCliente = Boolean(currentValidation?.enviado_cliente);
 
   // Verifica se uma obrigação específica está validada pelo ADM
   // Estritamente vinculada à existência da apuração ativa: se a apuração foi desfeita, não é validada
@@ -258,6 +273,33 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     }
     toast(`Apurações de ${selectedComp.toUpperCase()} desmarcadas (pendentes)!`, 'info');
     onRefreshData?.();
+  };
+
+  // Alterna o status de Enviado ao Cliente para o mês
+  const handleToggleEnviadoCliente = async () => {
+    if (!isAdmin) {
+      toast('Apenas gestores administradores podem alterar o status de envio ao cliente.', 'info');
+      return;
+    }
+    const nextEnviado = !isEnviadoCliente;
+    try {
+      await apuracaoValidationService.setEnviadoCliente({
+        clientId: client.id,
+        competencia: selectedComp,
+        regime,
+        enviado: nextEnviado,
+        adminId: user?.id,
+        adminName: profile?.full_name || 'Gestor ADM',
+      });
+      if (nextEnviado) {
+        toast(`Apuração de ${selectedComp.toUpperCase()} marcada como Enviada ao Cliente!`, 'success');
+      } else {
+        toast(`Marcação de envio ao cliente removida para ${selectedComp.toUpperCase()}.`, 'info');
+      }
+      onRefreshData?.();
+    } catch {
+      toast('Erro ao atualizar status de envio ao cliente.', 'error');
+    }
   };
 
   // Botão Aprovado (homologa individualmente a obrigação)
@@ -453,6 +495,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                   const mLabel = comp.split('/')[0].toUpperCase();
                   const compValKey = buildValidationKey(client.id, comp);
                   const isCompValid = validations[compValKey]?.status === 'APPROVED';
+                  const isCompEnviado = Boolean(validations[compValKey]?.enviado_cliente);
 
                   const okCountInComp = clientObligations.filter((ob) => {
                     const key = `${client.id}::${ob}::${comp}`;
@@ -462,8 +505,10 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                   const is100InComp = clientObligations.length > 0 && okCountInComp === clientObligations.length;
 
                   let suffix = '';
-                  if (isCompValid) {
-                    suffix = ' ✓ (Validado ADM)';
+                  if (isCompValid && isCompEnviado) {
+                    suffix = ' ✓ (Validado & Enviado)';
+                  } else if (isCompValid) {
+                    suffix = ' ✉ (Validado - Pendente Envio)';
                   } else if (is100InComp) {
                     suffix = ' (100% Apurado)';
                   }
@@ -481,8 +526,10 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
             <div className="hidden sm:flex items-center space-x-1.5">
               <span
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center space-x-1 border ${
-                  isAllObligationsValidated
+                  isAllObligationsValidated && isEnviadoCliente
                     ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                    : isAllObligationsValidated
+                    ? 'bg-blue-50 text-blue-800 border-blue-300'
                     : isPartiallyValidated
                     ? 'bg-blue-100 text-blue-800 border-blue-300'
                     : isMonth100
@@ -490,10 +537,15 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                     : 'bg-amber-100 text-amber-900 border-amber-300'
                 }`}
               >
-                {isAllObligationsValidated ? (
+                {isAllObligationsValidated && isEnviadoCliente ? (
                   <>
-                    <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                    <span>Validado pelo ADM</span>
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    <span>100% Validado & Enviado</span>
+                  </>
+                ) : isAllObligationsValidated ? (
+                  <>
+                    <Send className="w-3 h-3 text-blue-600" />
+                    <span>Validado ADM (Pendente Envio)</span>
                   </>
                 ) : isPartiallyValidated ? (
                   <>
@@ -520,8 +572,24 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
             </div>
           </div>
 
-          {/* Botões de Ação em Lote */}
+          {/* Botões de Ação em Lote e Ação de Envio ao Cliente */}
           <div className="flex items-center flex-wrap gap-2 shrink-0">
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={handleToggleEnviadoCliente}
+                className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-2xs border ${
+                  isEnviadoCliente
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 shadow-emerald-200'
+                    : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300'
+                }`}
+                title={isEnviadoCliente ? 'Clique para desmarcar envio ao cliente' : 'Marcar apuração como enviada ao cliente'}
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>{isEnviadoCliente ? 'Enviado ao Cliente ✓' : 'Marcar como Enviado'}</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleMarkAllVisibleOk}
@@ -729,8 +797,8 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
           <div>
             Competência <strong>{selectedComp.toUpperCase()}</strong>: <strong>{percentInMonth}%</strong> concluído ({okCountInMonth}/{totalInMonth} apurações).
             {validatedObligationsCount > 0 && (
-              <span className={`ml-1 font-bold ${isAllObligationsValidated ? 'text-emerald-700' : 'text-blue-700'}`}>
-                • {isAllObligationsValidated ? '100% Homologado pelo ADM' : `${validatedObligationsCount}/${clientObligations.length} validadas pelo ADM`}
+              <span className={`ml-1 font-bold ${isAllObligationsValidated ? (isEnviadoCliente ? 'text-emerald-700' : 'text-blue-700') : 'text-blue-700'}`}>
+                • {isAllObligationsValidated ? (isEnviadoCliente ? '100% Homologado e Enviado ao Cliente' : '100% Homologado (Pendente de Envio)') : `${validatedObligationsCount}/${clientObligations.length} validadas pelo ADM`}
               </span>
             )}
           </div>

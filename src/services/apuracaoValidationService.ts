@@ -24,13 +24,135 @@ export function buildValidationKey(clientId: string, competencia: string): strin
   return `${clientId}::${competencia.toLowerCase()}`;
 }
 
+async function persistRecord(record: ClientApuracaoValidation) {
+  // 1. Persistência primária na tabela fiscal_records (que já existe no Supabase, possui Realtime e RLS ativo)
+  try {
+    await supabase
+      .from('fiscal_records')
+      .upsert(
+        {
+          client_id: record.client_id,
+          competencia: record.competencia,
+          regime: record.regime,
+          obrigacao: '__VALIDACAO_ADM__',
+          valor: JSON.stringify(record),
+          status: record.enviado_cliente ? 'ENVIADO' : record.status,
+          updated_by: record.reviewed_by || null,
+          updated_at: record.updated_at || new Date().toISOString(),
+        },
+        { onConflict: 'client_id,competencia,obrigacao' }
+      );
+  } catch (err) {
+    console.error('Erro ao persistir validação em fiscal_records:', err);
+  }
+
+  // 2. Persistência na tabela client_apuracao_validations se existir
+  try {
+    await supabase
+      .from('client_apuracao_validations')
+      .upsert(
+        {
+          client_id: record.client_id,
+          competencia: record.competencia,
+          regime: record.regime,
+          status: record.status,
+          reviewed_by: record.reviewed_by || null,
+          reviewed_by_name: record.reviewed_by_name || 'Gestor ADM',
+          reviewed_at: record.reviewed_at || record.updated_at,
+          review_notes: record.review_notes || null,
+          pending_obligations: record.pending_obligations || [],
+          enviado_cliente: Boolean(record.enviado_cliente),
+          enviado_em: record.enviado_em || null,
+          enviado_por: record.enviado_por || null,
+          enviado_por_nome: record.enviado_por_nome || null,
+          updated_at: record.updated_at,
+        },
+        { onConflict: 'client_id,competencia' }
+      );
+  } catch {
+    // Silencioso se a tabela dedicada não existir no banco
+  }
+}
+
+async function deleteRecord(clientId: string, competencia: string) {
+  try {
+    await supabase
+      .from('fiscal_records')
+      .delete()
+      .eq('client_id', clientId)
+      .eq('competencia', competencia)
+      .eq('obrigacao', '__VALIDACAO_ADM__');
+  } catch (err) {
+    console.error('Erro ao remover validação em fiscal_records:', err);
+  }
+
+  try {
+    await supabase
+      .from('client_apuracao_validations')
+      .delete()
+      .eq('client_id', clientId)
+      .eq('competencia', competencia);
+  } catch {
+    // Silencioso
+  }
+}
+
 export const apuracaoValidationService = {
   /**
    * Busca todas as validações de apuração para um ano ou conjunto de competências.
    */
   async getValidations(shortYearStr?: string): Promise<Record<string, ClientApuracaoValidation>> {
     const localMap = getLocalValidations();
+    const merged: Record<string, ClientApuracaoValidation> = { ...localMap };
 
+    // 1. Busca validações de fiscal_records (obrigacao = '__VALIDACAO_ADM__')
+    try {
+      let query = supabase
+        .from('fiscal_records')
+        .select('*')
+        .eq('obrigacao', '__VALIDACAO_ADM__');
+
+      if (shortYearStr) {
+        query = query.like('competencia', `%/${shortYearStr}`);
+      }
+
+      const { data, error } = await query;
+
+      if (!error && data && Array.isArray(data)) {
+        data.forEach((r: { id: string; client_id: string; competencia: string; regime: string; valor: string; status?: string; updated_by?: string | null; created_at?: string; updated_at?: string }) => {
+          try {
+            const parsed = JSON.parse(r.valor || '{}');
+            const item: ClientApuracaoValidation = {
+              id: r.id,
+              client_id: r.client_id,
+              competencia: r.competencia,
+              regime: r.regime,
+              status: parsed.status || r.status || 'PENDING',
+              reviewed_by: parsed.reviewed_by || r.updated_by || null,
+              reviewed_by_name: parsed.reviewed_by_name || 'Gestor ADM',
+              reviewed_at: parsed.reviewed_at || r.updated_at,
+              review_notes: parsed.review_notes || null,
+              pending_obligations: parsed.pending_obligations || [],
+              validated_obligations: parsed.validated_obligations || null,
+              enviado_cliente: parsed.enviado_cliente !== undefined ? parsed.enviado_cliente : (r.status === 'ENVIADO'),
+              enviado_em: parsed.enviado_em || null,
+              enviado_por: parsed.enviado_por || null,
+              enviado_por_nome: parsed.enviado_por_nome || null,
+              created_at: r.created_at,
+              updated_at: r.updated_at,
+            };
+            const k = buildValidationKey(item.client_id, item.competencia);
+            merged[k] = item;
+          } catch {
+            // ignore
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('Falha ao ler validações de fiscal_records:', err);
+    }
+
+    // 2. Busca também de client_apuracao_validations caso a tabela exista
     try {
       let query = supabase.from('client_apuracao_validations').select('*');
       if (shortYearStr) {
@@ -39,19 +161,17 @@ export const apuracaoValidationService = {
       const { data, error } = await query;
 
       if (!error && data && Array.isArray(data)) {
-        const merged = { ...localMap };
         data.forEach((item: ClientApuracaoValidation) => {
           const k = buildValidationKey(item.client_id, item.competencia);
-          merged[k] = item;
+          merged[k] = { ...merged[k], ...item };
         });
-        saveLocalValidations(merged);
-        return merged;
       }
     } catch {
-      // Falha silenciosa caso tabela não exista no banco; fallback local funciona 100%
+      // Falha silenciosa caso tabela dedicada não exista no banco
     }
 
-    return localMap;
+    saveLocalValidations(merged);
+    return merged;
   },
 
   /**
@@ -68,20 +188,25 @@ export const apuracaoValidationService = {
     const now = new Date().toISOString();
     const key = buildValidationKey(params.clientId, params.competencia);
     const localMap = getLocalValidations();
+    const existing = localMap[key];
 
     const record: ClientApuracaoValidation = {
-      id: localMap[key]?.id || crypto.randomUUID(),
+      id: existing?.id || crypto.randomUUID(),
       client_id: params.clientId,
       competencia: params.competencia,
       regime: params.regime,
       status: 'APPROVED',
-      reviewed_by: params.adminId || null,
-      reviewed_by_name: params.adminName || 'Gestor ADM',
+      reviewed_by: params.adminId || existing?.reviewed_by || null,
+      reviewed_by_name: params.adminName || existing?.reviewed_by_name || 'Gestor ADM',
       reviewed_at: now,
       review_notes: null,
       pending_obligations: [],
-      validated_obligations: params.allObligations || null,
-      created_at: localMap[key]?.created_at || now,
+      validated_obligations: params.allObligations || existing?.validated_obligations || null,
+      enviado_cliente: existing?.enviado_cliente ?? false,
+      enviado_em: existing?.enviado_em || null,
+      enviado_por: existing?.enviado_por || null,
+      enviado_por_nome: existing?.enviado_por_nome || null,
+      created_at: existing?.created_at || now,
       updated_at: now,
     };
 
@@ -93,36 +218,61 @@ export const apuracaoValidationService = {
       new CustomEvent('msca_apuracao_validated', { detail: { key, record } })
     );
 
-    // Persistir no Supabase
-    try {
-      await supabase
-        .from('client_apuracao_validations')
-        .upsert(
-          {
-            client_id: params.clientId,
-            competencia: params.competencia,
-            regime: params.regime,
-            status: 'APPROVED',
-            reviewed_by: params.adminId || null,
-            reviewed_by_name: params.adminName || 'Gestor ADM',
-            reviewed_at: now,
-            review_notes: null,
-            pending_obligations: [],
-            updated_at: now,
-          },
-          { onConflict: 'client_id,competencia' }
-        );
-    } catch {
-      // Ignora falha de rede/schema ausente
-    }
+    await persistRecord(record);
+
+    return record;
+  },
+
+  /**
+   * Alterna o status de "Enviado ao Cliente" para a apuração da competência.
+   */
+  async setEnviadoCliente(params: {
+    clientId: string;
+    competencia: string;
+    regime: string;
+    enviado: boolean;
+    adminId?: string;
+    adminName?: string;
+  }): Promise<ClientApuracaoValidation> {
+    const now = new Date().toISOString();
+    const key = buildValidationKey(params.clientId, params.competencia);
+    const localMap = getLocalValidations();
+    const existing = localMap[key];
+
+    const record: ClientApuracaoValidation = {
+      id: existing?.id || crypto.randomUUID(),
+      client_id: params.clientId,
+      competencia: params.competencia,
+      regime: params.regime,
+      status: existing?.status || 'APPROVED',
+      reviewed_by: existing?.reviewed_by || params.adminId || null,
+      reviewed_by_name: existing?.reviewed_by_name || params.adminName || 'Gestor ADM',
+      reviewed_at: existing?.reviewed_at || now,
+      review_notes: existing?.review_notes || null,
+      pending_obligations: existing?.pending_obligations || [],
+      validated_obligations: existing?.validated_obligations || null,
+      enviado_cliente: params.enviado,
+      enviado_em: params.enviado ? now : null,
+      enviado_por: params.enviado ? (params.adminId || null) : null,
+      enviado_por_nome: params.enviado ? (params.adminName || 'Gestor ADM') : null,
+      created_at: existing?.created_at || now,
+      updated_at: now,
+    };
+
+    localMap[key] = record;
+    saveLocalValidations(localMap);
+
+    window.dispatchEvent(
+      new CustomEvent('msca_apuracao_validated', { detail: { key, record } })
+    );
+
+    await persistRecord(record);
 
     return record;
   },
 
   /**
    * Alterna a validação de uma única obrigação específica de um cliente na competência.
-   * Se todas as obrigações do cliente forem validadas, o status geral vai para APPROVED.
-   * Se nenhuma obrigação estiver validada, o registro de validação pode ser limpo ou ficar pendente.
    */
   async toggleObligationValidation(params: {
     clientId: string;
@@ -139,7 +289,6 @@ export const apuracaoValidationService = {
     const localMap = getLocalValidations();
     const existing = localMap[key];
 
-    // Se já estava com status APPROVED e sem array discriminado, assumimos que todas as obrigações estavam validadas
     let currentValidated = new Set<string>(
       existing?.validated_obligations
         ? existing.validated_obligations
@@ -152,7 +301,6 @@ export const apuracaoValidationService = {
 
     if (params.validated) {
       currentValidated.add(params.obrigacao);
-      // Ao validar/aprovar, limpa a pendência desta obrigação (inclusive rubricas unificadas)
       currentPending.delete(params.obrigacao);
       const obNorm = (params.obrigacao || '').trim().toUpperCase();
       if (obNorm === 'PRO LAB / INSS') {
@@ -170,22 +318,14 @@ export const apuracaoValidationService = {
       totalObligations > 0 &&
       params.allClientObligations.every((ob) => currentValidated.has(ob));
 
-    // Se desmarcou e não sobrou nenhuma validada, e não havia pendências registradas
-    if (validatedArray.length === 0 && pendingArray.length === 0) {
+    // Se desmarcou e não sobrou nenhuma validada, nem pendência, e não foi enviado
+    if (validatedArray.length === 0 && pendingArray.length === 0 && !existing?.enviado_cliente) {
       delete localMap[key];
       saveLocalValidations(localMap);
       window.dispatchEvent(
         new CustomEvent('msca_apuracao_validated', { detail: { key, record: null } })
       );
-      try {
-        await supabase
-          .from('client_apuracao_validations')
-          .delete()
-          .eq('client_id', params.clientId)
-          .eq('competencia', params.competencia);
-      } catch {
-        // ignore
-      }
+      await deleteRecord(params.clientId, params.competencia);
       return null;
     }
 
@@ -207,6 +347,10 @@ export const apuracaoValidationService = {
       review_notes: pendingArray.length > 0 ? existing?.review_notes || null : null,
       pending_obligations: pendingArray,
       validated_obligations: validatedArray,
+      enviado_cliente: existing?.enviado_cliente ?? false,
+      enviado_em: existing?.enviado_em || null,
+      enviado_por: existing?.enviado_por || null,
+      enviado_por_nome: existing?.enviado_por_nome || null,
       created_at: existing?.created_at || now,
       updated_at: now,
     };
@@ -218,34 +362,13 @@ export const apuracaoValidationService = {
       new CustomEvent('msca_apuracao_validated', { detail: { key, record } })
     );
 
-    try {
-      await supabase
-        .from('client_apuracao_validations')
-        .upsert(
-          {
-            client_id: params.clientId,
-            competencia: params.competencia,
-            regime: params.regime,
-            status: newStatus,
-            reviewed_by: params.adminId || null,
-            reviewed_by_name: params.adminName || 'Gestor ADM',
-            reviewed_at: now,
-            review_notes: pendingArray.length > 0 ? existing?.review_notes || null : null,
-            pending_obligations: pendingArray,
-            updated_at: now,
-          },
-          { onConflict: 'client_id,competencia' }
-        );
-    } catch {
-      // Ignora falha de schema
-    }
+    await persistRecord(record);
 
     return record;
   },
 
   /**
    * Limpa a pendência de uma obrigação específica quando o usuário a apura novamente (OK).
-   * Se não restarem mais pendências no cliente, o status NEEDS_REVIEW é removido.
    */
   async clearObligationPending(params: {
     clientId: string;
@@ -286,30 +409,13 @@ export const apuracaoValidationService = {
       new CustomEvent('msca_apuracao_validated', { detail: { key, record: updatedRecord } })
     );
 
-    try {
-      await supabase
-        .from('client_apuracao_validations')
-        .upsert(
-          {
-            client_id: params.clientId,
-            competencia: params.competencia,
-            status: newStatus,
-            review_notes: remainingPendingCount > 0 ? existing.review_notes : null,
-            pending_obligations: currentPending,
-            updated_at: now,
-          },
-          { onConflict: 'client_id,competencia' }
-        );
-    } catch {
-      // ignore
-    }
+    await persistRecord(updatedRecord);
 
     return updatedRecord;
   },
 
   /**
    * Remove a validação de uma obrigação específica quando ela é removida/desfeita (não está mais OK).
-   * Garante que o status de validação/homologação do ADM não continue ativo se a apuração não existir.
    */
   async clearObligationValidation(params: {
     clientId: string;
@@ -323,7 +429,6 @@ export const apuracaoValidationService = {
 
     const obNorm = (params.obrigacao || '').trim().toUpperCase();
 
-    // Remove a obrigação do conjunto de validadas
     const remainingValidated = (existing.validated_obligations || []).filter((ob) => {
       if (ob === params.obrigacao) return false;
       if (obNorm === 'PRO LAB / INSS' && (ob === 'GUIA INSS' || ob === 'PRO-LAB. / FOPAG')) return false;
@@ -333,26 +438,16 @@ export const apuracaoValidationService = {
     const hasPending = (existing.pending_obligations || []).length > 0;
     const now = new Date().toISOString();
 
-    // Se não há mais obrigações validadas e nenhuma pendência, limpa completamente o registro
-    if (remainingValidated.length === 0 && !hasPending) {
+    if (remainingValidated.length === 0 && !hasPending && !existing.enviado_cliente) {
       delete localMap[key];
       saveLocalValidations(localMap);
       window.dispatchEvent(
         new CustomEvent('msca_apuracao_validated', { detail: { key, record: null } })
       );
-      try {
-        await supabase
-          .from('client_apuracao_validations')
-          .delete()
-          .eq('client_id', params.clientId)
-          .eq('competencia', params.competencia);
-      } catch {
-        // ignore
-      }
+      await deleteRecord(params.clientId, params.competencia);
       return null;
     }
 
-    // Se ainda há pendências ou outras obrigações validadas, rebaixa APPROVED para PENDING ou NEEDS_REVIEW
     const newStatus: 'APPROVED' | 'PENDING' | 'NEEDS_REVIEW' = hasPending
       ? 'NEEDS_REVIEW'
       : 'PENDING';
@@ -371,22 +466,7 @@ export const apuracaoValidationService = {
       new CustomEvent('msca_apuracao_validated', { detail: { key, record: updatedRecord } })
     );
 
-    try {
-      await supabase
-        .from('client_apuracao_validations')
-        .upsert(
-          {
-            client_id: params.clientId,
-            competencia: params.competencia,
-            status: newStatus,
-            validated_obligations: remainingValidated,
-            updated_at: now,
-          },
-          { onConflict: 'client_id,competencia' }
-        );
-    } catch {
-      // ignore
-    }
+    await persistRecord(updatedRecord);
 
     return updatedRecord;
   },
@@ -406,9 +486,10 @@ export const apuracaoValidationService = {
     const now = new Date().toISOString();
     const key = buildValidationKey(params.clientId, params.competencia);
     const localMap = getLocalValidations();
+    const existing = localMap[key];
 
     const record: ClientApuracaoValidation = {
-      id: localMap[key]?.id || crypto.randomUUID(),
+      id: existing?.id || crypto.randomUUID(),
       client_id: params.clientId,
       competencia: params.competencia,
       regime: params.regime,
@@ -418,7 +499,11 @@ export const apuracaoValidationService = {
       reviewed_at: now,
       review_notes: params.reviewNotes,
       pending_obligations: params.pendingObligations || [],
-      created_at: localMap[key]?.created_at || now,
+      enviado_cliente: existing?.enviado_cliente ?? false,
+      enviado_em: existing?.enviado_em || null,
+      enviado_por: existing?.enviado_por || null,
+      enviado_por_nome: existing?.enviado_por_nome || null,
+      created_at: existing?.created_at || now,
       updated_at: now,
     };
 
@@ -429,27 +514,7 @@ export const apuracaoValidationService = {
       new CustomEvent('msca_apuracao_validated', { detail: { key, record } })
     );
 
-    try {
-      await supabase
-        .from('client_apuracao_validations')
-        .upsert(
-          {
-            client_id: params.clientId,
-            competencia: params.competencia,
-            regime: params.regime,
-            status: 'NEEDS_REVIEW',
-            reviewed_by: params.adminId || null,
-            reviewed_by_name: params.adminName || 'Gestor ADM',
-            reviewed_at: now,
-            review_notes: params.reviewNotes,
-            pending_obligations: params.pendingObligations || [],
-            updated_at: now,
-          },
-          { onConflict: 'client_id,competencia' }
-        );
-    } catch {
-      // Ignora falha de schema
-    }
+    await persistRecord(record);
 
     return record;
   },
@@ -468,14 +533,6 @@ export const apuracaoValidationService = {
       );
     }
 
-    try {
-      await supabase
-        .from('client_apuracao_validations')
-        .delete()
-        .eq('client_id', clientId)
-        .eq('competencia', competencia);
-    } catch {
-      // ignore
-    }
+    await deleteRecord(clientId, competencia);
   },
 };

@@ -127,7 +127,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     regime_tributario: clientInitialRegime,
     folha_pagamento: clientInitialFolha,
     puro_ou_hibrido: clientToEdit?.puro_ou_hibrido || 'Puro',
-    fator_r: clientToEdit?.fator_r || 'Não',
+    fator_r: (clientToEdit?.fator_r || '').trim().toUpperCase() === 'SIM' ? 'Sim' : 'Não',
     codigo_acesso_simples: clientToEdit?.codigo_acesso_simples || '',
     inicio_atividades: formatInitialDate(clientToEdit?.inicio_atividades),
     localidade: (clientToEdit?.localidade || '').toUpperCase(),

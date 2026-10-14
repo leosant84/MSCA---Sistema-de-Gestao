@@ -71,6 +71,10 @@ export interface ClientApuracaoValidation {
   review_notes?: string | null;
   pending_obligations?: string[] | null;
   validated_obligations?: string[] | null;
+  enviado_cliente?: boolean | null;
+  enviado_em?: string | null;
+  enviado_por?: string | null;
+  enviado_por_nome?: string | null;
   created_at?: string;
   updated_at?: string;
 }

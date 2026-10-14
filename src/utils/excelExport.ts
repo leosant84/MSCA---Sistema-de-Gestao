@@ -150,7 +150,7 @@ export function exportClientsToExcel(
       row['Puro/Híbrido'] = c.puro_ou_hibrido || '';
     }
     if (fieldKeys.includes('fator_r')) {
-      row['Fator R'] = c.fator_r || '';
+      row['Fator R'] = (c.fator_r || '').trim().toUpperCase() === 'SIM' ? 'Sim' : 'Não';
     }
     if (fieldKeys.includes('localidade')) {
       row['Localidade'] = c.localidade || '';

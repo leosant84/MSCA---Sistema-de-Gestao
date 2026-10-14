@@ -101,6 +101,12 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
     return false;
   };
 
+  // Auxiliar para checar se apuração do cliente foi marcada como enviada
+  const checkClientEnviado = (c: Client) => {
+    const k = buildValidationKey(c.id, competencia);
+    return Boolean(validations[k]?.enviado_cliente);
+  };
+
   // Auxiliar para checar se cliente possui pendência apontada na obrigação/competência
   // Mutuamente exclusivo com a validação/aprovação: se já foi validado/aprovado, a pendência anterior é ignorada
   const checkClientNeedsReview = (c: Client) => {
@@ -764,12 +770,17 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                           <span className="font-semibold text-stone-900 leading-tight text-xs">
                             {client.razao_social}
                           </span>
-                          {isClientVal && (
+                          {isClientVal && checkClientEnviado(client) ? (
                             <span className="inline-flex items-center space-x-0.5 text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded-full">
-                              <ShieldCheck className="w-2.5 h-2.5 text-emerald-600" />
-                              <span>Validado</span>
+                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                              <span>Validado & Enviado</span>
                             </span>
-                          )}
+                          ) : isClientVal ? (
+                            <span className="inline-flex items-center space-x-0.5 text-[9px] font-bold bg-blue-50 text-blue-800 border border-blue-300 px-1.5 py-0.2 rounded-full">
+                              <ShieldCheck className="w-2.5 h-2.5 text-blue-600" />
+                              <span>Validado (Pendente Envio)</span>
+                            </span>
+                          ) : null}
                           {isReviewFlagged && (
                             <span className="inline-flex items-center space-x-0.5 text-[9px] font-bold bg-rose-100 text-rose-800 border border-rose-300 px-1.5 py-0.2 rounded-full">
                               <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />

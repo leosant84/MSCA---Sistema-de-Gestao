@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Clock,
   AlertTriangle,
+  Send,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -23,6 +24,7 @@ import {
   FISCAL_OBLIGATIONS,
   FISCAL_REGIME_OPTIONS,
   FOLHA_PAGAMENTO_OBLIGATIONS,
+  ADM_DELIVERABLE_OBLIGATIONS,
   hasClientFolha,
 } from '../constants/fiscalObligations';
 import { APURACAO_CLIENT_IDS } from '../constants/apuracaoScope';
@@ -39,7 +41,8 @@ const MONTH_NAMES_SHORT = [
 ];
 
 export const Apuracao: React.FC = () => {
-  const { user, profile } = useAuth();
+  const { user, profile, isAdmin: authIsAdmin, role } = useAuth();
+  const isAdmin = Boolean(authIsAdmin || profile?.role === 'admin' || role === 'admin');
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
 
@@ -141,15 +144,45 @@ export const Apuracao: React.FC = () => {
       }
 
       const map: Record<string, string> = {};
+      const validationsFromRecords: Record<string, ClientApuracaoValidation> = {};
 
-      // 1. Mapeia os registros reais do banco
+      // 1. Mapeia os registros reais do banco (e extrai validações persistidas)
       allRecords.forEach((r) => {
+        if (r.obrigacao === '__VALIDACAO_ADM__') {
+          try {
+            const parsed = JSON.parse(r.valor || '{}');
+            const item: ClientApuracaoValidation = {
+              id: r.id,
+              client_id: r.client_id,
+              competencia: r.competencia,
+              regime: r.regime,
+              status: parsed.status || (r.status === 'ENVIADO' ? 'APPROVED' : (r.status as any)) || 'PENDING',
+              reviewed_by: parsed.reviewed_by || (r as any).updated_by || null,
+              reviewed_by_name: parsed.reviewed_by_name || 'Gestor ADM',
+              reviewed_at: parsed.reviewed_at || r.updated_at,
+              review_notes: parsed.review_notes || null,
+              pending_obligations: parsed.pending_obligations || [],
+              validated_obligations: parsed.validated_obligations || null,
+              enviado_cliente: parsed.enviado_cliente !== undefined ? parsed.enviado_cliente : (r.status === 'ENVIADO'),
+              enviado_em: parsed.enviado_em || null,
+              enviado_por: parsed.enviado_por || null,
+              enviado_por_nome: parsed.enviado_por_nome || null,
+              created_at: r.created_at,
+              updated_at: r.updated_at,
+            };
+            const k = buildValidationKey(item.client_id, item.competencia);
+            validationsFromRecords[k] = item;
+          } catch {}
+          return;
+        }
+
         const key = `${r.client_id}::${r.obrigacao}::${r.competencia}`;
         map[key] = r.valor || '';
       });
 
       // 2. Unificação retrocompatível com chaves canônicas (ex: PRO-LAB. / FOPAG ou GUIA INSS -> PRO LAB / INSS no Simples)
       allRecords.forEach((r) => {
+        if (r.obrigacao === '__VALIDACAO_ADM__') return;
         const obNorm = (r.obrigacao || '').trim().toUpperCase();
         if (obNorm === 'PRO-LAB. / FOPAG' || obNorm === 'GUIA INSS') {
           if (r.regime !== 'Folha de Pagamento') {
@@ -164,7 +197,7 @@ export const Apuracao: React.FC = () => {
 
       // 3. Busca validações do ADM
       const loadedValidations = await apuracaoValidationService.getValidations(shortYearStr);
-      setValidations(loadedValidations);
+      setValidations({ ...loadedValidations, ...validationsFromRecords });
 
       // Checagem de link de validação vindo por query param
       const valClientParam = searchParams.get('client_id');
@@ -241,6 +274,34 @@ export const Apuracao: React.FC = () => {
         (payload) => {
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const r = payload.new as FiscalRecord;
+            if (r && r.client_id && r.competencia && r.obrigacao === '__VALIDACAO_ADM__') {
+              try {
+                const parsed = JSON.parse(r.valor || '{}');
+                const key = buildValidationKey(r.client_id, r.competencia);
+                const rec: ClientApuracaoValidation = {
+                  id: r.id,
+                  client_id: r.client_id,
+                  competencia: r.competencia,
+                  regime: r.regime,
+                  status: parsed.status || (r.status === 'ENVIADO' ? 'APPROVED' : (r.status as any)) || 'PENDING',
+                  reviewed_by: parsed.reviewed_by || (r as any).updated_by || null,
+                  reviewed_by_name: parsed.reviewed_by_name || 'Gestor ADM',
+                  reviewed_at: parsed.reviewed_at || r.updated_at,
+                  review_notes: parsed.review_notes || null,
+                  pending_obligations: parsed.pending_obligations || [],
+                  validated_obligations: parsed.validated_obligations || null,
+                  enviado_cliente: parsed.enviado_cliente !== undefined ? parsed.enviado_cliente : (r.status === 'ENVIADO'),
+                  enviado_em: parsed.enviado_em || null,
+                  enviado_por: parsed.enviado_por || null,
+                  enviado_por_nome: parsed.enviado_por_nome || null,
+                  created_at: r.created_at,
+                  updated_at: r.updated_at,
+                };
+                setValidations((prev) => ({ ...prev, [key]: rec }));
+              } catch {}
+              return;
+            }
+
             if (r && r.client_id && r.obrigacao && r.competencia) {
               const key = `${r.client_id}::${r.obrigacao}::${r.competencia}`;
               setInputValues((prev) => {
@@ -255,6 +316,16 @@ export const Apuracao: React.FC = () => {
             }
           } else if (payload.eventType === 'DELETE') {
             const old = payload.old as Partial<FiscalRecord>;
+            if (old && old.client_id && old.competencia && old.obrigacao === '__VALIDACAO_ADM__') {
+              const key = buildValidationKey(old.client_id, old.competencia);
+              setValidations((prev) => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+              });
+              return;
+            }
+
             if (old && old.client_id && old.obrigacao && old.competencia) {
               const key = `${old.client_id}::${old.obrigacao}::${old.competencia}`;
               setInputValues((prev) => {
@@ -693,6 +764,29 @@ export const Apuracao: React.FC = () => {
     [currentFilteredClient, activeScopedClients, isObligationEnabled, validations, inputValues]
   );
 
+  // Auxiliar: verifica se o cliente ou mês foi marcado como enviado ao cliente
+  const isMonthEnviado = useCallback(
+    (competencia: string, obrigacao?: string) => {
+      const isClientEnviado = (c: Client) => {
+        const k = buildValidationKey(c.id, competencia);
+        return Boolean(validations[k]?.enviado_cliente);
+      };
+
+      if (currentFilteredClient) {
+        return isClientEnviado(currentFilteredClient);
+      }
+
+      const applicableClients = obrigacao
+        ? activeScopedClients.filter((c) => isObligationEnabled(c, obrigacao))
+        : activeScopedClients;
+
+      if (applicableClients.length === 0) return false;
+
+      return applicableClients.every((c) => isClientEnviado(c));
+    },
+    [currentFilteredClient, activeScopedClients, isObligationEnabled, validations]
+  );
+
   // Auxiliar: verifica se o cliente ou obrigação possui apontamento de pendência (NEEDS_REVIEW)
   const isMonthNeedsReview = useCallback(
     (competencia: string, obrigacao?: string) => {
@@ -728,10 +822,16 @@ export const Apuracao: React.FC = () => {
   );
 
   // Calcula o status de conclusão e validação de um cliente na competência corrente
+  // Para perfil ADM no Simples Nacional: avalia estritamente PRO LAB / INSS, GERAR OS DAS e Parc. Ativo (se habilitado)
+  // Para usuário comum: avalia integralmente todas as apurações vigentes
   const getClientCurrentMonthSummary = useCallback(
     (client: Client) => {
-      const applicable = currentObligations.filter((ob) => isObligationEnabled(client, ob));
-      if (applicable.length === 0) return { percent: 0, is100: false, isValidated: false, isNeedsReview: false };
+      const baseObligations =
+        isAdmin && activeTab === 'Simples Nacional'
+          ? ADM_DELIVERABLE_OBLIGATIONS['Simples Nacional']
+          : currentObligations;
+      const applicable = baseObligations.filter((ob) => isObligationEnabled(client, ob));
+      if (applicable.length === 0) return { percent: 0, is100: false, isValidated: false, isEnviado: false, isNeedsReview: false };
 
       let okCount = 0;
 
@@ -746,12 +846,14 @@ export const Apuracao: React.FC = () => {
       const percent = Math.round((okCount / applicable.length) * 100);
       const is100 = applicable.length > 0 && okCount === applicable.length;
       const vKey = buildValidationKey(client.id, currentMonthCompetencia);
-      const isValidated = is100 && validations[vKey]?.status === 'APPROVED';
-      const isNeedsReview = validations[vKey]?.status === 'NEEDS_REVIEW';
+      const valRec = validations[vKey];
+      const isValidated = is100 && valRec?.status === 'APPROVED';
+      const isEnviado = Boolean(valRec?.enviado_cliente);
+      const isNeedsReview = valRec?.status === 'NEEDS_REVIEW';
 
-      return { percent, is100, isValidated, isNeedsReview };
+      return { percent, is100, isValidated, isEnviado, isNeedsReview };
     },
-    [currentObligations, isObligationEnabled, currentMonthCompetencia, inputValues, validations]
+    [isAdmin, activeTab, currentObligations, isObligationEnabled, currentMonthCompetencia, inputValues, validations]
   );
 
   // Mapeamento dos clientes do regime com seu status de conclusão do mês atual
@@ -837,6 +939,28 @@ export const Apuracao: React.FC = () => {
     return Math.round((validatedItems / totalItems) * 100);
   }, [activeScopedClients, currentObligations, isObligationEnabled, currentMonthCompetencia, validations, inputValues]);
 
+  // Percentual total de apurações enviadas ao cliente no mês corrente
+  // (Apurações Enviadas ao Cliente / Total de Apurações Validadas ou Elegíveis) * 100
+  const totalEnviadoStats = useMemo(() => {
+    const eligible = activeScopedClients.filter((client) => {
+      const summary = getClientCurrentMonthSummary(client);
+      const vKey = buildValidationKey(client.id, currentMonthCompetencia);
+      const valRec = validations[vKey];
+      return summary.is100 || valRec?.status === 'APPROVED';
+    });
+
+    const totalEligible = eligible.length;
+    if (totalEligible === 0) return { count: 0, total: 0, percent: 0 };
+
+    const sentCount = eligible.filter((client) => {
+      const vKey = buildValidationKey(client.id, currentMonthCompetencia);
+      return Boolean(validations[vKey]?.enviado_cliente);
+    }).length;
+
+    const percent = Math.round((sentCount / totalEligible) * 100);
+    return { count: sentCount, total: totalEligible, percent };
+  }, [activeScopedClients, getClientCurrentMonthSummary, validations, currentMonthCompetencia]);
+
   // Abrir Modal de Drilldown para uma apuração
   const handleOpenDrilldown = (obrigacao: string, comp: string, isNeedsReview?: boolean) => {
     setSelectedObligation(obrigacao);
@@ -900,7 +1024,7 @@ export const Apuracao: React.FC = () => {
       </div>
 
       {/* 2. CARDS DE RESUMO OPERACIONAL DO MÊS CORRENTE */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Card 1: Percentual Total Apurado do Mês Corrente */}
         <div className="bg-white p-5 rounded-3xl border border-stone-200/70 shadow-xs flex items-center justify-between">
           <div className="w-full mr-4">
@@ -954,6 +1078,32 @@ export const Apuracao: React.FC = () => {
           </div>
           <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200 shadow-2xs shrink-0">
             <ShieldCheck className="w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Card 3: Percentual de Envio ao Cliente */}
+        <div className="bg-white p-5 rounded-3xl border border-stone-200/70 shadow-xs flex items-center justify-between">
+          <div className="w-full mr-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wider block">
+                Percentual de Envio ({currentMonthCompetencia})
+              </span>
+              <span className="text-2xl font-extrabold text-blue-700">
+                {totalEnviadoStats.percent}%
+              </span>
+            </div>
+            <div className="w-full bg-stone-100 h-2.5 rounded-full overflow-hidden">
+              <div
+                style={{ width: `${totalEnviadoStats.percent}%` }}
+                className="bg-blue-600 h-full rounded-full transition-all duration-500"
+              />
+            </div>
+            <div className="text-[11px] text-stone-400 font-medium mt-1.5">
+              {totalEnviadoStats.count} de {totalEnviadoStats.total} apurações validadas enviadas ao cliente
+            </div>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center border border-blue-200 shadow-2xs shrink-0">
+            <Send className="w-6 h-6" />
           </div>
         </div>
       </div>
@@ -1150,6 +1300,7 @@ export const Apuracao: React.FC = () => {
                       const is100 = stats.percent === 100;
                       const isZero = stats.percent === 0;
                       const isValidated = is100 && isMonthValidated(compStr, obrigacao);
+                      const isEnviado = isValidated && isMonthEnviado(compStr, obrigacao);
                       const isNeedsReview = isMonthNeedsReview(compStr, obrigacao);
 
                       return (
@@ -1161,8 +1312,10 @@ export const Apuracao: React.FC = () => {
                             isNeedsReview
                               ? 'Atenção: Há pendência apontada pelo ADM para revisão!'
                               : is100
-                              ? isValidated
-                                ? '100% Apurado e Validado pelo ADM.'
+                              ? (isValidated && isEnviado)
+                                ? '100% Apurado, Validado pelo ADM e Enviado ao Cliente.'
+                                : isValidated
+                                ? '100% Apurado e Validado pelo ADM (Pendente de Envio ao Cliente).'
                                 : '100% Apurado (Aguardando Validação do ADM).'
                               : ''
                           } Clique para abrir clientes.`}
@@ -1174,8 +1327,10 @@ export const Apuracao: React.FC = () => {
                                 isNeedsReview
                                   ? 'bg-rose-100 text-rose-800 border border-rose-300 font-extrabold ring-1 ring-rose-400'
                                   : is100
-                                  ? isValidated
+                                  ? (isValidated && isEnviado)
                                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold'
+                                    : isValidated
+                                    ? 'bg-blue-50 text-blue-800 border border-blue-300 font-bold'
                                     : 'bg-slate-100 text-slate-700 border border-slate-300 font-bold'
                                   : isZero
                                   ? 'bg-stone-100 text-stone-400 border border-stone-200/80 font-normal'
@@ -1186,8 +1341,10 @@ export const Apuracao: React.FC = () => {
                               {isNeedsReview ? (
                                 <AlertTriangle className="w-2.5 h-2.5 text-rose-600 shrink-0 animate-pulse" />
                               ) : is100 ? (
-                                isValidated ? (
+                                (isValidated && isEnviado) ? (
                                   <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                                ) : isValidated ? (
+                                  <Send className="w-2.5 h-2.5 text-blue-600 shrink-0" />
                                 ) : (
                                   <Clock className="w-2.5 h-2.5 text-slate-400 shrink-0" />
                                 )
@@ -1226,11 +1383,17 @@ export const Apuracao: React.FC = () => {
               </span>
               <span className="font-semibold text-rose-900">Pendência Apontada</span>
             </div>
-            <div className="flex items-center space-x-1.5" title="Apuração 100% concluída e homologada pelo ADM">
+            <div className="flex items-center space-x-1.5" title="Apuração 100% concluída, validada pelo ADM e enviada ao cliente">
               <span className="w-3 h-3 rounded-md bg-emerald-100 border border-emerald-400 flex items-center justify-center">
                 <CheckCircle2 className="w-2 h-2 text-emerald-700" />
               </span>
-              <span className="font-semibold text-emerald-900">100% Validado ADM</span>
+              <span className="font-semibold text-emerald-900">100% Validado & Enviado</span>
+            </div>
+            <div className="flex items-center space-x-1.5" title="Apuração 100% concluída e validada pelo ADM (aguardando envio ao cliente)">
+              <span className="w-3 h-3 rounded-md bg-blue-50 border border-blue-300 flex items-center justify-center">
+                <Send className="w-2 h-2 text-blue-700" />
+              </span>
+              <span className="font-semibold text-blue-900">Validado (Pendente Envio)</span>
             </div>
             <div className="flex items-center space-x-1.5" title="Apuração 100% concluída, aguardando validação do ADM">
               <span className="w-3 h-3 rounded-md bg-slate-100 border border-slate-300 flex items-center justify-center">

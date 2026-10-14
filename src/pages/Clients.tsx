@@ -229,8 +229,8 @@ export const Clients: React.FC = () => {
           break;
         }
         case 'fator_r': {
-          const frA = (a.fator_r || '').trim();
-          const frB = (b.fator_r || '').trim();
+          const frA = (a.fator_r || '').trim().toUpperCase() === 'SIM' ? 'Sim' : 'Não';
+          const frB = (b.fator_r || '').trim().toUpperCase() === 'SIM' ? 'Sim' : 'Não';
           comparison = frA.localeCompare(frB);
           break;
         }
@@ -659,7 +659,7 @@ export const Clients: React.FC = () => {
 
                     {/* Coluna Fator R */}
                     <td className="py-2.5 px-2.5 text-center whitespace-nowrap">
-                      {c.fator_r === 'Sim' ? (
+                      {(c.fator_r || '').trim().toUpperCase() === 'SIM' ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-bold text-[10px] border border-emerald-200 shadow-2xs">
                           <span>Sim</span>
                         </span>
