@@ -34,6 +34,19 @@ import { apuracaoValidationService, buildValidationKey } from '../services/apura
 import type { FiscalRegimeType } from '../constants/fiscalObligations';
 import type { Client, FiscalRecord, ClientApuracaoValidation } from '../types';
 
+const isOperationalObligation = (obrigacao: string): boolean => {
+  const norm = (obrigacao || '').trim().toUpperCase();
+  return (
+    norm.includes('BAIXAR') ||
+    norm.includes('XML') ||
+    norm.includes('IMPORTAR') ||
+    norm.includes('DOMINIO') ||
+    norm.includes('DOMÍNIO') ||
+    norm.includes('EXTRATO') ||
+    norm === 'ENVIO'
+  );
+};
+
 const MONTH_NAMES_SHORT = [
   'JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN',
   'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'
@@ -845,21 +858,26 @@ export const Apuracao: React.FC = () => {
     (client: Client) => {
       let applicable: string[] = [];
 
-      if (isAdmin) {
-        // Para o perfil Administrador: escopo estrito das 3 apurações informadas:
-        // 1. PRO LAB / INSS (ou GUIA INSS)
-        // 2. GERAR OS DAS
-        // 3. PARCELAMENTO (se houver para o cliente)
+      if (isAdmin && activeTab === 'Simples Nacional') {
+        // No Simples Nacional: o Adm valida estritamente as 3 apurações informadas (PRO LAB / INSS, GERAR OS DAS, PARCELAMENTO)
         const admCandidateObs = [
           'PRO LAB / INSS',
           'GUIA INSS',
           'GERAR OS DAS',
           'Parc. Ativo',
           'PARCELAMENTO',
-          'GUIAS - PARC. IRPJ',
-          'GUIAS - PARC. CSLL',
         ];
         applicable = admCandidateObs.filter((ob) => isObligationEnabled(client, ob));
+      } else if (isAdmin && activeTab === 'Lucro Presumido') {
+        // No Lucro Presumido: o Adm valida todas as apurações do cliente (regime + folha), ocultando operacionais
+        const regimeObs = currentObligations.filter((ob) => !isOperationalObligation(ob) && isObligationEnabled(client, ob));
+        const folhaObs = hasClientFolha(client)
+          ? FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => !isOperationalObligation(ob) && isObligationEnabled(client, ob))
+          : [];
+        const proLab = isObligationEnabled(client, 'PRO LAB / INSS') ? ['PRO LAB / INSS'] : [];
+        applicable = Array.from(new Set([...regimeObs, ...folhaObs, ...proLab]));
+      } else if (isAdmin && activeTab === 'Folha de Pagamento') {
+        applicable = FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => !isOperationalObligation(ob) && isObligationEnabled(client, ob));
       } else if (activeTab === 'Lucro Presumido' && hasClientFolha(client)) {
         const regimeObs = currentObligations.filter((ob) => isObligationEnabled(client, ob));
         const folhaObs = FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => isObligationEnabled(client, ob));
@@ -998,16 +1016,13 @@ export const Apuracao: React.FC = () => {
     let totalItems = 0;
     let validatedItems = 0;
 
-    // Obrigações exclusivas de validação do ADM (estritamente as 3 informadas)
-    const validableObligations = [
-      'PRO LAB / INSS',
-      'GUIA INSS',
-      'GERAR OS DAS',
-      'Parc. Ativo',
-      'PARCELAMENTO',
-      'GUIAS - PARC. IRPJ',
-      'GUIAS - PARC. CSLL',
-    ];
+    // Obrigações exclusivas de validação do ADM
+    // No Simples Nacional: estritamente as 3 informadas
+    // No Lucro Presumido: todas as apurações (ocultando operacionais)
+    const validableObligations =
+      activeTab === 'Simples Nacional'
+        ? ['PRO LAB / INSS', 'GUIA INSS', 'GERAR OS DAS', 'Parc. Ativo', 'PARCELAMENTO']
+        : (currentObligations || []).filter((ob) => !isOperationalObligation(ob));
 
     activeScopedClients.forEach((client) => {
       // Filtra estritamente as obrigações aplicáveis ao cliente entre as 3 de validação

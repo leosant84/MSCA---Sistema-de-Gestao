@@ -84,36 +84,51 @@ export const ApuracaoValidationModal: React.FC<ApuracaoValidationModalProps> = (
     setReviewNotes('');
   };
 
-  // Visão do Administrador na Validação: limitar estritamente às 3 obrigações informadas
+  // Visão do Administrador na Validação
+  // No Simples Nacional: estritamente as 3 obrigações informadas
+  // No Lucro Presumido: todas as apurações (ocultando operacionais)
   const visibleObligations = useMemo(() => {
     if (isAdmin) {
-      const adminAllowed = [
-        'PRO LAB / INSS',
-        'GUIA INSS',
-        'PRO-LAB / INSS',
-        'PRO-LAB. / FOPAG',
-        'GERAR OS DAS',
-        'GERAR O DAS',
-        'Parc. Ativo',
-        'PARCELAMENTO',
-        'GUIAS - PARC. IRPJ',
-        'GUIAS - PARC. CSLL',
-      ];
+      if (regime === 'Simples Nacional') {
+        const adminAllowed = [
+          'PRO LAB / INSS',
+          'GUIA INSS',
+          'PRO-LAB / INSS',
+          'PRO-LAB. / FOPAG',
+          'GERAR OS DAS',
+          'GERAR O DAS',
+          'Parc. Ativo',
+          'PARCELAMENTO',
+        ];
+        return obligations.filter((ob) => {
+          const norm = (ob || '').trim().toUpperCase();
+          return (
+            adminAllowed.includes(ob) ||
+            norm === 'PRO LAB / INSS' ||
+            norm === 'GUIA INSS' ||
+            norm === 'GERAR OS DAS' ||
+            norm === 'PARC. ATIVO' ||
+            norm === 'PARCELAMENTO'
+          );
+        });
+      }
+
+      // Para Lucro Presumido e Folha de Pagamento: valida todas as apurações (ocultando etapas operacionais)
       return obligations.filter((ob) => {
         const norm = (ob || '').trim().toUpperCase();
         return (
-          adminAllowed.includes(ob) ||
-          norm === 'PRO LAB / INSS' ||
-          norm === 'GUIA INSS' ||
-          norm === 'GERAR OS DAS' ||
-          norm === 'PARC. ATIVO' ||
-          norm === 'PARCELAMENTO' ||
-          norm.includes('PARC')
+          !norm.includes('BAIXAR') &&
+          !norm.includes('XML') &&
+          !norm.includes('IMPORTAR') &&
+          !norm.includes('DOMINIO') &&
+          !norm.includes('DOMÍNIO') &&
+          !norm.includes('EXTRATO') &&
+          norm !== 'ENVIO'
         );
       });
     }
     return obligations;
-  }, [obligations, isAdmin]);
+  }, [obligations, isAdmin, regime]);
 
   if (!isOpen || !client) return null;
 
