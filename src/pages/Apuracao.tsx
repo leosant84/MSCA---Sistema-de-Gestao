@@ -905,39 +905,68 @@ export const Apuracao: React.FC = () => {
   }, [activeScopedClients, currentObligations, isObligationEnabled, currentMonthCompetencia, inputValues]);
 
   // Percentual total do que já foi validado pelo ADM no mês corrente (respeitando o filtro de cliente caso aplicado)
-  // Estritamente condicionado a apuração estar ativa e concluída (OK): se a apuração foi desfeita, o item NÃO é contado como validado
-  const totalValidadoPercent = useMemo(() => {
+  // Fórmula ADM: (Qtd. de itens validados entre PRO LAB, DAS e PARCELAMENTO / Total aplicável desses 3 itens) * 100
+  // Desconsidera rotinas operacionais (ex.: BAIXAR OS XML'S, IMPORTAR DOMINIO, GUIA DE ISS)
+  const totalValidadoStats = useMemo(() => {
     let totalItems = 0;
     let validatedItems = 0;
 
+    // Obrigações exclusivas de validação do ADM
+    const validableObligations =
+      activeTab === 'Simples Nacional'
+        ? ADM_DELIVERABLE_OBLIGATIONS['Simples Nacional']
+        : (ADM_DELIVERABLE_OBLIGATIONS[activeTab] || currentObligations);
+
     activeScopedClients.forEach((client) => {
-      const applicable = currentObligations.filter((ob) => isObligationEnabled(client, ob));
+      // Filtra estritamente as obrigações aplicáveis ao cliente entre as 3 de validação
+      const applicable = validableObligations.filter((ob) => isObligationEnabled(client, ob));
       const vKey = buildValidationKey(client.id, currentMonthCompetencia);
       const valRec = validations[vKey];
 
       applicable.forEach((ob) => {
         totalItems++;
         const key = `${client.id}::${ob}::${currentMonthCompetencia}`;
-        const isOk = (inputValues[key] || '').trim().toUpperCase() === 'OK';
+        let val = inputValues[key];
 
-        // Somente pode ser considerado validado se a apuração estiver ativa (OK)
+        if (val === undefined) {
+          const obNorm = (ob || '').trim().toUpperCase();
+          if (obNorm === 'PRO LAB / INSS' || obNorm === 'PRO-LAB / INSS' || obNorm === 'PRO LAB/INSS') {
+            val = inputValues[`${client.id}::PRO-LAB. / FOPAG::${currentMonthCompetencia}`] || inputValues[`${client.id}::GUIA INSS::${currentMonthCompetencia}`];
+          }
+        }
+
+        const isOk = (val || '').trim().toUpperCase() === 'OK';
+
+        // Somente pode ser considerado validado se a apuração estiver ativa (OK) e homologada pelo ADM
         if (isOk && valRec) {
           if (valRec.status === 'APPROVED') {
             validatedItems++;
           } else if (
             valRec.validated_obligations &&
-            Array.isArray(valRec.validated_obligations) &&
-            valRec.validated_obligations.includes(ob)
+            Array.isArray(valRec.validated_obligations)
           ) {
-            validatedItems++;
+            const obNorm = (ob || '').trim().toUpperCase();
+            const isValidated = valRec.validated_obligations.some((vo) => {
+              const voNorm = (vo || '').trim().toUpperCase();
+              if (voNorm === obNorm) return true;
+              if (obNorm === 'PRO LAB / INSS' && (voNorm === 'GUIA INSS' || voNorm === 'PRO-LAB. / FOPAG')) return true;
+              if (obNorm === 'PARC. ATIVO' && (voNorm === 'PARCELAMENTO' || voNorm === 'PARC.' || voNorm === 'PARCELAM. ATIVO')) return true;
+              if ((obNorm === 'GERAR OS DAS' || obNorm === 'GERAR O DAS') && (voNorm === 'GERAR OS DAS' || voNorm === 'GERAR O DAS')) return true;
+              return false;
+            });
+            if (isValidated) {
+              validatedItems++;
+            }
           }
         }
       });
     });
 
-    if (totalItems === 0) return 0;
-    return Math.round((validatedItems / totalItems) * 100);
-  }, [activeScopedClients, currentObligations, isObligationEnabled, currentMonthCompetencia, validations, inputValues]);
+    const percent = totalItems > 0 ? Math.round((validatedItems / totalItems) * 100) : 0;
+    return { validatedItems, totalItems, percent };
+  }, [activeScopedClients, activeTab, currentObligations, isObligationEnabled, currentMonthCompetencia, validations, inputValues]);
+
+  const totalValidadoPercent = totalValidadoStats.percent;
 
   // Percentual total de apurações enviadas ao cliente no mês corrente
   // (Apurações Enviadas ao Cliente / Total de Apurações Validadas ou Elegíveis) * 100
@@ -1072,8 +1101,8 @@ export const Apuracao: React.FC = () => {
             </div>
             <div className="text-[11px] text-stone-400 font-medium mt-1.5">
               {currentFilteredClient
-                ? `Cliente: ${currentFilteredClient.razao_social} • Homologado no mês`
-                : 'Homologado pela Administração no mês'}
+                ? `Cliente: ${currentFilteredClient.razao_social} • ${totalValidadoStats.validatedItems} de ${totalValidadoStats.totalItems} entregas homologadas`
+                : `${totalValidadoStats.validatedItems} de ${totalValidadoStats.totalItems} entregas homologadas pelo ADM`}
             </div>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200 shadow-2xs shrink-0">
