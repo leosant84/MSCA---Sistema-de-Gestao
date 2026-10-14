@@ -89,7 +89,8 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     roleNorm === 'validador' ||
     roleNorm === 'gestor' ||
     roleNorm === 'administrador' ||
-    (user?.email || '').toLowerCase().includes('mssantos')
+    (user?.email || '').toLowerCase().includes('mssantos') ||
+    (user?.email || '').toLowerCase().includes('leonardo')
   );
   const currentMonthIdx = (() => {
     const m = new Date().getMonth();
@@ -188,44 +189,58 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     }
 
     allPotential = Array.from(new Set(allPotential));
-
-    // 2. Se perfil ADM (ou validador):
-    if (isAdmin) {
-      if (effectiveRegime === 'Simples Nacional') {
-        const allowedSimples = new Set([
-          'PRO LAB / INSS',
-          'GERAR OS DAS',
-          'Parc. Ativo',
-          ...(hasClientFolha(client) ? FOLHA_PAGAMENTO_OBLIGATIONS : []),
-        ]);
-        return allPotential.filter((ob) => allowedSimples.has(ob));
-      }
-
-      if (effectiveRegime === 'Lucro Presumido') {
-        // Para Lucro Presumido: oculta estritamente etapas operacionais internas (ex: BAIXAR OS XML'S, IMPORTAR DOMINIO)
-        return allPotential.filter((ob) => !isOperationalObligation(ob));
-      }
-
-      // Folha de Pagamento
-      return allPotential.filter((ob) => !isOperationalObligation(ob));
-    }
-
-    // 3. Usuário Comum: visualização integral
     return allPotential;
-  }, [isAdmin, effectiveRegime, obligations, client]);
+  }, [effectiveRegime, obligations, client]);
 
+  // Obrigações ativas no perfil do cliente
   const clientObligations = useMemo(() => {
     return baseObligations.filter((ob) => isObligationEnabled(client, ob));
   }, [baseObligations, client, isObligationEnabled]);
 
+  // Filtro Rígido de Exibição para o Perfil ADM / Validador
+  // Oculta estritamente todas as etapas prévias e operacionais (BAIXAR OS XML'S, IMPORTAR DOMINIO, etc.)
+  // e exibe exclusivamente as apurações de entrega e validação final conforme o regime.
+  const displayedObligations = useMemo(() => {
+    return clientObligations.filter((obrigacao) => {
+      // Usuário comum (colaborador): visualização integral de todas as apurações vigentes
+      if (!isAdmin) return true;
+
+      // Se for perfil ADM / Validador:
+      // 1. Elimina categoricamente qualquer tarefa operacional
+      if (isOperationalObligation(obrigacao)) {
+        return false;
+      }
+
+      // 2. Simples Nacional: estritamente PRO LAB / INSS, GERAR OS DAS, Parc. Ativo (+ FOPAG se houver)
+      if (effectiveRegime === 'Simples Nacional') {
+        const obNorm = (obrigacao || '').trim().toUpperCase();
+        const isSimplesDeliverable =
+          obNorm === 'PRO LAB / INSS' ||
+          obNorm === 'PRO-LAB / INSS' ||
+          obNorm === 'PRO-LAB. / FOPAG' ||
+          obNorm === 'GUIA INSS' ||
+          obNorm === 'GERAR OS DAS' ||
+          obNorm === 'GERAR O DAS' ||
+          obNorm === 'PARC. ATIVO' ||
+          obNorm === 'PARCELAMENTO' ||
+          (hasClientFolha(client) && FOLHA_PAGAMENTO_OBLIGATIONS.includes(obrigacao));
+
+        return isSimplesDeliverable;
+      }
+
+      // 3. Lucro Presumido e Folha de Pagamento: exibe guias fiscais e declarações, excluindo etapas operacionais
+      return true;
+    });
+  }, [clientObligations, isAdmin, effectiveRegime, client]);
+
   // Subtotais de Regime e Folha para clientes com Folha consolidada
   const regimeObligations = useMemo(() => {
-    return clientObligations.filter((ob) => !FOLHA_PAGAMENTO_OBLIGATIONS.includes(ob));
-  }, [clientObligations]);
+    return displayedObligations.filter((ob) => !FOLHA_PAGAMENTO_OBLIGATIONS.includes(ob));
+  }, [displayedObligations]);
 
   const folhaObligations = useMemo(() => {
-    return clientObligations.filter((ob) => FOLHA_PAGAMENTO_OBLIGATIONS.includes(ob));
-  }, [clientObligations]);
+    return displayedObligations.filter((ob) => FOLHA_PAGAMENTO_OBLIGATIONS.includes(ob));
+  }, [displayedObligations]);
 
   const okRegimeCountInMonth = useMemo(() => {
     if (!client) return 0;
@@ -246,8 +261,8 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   }, [client, folhaObligations, selectedComp, inputValues]);
 
   // Estatísticas no mês selecionado
-  const totalInMonth = clientObligations.length;
-  const okCountInMonth = clientObligations.filter((ob) => {
+  const totalInMonth = displayedObligations.length;
+  const okCountInMonth = displayedObligations.filter((ob) => {
     const key = `${client.id}::${ob}::${selectedComp}`;
     const val = inputValues[key];
     return (val || '').trim().toUpperCase() === 'OK';
@@ -299,17 +314,17 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   };
 
   // Contagem de obrigações validadas pelo ADM
-  const validatedObligationsCount = clientObligations.filter((ob) => isObligationValidated(ob)).length;
+  const validatedObligationsCount = displayedObligations.filter((ob) => isObligationValidated(ob)).length;
   const isAllObligationsValidated =
-    clientObligations.length > 0 && validatedObligationsCount === clientObligations.length;
+    displayedObligations.length > 0 && validatedObligationsCount === displayedObligations.length;
   const isPartiallyValidated =
-    validatedObligationsCount > 0 && validatedObligationsCount < clientObligations.length;
+    validatedObligationsCount > 0 && validatedObligationsCount < displayedObligations.length;
 
   // Estatísticas no ano inteiro (todas as competências x obrigações)
   let totalInYear = 0;
   let okCountInYear = 0;
   yearCompetencias.forEach((comp) => {
-    clientObligations.forEach((ob) => {
+    displayedObligations.forEach((ob) => {
       totalInYear++;
       const key = `${client.id}::${ob}::${comp}`;
       const val = inputValues[key];
@@ -371,19 +386,19 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   };
 
   const handleMarkAllVisibleOk = async () => {
-    for (const ob of clientObligations) {
+    for (const ob of displayedObligations) {
       const key = `${client.id}::${ob}::${selectedComp}`;
       const val = inputValues[key];
       if ((val || '').trim().toUpperCase() !== 'OK') {
         await onStatusChange(client, ob, selectedComp, 'OK');
       }
     }
-    toast(`Todas as ${clientObligations.length} apurações de ${selectedComp.toUpperCase()} marcadas como OK!`, 'success');
+    toast(`Todas as ${displayedObligations.length} apurações de ${selectedComp.toUpperCase()} marcadas como OK!`, 'success');
     onRefreshData?.();
   };
 
   const handleUnmarkAll = async () => {
-    for (const ob of clientObligations) {
+    for (const ob of displayedObligations) {
       const key = `${client.id}::${ob}::${selectedComp}`;
       const val = inputValues[key];
       if ((val || '').trim() !== '') {
@@ -439,7 +454,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
       competencia: selectedComp,
       regime,
       obrigacao,
-      allClientObligations: clientObligations,
+      allClientObligations: displayedObligations,
       validated: true,
       adminId: user?.id,
       adminName: profile?.full_name || 'Gestor ADM',
@@ -474,7 +489,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
         competencia: selectedComp,
         regime,
         obrigacao: pendingObligationTarget,
-        allClientObligations: clientObligations,
+        allClientObligations: displayedObligations,
         validated: false,
         adminId: user?.id,
         adminName: profile?.full_name || 'Gestor ADM',
@@ -630,12 +645,12 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                   const isCompValid = validations[compValKey]?.status === 'APPROVED';
                   const isCompEnviado = Boolean(validations[compValKey]?.enviado_cliente);
 
-                  const okCountInComp = clientObligations.filter((ob) => {
+                  const okCountInComp = displayedObligations.filter((ob) => {
                     const key = `${client.id}::${ob}::${comp}`;
                     const val = inputValues[key];
                     return (val || '').trim().toUpperCase() === 'OK';
                   }).length;
-                  const is100InComp = clientObligations.length > 0 && okCountInComp === clientObligations.length;
+                  const is100InComp = displayedObligations.length > 0 && okCountInComp === displayedObligations.length;
 
                   let suffix = '';
                   if (isCompValid && isCompEnviado) {
@@ -683,7 +698,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                 ) : isPartiallyValidated ? (
                   <>
                     <ShieldCheck className="w-3 h-3 text-blue-600" />
-                    <span>Validação Parcial ({validatedObligationsCount}/{clientObligations.length})</span>
+                    <span>Validação Parcial ({validatedObligationsCount}/{displayedObligations.length})</span>
                   </>
                 ) : isNeedsReview ? (
                   <>
@@ -756,20 +771,20 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                 <th className="py-2 px-4 text-center">Status da Apuração</th>
                 <th className="py-2 px-4 text-right">
                   <div className="inline-flex items-center justify-end space-x-2">
-                    <span>{profile?.role === 'admin' ? 'Ações de Validação (ADM)' : 'Status da Validação'}</span>
+                    <span>{isAdmin ? 'Ações de Validação (ADM)' : 'Status da Validação'}</span>
                   </div>
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100 text-xs text-stone-700">
-              {clientObligations.length === 0 ? (
+              {displayedObligations.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-10 text-center text-stone-400">
                     Nenhuma apuração habilitada para este cliente.
                   </td>
                 </tr>
               ) : (
-                clientObligations.map((obrigacao, index) => {
+                displayedObligations.map((obrigacao, index) => {
                   const key = `${client.id}::${obrigacao}::${selectedComp}`;
                   const val = inputValues[key] !== undefined ? inputValues[key] : '';
                   const displayVal = localInputBuffer[key] !== undefined ? localInputBuffer[key] : val;

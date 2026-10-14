@@ -49,7 +49,8 @@ export const Apuracao: React.FC = () => {
     roleNorm === 'validador' ||
     roleNorm === 'gestor' ||
     roleNorm === 'administrador' ||
-    (user?.email || '').toLowerCase().includes('mssantos')
+    (user?.email || '').toLowerCase().includes('mssantos') ||
+    (user?.email || '').toLowerCase().includes('leonardo')
   );
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
