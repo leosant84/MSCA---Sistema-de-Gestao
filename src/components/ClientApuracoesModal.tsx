@@ -241,7 +241,13 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     if (isAdmin) {
       if (effectiveRegime === 'Simples Nacional') {
         // No Simples Nacional: estritamente as 3 apurações informadas (PRO LAB / INSS, GERAR OS DAS, PARCELAMENTO)
-        return allPotential.filter((ob) => isSimplesAdmDeliverable(ob));
+        // E se o cliente possuir Folha de Pagamento, replica as regras do perfil (obrigações da folha elegíveis para validação)
+        const simplesAdm = allPotential.filter((ob) => isSimplesAdmDeliverable(ob));
+        if (hasClientFolha(client)) {
+          const folhaAdm = allPotential.filter((ob) => FOLHA_PAGAMENTO_OBLIGATIONS.includes(ob) && !isOperationalObligation(ob));
+          return Array.from(new Set([...simplesAdm, ...folhaAdm]));
+        }
+        return simplesAdm;
       }
 
       if (effectiveRegime === 'Lucro Presumido') {
@@ -262,7 +268,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   }, [baseObligations, client, isObligationEnabled]);
 
   // Filtro Rígido de Exibição para o Perfil ADM / Validador
-  // - No Simples Nacional: estritamente as 3 apurações informadas (PRO LAB / INSS, GERAR OS DAS, PARCELAMENTO)
+  // - No Simples Nacional: estritamente as 3 apurações informadas (PRO LAB / INSS, GERAR OS DAS, PARCELAMENTO) + Folha (se houver)
   // - No Lucro Presumido: o Adm valida todas as apurações do cliente (ocultando etapas operacionais)
   // - Para Usuário Comum: mantém a visualização integral sem filtros
   const displayedObligations = useMemo(() => {
@@ -271,7 +277,11 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
       if (!isAdmin) return true;
 
       if (effectiveRegime === 'Simples Nacional') {
-        return isSimplesAdmDeliverable(obrigacao);
+        if (isSimplesAdmDeliverable(obrigacao)) return true;
+        if (hasClientFolha(client) && FOLHA_PAGAMENTO_OBLIGATIONS.includes(obrigacao) && !isOperationalObligation(obrigacao)) {
+          return true;
+        }
+        return false;
       }
 
       if (effectiveRegime === 'Lucro Presumido') {
@@ -280,7 +290,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
 
       return !isOperationalObligation(obrigacao);
     });
-  }, [clientObligations, isAdmin, effectiveRegime]);
+  }, [clientObligations, isAdmin, effectiveRegime, client]);
 
   // Subtotais de Regime e Folha para clientes com Folha consolidada
   const regimeObligations = useMemo(() => {
@@ -658,7 +668,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                 Ano {year}: {percentInYear}% concluído ({okCountInYear}/{totalInYear})
               </span>
 
-              {regime === 'Lucro Presumido' && hasClientFolha(client) && folhaObligations.length > 0 && (
+              {(regime === 'Lucro Presumido' || regime === 'Simples Nacional') && hasClientFolha(client) && folhaObligations.length > 0 && (
                 <div className="inline-flex items-center space-x-1 text-[10px] text-stone-500 bg-stone-50 border border-stone-200/80 px-2 py-0.2 rounded-md">
                   <span className="text-stone-400">Composição ({selectedComp}):</span>
                   <span className="font-semibold text-stone-700">Regime: {okRegimeCountInMonth}/{regimeObligations.length}</span>
@@ -962,36 +972,6 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                             </button>
                           )}
                         </div>
-
-                        {/* Motivo do ADM em destaque abaixo da obrigação */}
-                        {isReviewFlagged && currentValidation?.review_notes && (
-                          <div
-                            onClick={() => {
-                              setViewNoteModal({
-                                isOpen: true,
-                                title: `Pendência: ${obrigacao}`,
-                                subtitle: `${client.razao_social} • Competência: ${selectedComp.toUpperCase()}`,
-                                notes: currentValidation.review_notes || '',
-                                adminName: currentValidation.reviewed_by_name || 'Gestor ADM',
-                                adminDate: currentValidation.reviewed_at || undefined,
-                              });
-                            }}
-                            className="mt-1 bg-rose-50/90 hover:bg-rose-100/90 border border-rose-200/90 rounded-md p-1 px-2 text-[10px] text-rose-900 flex items-start space-x-1.5 cursor-pointer transition-colors max-w-xl group"
-                            title="Clique para ler o motivo completo da pendência"
-                          >
-                            <MessageSquare className="w-3 h-3 text-rose-600 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
-                            <div className="flex-1 min-w-0">
-                              <span className="font-bold text-rose-950">Motivo ADM: </span>
-                              <span className="italic line-clamp-2">{currentValidation.review_notes}</span>
-                              {currentValidation.reviewed_by_name && (
-                                <span className="text-[9px] text-rose-700 font-normal block mt-0.5">
-                                  — {currentValidation.reviewed_by_name}
-                                  {currentValidation.reviewed_at ? ` em ${new Date(currentValidation.reviewed_at).toLocaleDateString('pt-BR')}` : ''}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        )}
                       </td>
 
                       {/* Competência Atual */}

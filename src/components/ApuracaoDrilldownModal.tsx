@@ -96,7 +96,16 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   const checkClientValidated = (c: Client) => {
     const obKey = `${c.id}::${obrigacaoName}::${competencia}`;
     const obKeyLegacy = `${c.id}::${obrigacaoName}`;
-    const val = inputValues[obKey] !== undefined ? inputValues[obKey] : (inputValues[obKeyLegacy] || '');
+    let val = inputValues[obKey] !== undefined ? inputValues[obKey] : (inputValues[obKeyLegacy] || '');
+    if (!val) {
+      const obNorm = (obrigacaoName || '').trim().toUpperCase();
+      if (obNorm === 'IMPORTAR / REINF' || obNorm === 'IMPORTAR DOMINIO') {
+        val = inputValues[`${c.id}::IMPORTAR / REINF::${competencia}`] ||
+              inputValues[`${c.id}::IMPORTAR DOMINIO::${competencia}`] ||
+              inputValues[`${c.id}::IMPORTAR / REINF`] ||
+              inputValues[`${c.id}::IMPORTAR DOMINIO`] || '';
+      }
+    }
     const isOk = (val || '').trim().toUpperCase() === 'OK';
     if (!isOk) return false;
 
@@ -111,6 +120,12 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
         return (
           v.validated_obligations.includes('GUIA INSS') ||
           v.validated_obligations.includes('PRO-LAB. / FOPAG')
+        );
+      }
+      if (obNorm === 'IMPORTAR / REINF' || obNorm === 'IMPORTAR DOMINIO') {
+        return (
+          v.validated_obligations.includes('IMPORTAR / REINF') ||
+          v.validated_obligations.includes('IMPORTAR DOMINIO')
         );
       }
     }
@@ -138,6 +153,12 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
         return (
           v.pending_obligations.includes('GUIA INSS') ||
           v.pending_obligations.includes('PRO-LAB. / FOPAG')
+        );
+      }
+      if (obNorm === 'IMPORTAR / REINF' || obNorm === 'IMPORTAR DOMINIO') {
+        return (
+          v.pending_obligations.includes('IMPORTAR / REINF') ||
+          v.pending_obligations.includes('IMPORTAR DOMINIO')
         );
       }
       return false;
@@ -756,7 +777,14 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                 filteredClients.map((client) => {
                   const key = `${client.id}::${obrigacaoName}::${competencia}`;
                   const keyLegacy = `${client.id}::${obrigacaoName}`;
-                  const val = inputValues[key] !== undefined ? inputValues[key] : (inputValues[keyLegacy] || '');
+                  let val = inputValues[key] !== undefined ? inputValues[key] : (inputValues[keyLegacy] || '');
+                  if (!val) {
+                    const obNorm = (obrigacaoName || '').trim().toUpperCase();
+                    if (obNorm === 'IMPORTAR / REINF' || obNorm === 'IMPORTAR DOMINIO') {
+                      val = inputValues[`${client.id}::IMPORTAR / REINF::${competencia}`] ||
+                            inputValues[`${client.id}::IMPORTAR DOMINIO::${competencia}`] || '';
+                    }
+                  }
                   const displayVal = localInputBuffer[key] !== undefined ? localInputBuffer[key] : val;
                   const isOk = (displayVal || '').trim().toUpperCase() === 'OK';
                   const isReviewFlagged = checkClientNeedsReview(client);
@@ -829,35 +857,6 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                           <span className="text-[8px] text-stone-500 bg-stone-100 px-1 rounded inline-block mt-0.5">
                             {client.puro_ou_hibrido}
                           </span>
-                        )}
-
-                        {/* Motivo do ADM em destaque abaixo do nome do cliente */}
-                        {isReviewFlagged && clientVal?.review_notes && (
-                          <div
-                            onClick={() => {
-                              setViewNoteModal({
-                                isOpen: true,
-                                title: `Pendência: ${obrigacaoName}`,
-                                subtitle: `${client.razao_social} • Competência: ${competencia.toUpperCase()}`,
-                                notes: clientVal?.review_notes || '',
-                                adminName: clientVal?.reviewed_by_name || 'Gestor ADM',
-                                adminDate: clientVal?.reviewed_at || undefined,
-                              });
-                            }}
-                            className="mt-1 bg-rose-50/90 hover:bg-rose-100/90 border border-rose-200/90 rounded-md p-1 px-2 text-[10px] text-rose-900 flex items-start space-x-1.5 cursor-pointer transition-colors max-w-md group"
-                            title="Clique para ler o motivo completo da pendência"
-                          >
-                            <MessageSquare className="w-3 h-3 text-rose-600 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
-                            <div className="flex-1 min-w-0">
-                              <span className="font-bold text-rose-950">Motivo ADM: </span>
-                              <span className="italic line-clamp-1">{clientVal.review_notes}</span>
-                              {clientVal.reviewed_by_name && (
-                                <span className="text-[9px] text-rose-700 font-normal ml-1">
-                                  — {clientVal.reviewed_by_name}
-                                </span>
-                              )}
-                            </div>
-                          </div>
                         )}
                       </td>
 

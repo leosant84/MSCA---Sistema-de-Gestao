@@ -101,6 +101,9 @@ export const ClientModal: React.FC<ClientModalProps> = ({
           if (obNorm === 'PRO-LAB. / FOPAG') {
             return 'PRO LAB / INSS';
           }
+          if (obNorm === 'IMPORTAR DOMINIO' || obNorm === 'IMPORTAR DOMÍNIO') {
+            return 'IMPORTAR / REINF';
+          }
           if (obNorm === 'PARC.' || obNorm === 'PARCELAM. ATIVO' || obNorm === 'PARC. ATIVO') {
             return clientToEdit.parcelamento_ativo === true ? 'Parc. Ativo' : null;
           }
@@ -144,8 +147,12 @@ export const ClientModal: React.FC<ClientModalProps> = ({
           return clientInitialSavedObligations;
         }
       }
-      // Para novo cliente, inicializa com as obrigações fiscais do regime selecionado
-      return FISCAL_OBLIGATIONS[clientInitialRegime] || [];
+      // Para novo cliente, inicializa com as obrigações fiscais do regime selecionado (+ folha se Sim)
+      const base = FISCAL_OBLIGATIONS[clientInitialRegime] || [];
+      if (clientInitialFolha === 'Sim') {
+        return Array.from(new Set([...base, ...FOLHA_PAGAMENTO_OBLIGATIONS]));
+      }
+      return base;
     })(),
   });
 
@@ -249,6 +256,9 @@ export const ClientModal: React.FC<ClientModalProps> = ({
         if (value === 'Não') {
           // Ao desativar folha de pagamento, remove as obrigações da folha
           updated = updated.filter((o) => !FOLHA_PAGAMENTO_OBLIGATIONS.includes(o));
+        } else if (value === 'Sim') {
+          // Ao ativar folha de pagamento, adiciona as obrigações da folha
+          updated = Array.from(new Set([...updated, ...FOLHA_PAGAMENTO_OBLIGATIONS]));
         }
         return {
           ...prev,

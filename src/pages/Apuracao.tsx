@@ -429,6 +429,29 @@ export const Apuracao: React.FC = () => {
       return false;
     }
 
+    // Tratamento para IMPORTAR / REINF (compatibilidade com IMPORTAR DOMINIO)
+    if (
+      obNorm === 'IMPORTAR / REINF' ||
+      obNorm === 'IMPORTAR/REINF' ||
+      obNorm === 'IMPORTAR REINF' ||
+      obNorm === 'IMPORTAR DOMINIO' ||
+      obNorm === 'IMPORTAR DOMÍNIO'
+    ) {
+      if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
+        return client.obrigacoes_habilitadas.some((o) => {
+          const n = (o || '').trim().toUpperCase();
+          return (
+            n === 'IMPORTAR / REINF' ||
+            n === 'IMPORTAR/REINF' ||
+            n === 'IMPORTAR REINF' ||
+            n === 'IMPORTAR DOMINIO' ||
+            n === 'IMPORTAR DOMÍNIO'
+          );
+        });
+      }
+      return false;
+    }
+
     if (client.obrigacoes_habilitadas && Array.isArray(client.obrigacoes_habilitadas)) {
       return client.obrigacoes_habilitadas.some((o) => (o || '').trim().toUpperCase() === obNorm);
     }
@@ -496,6 +519,10 @@ export const Apuracao: React.FC = () => {
             next[`${client.id}::GUIA INSS::${competencia}`] = newValue;
           }
         }
+        if (obNorm === 'IMPORTAR / REINF' || obNorm === 'IMPORTAR DOMINIO') {
+          next[`${client.id}::IMPORTAR / REINF::${competencia}`] = newValue;
+          next[`${client.id}::IMPORTAR DOMINIO::${competencia}`] = newValue;
+        }
         return next;
       });
 
@@ -546,7 +573,7 @@ export const Apuracao: React.FC = () => {
           let clientEnabledObligations = currentObligations.filter((ob) =>
             isObligationEnabled(client, ob)
           );
-          if (activeTab === 'Lucro Presumido' && hasClientFolha(client)) {
+          if ((activeTab === 'Lucro Presumido' || activeTab === 'Simples Nacional') && hasClientFolha(client)) {
             const folhaObs = FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => isObligationEnabled(client, ob));
             clientEnabledObligations = Array.from(new Set([...clientEnabledObligations, ...folhaObs]));
           }
@@ -606,6 +633,10 @@ export const Apuracao: React.FC = () => {
             next[`${client.id}::GUIA INSS::${comp}`] = newValue;
           }
         }
+        if (obNorm === 'IMPORTAR / REINF' || obNorm === 'IMPORTAR DOMINIO') {
+          next[`${client.id}::IMPORTAR / REINF::${comp}`] = newValue;
+          next[`${client.id}::IMPORTAR DOMINIO::${comp}`] = newValue;
+        }
         return next;
       });
 
@@ -623,7 +654,7 @@ export const Apuracao: React.FC = () => {
           let clientEnabledObligations = currentObligations.filter((ob) =>
             isObligationEnabled(client, ob)
           );
-          if (activeTab === 'Lucro Presumido' && hasClientFolha(client)) {
+          if ((activeTab === 'Lucro Presumido' || activeTab === 'Simples Nacional') && hasClientFolha(client)) {
             const folhaObs = FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => isObligationEnabled(client, ob));
             clientEnabledObligations = Array.from(new Set([...clientEnabledObligations, ...folhaObs]));
           }
@@ -860,6 +891,7 @@ export const Apuracao: React.FC = () => {
 
       if (isAdmin && activeTab === 'Simples Nacional') {
         // No Simples Nacional: o Adm valida estritamente as 3 apurações informadas (PRO LAB / INSS, GERAR OS DAS, PARCELAMENTO)
+        // E se o cliente possuir Folha de Pagamento, replica as regras do perfil (obrigações da folha elegíveis para validação)
         const admCandidateObs = [
           'PRO LAB / INSS',
           'GUIA INSS',
@@ -867,7 +899,10 @@ export const Apuracao: React.FC = () => {
           'Parc. Ativo',
           'PARCELAMENTO',
         ];
-        applicable = admCandidateObs.filter((ob) => isObligationEnabled(client, ob));
+        const folhaObs = hasClientFolha(client)
+          ? FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => !isOperationalObligation(ob) && isObligationEnabled(client, ob))
+          : [];
+        applicable = Array.from(new Set([...admCandidateObs.filter((ob) => isObligationEnabled(client, ob)), ...folhaObs]));
       } else if (isAdmin && activeTab === 'Lucro Presumido') {
         // No Lucro Presumido: o Adm valida todas as apurações do cliente (regime + folha), ocultando operacionais
         const regimeObs = currentObligations.filter((ob) => !isOperationalObligation(ob) && isObligationEnabled(client, ob));
@@ -878,7 +913,7 @@ export const Apuracao: React.FC = () => {
         applicable = Array.from(new Set([...regimeObs, ...folhaObs, ...proLab]));
       } else if (isAdmin && activeTab === 'Folha de Pagamento') {
         applicable = FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => !isOperationalObligation(ob) && isObligationEnabled(client, ob));
-      } else if (activeTab === 'Lucro Presumido' && hasClientFolha(client)) {
+      } else if ((activeTab === 'Lucro Presumido' || activeTab === 'Simples Nacional') && hasClientFolha(client)) {
         const regimeObs = currentObligations.filter((ob) => isObligationEnabled(client, ob));
         const folhaObs = FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => isObligationEnabled(client, ob));
         applicable = Array.from(new Set([...regimeObs, ...folhaObs]));
@@ -897,6 +932,8 @@ export const Apuracao: React.FC = () => {
           const obNorm = (ob || '').trim().toUpperCase();
           if (obNorm === 'PRO LAB / INSS' || obNorm === 'PRO-LAB / INSS' || obNorm === 'PRO LAB/INSS') {
             val = inputValues[`${client.id}::PRO-LAB. / FOPAG::${currentMonthCompetencia}`] || inputValues[`${client.id}::GUIA INSS::${currentMonthCompetencia}`];
+          } else if (obNorm === 'IMPORTAR / REINF' || obNorm === 'IMPORTAR DOMINIO') {
+            val = inputValues[`${client.id}::IMPORTAR / REINF::${currentMonthCompetencia}`] || inputValues[`${client.id}::IMPORTAR DOMINIO::${currentMonthCompetencia}`];
           }
         }
         if (val !== undefined && (val || '').trim().toUpperCase() === 'OK') {
@@ -945,7 +982,7 @@ export const Apuracao: React.FC = () => {
 
 
   // Percentual total do que já foi apurado no mês corrente (respeitando o filtro de cliente caso aplicado)
-  // Para clientes de Lucro Presumido com Folha de Pagamento, consolida as apurações do Regime + Folha:
+  // Para clientes com Folha de Pagamento (Lucro Presumido e Simples Nacional), consolida as apurações do Regime + Folha:
   // % Apuração Total = (Qtd. Apurações Concluídas (Regime + Folha) / Total de Apurações Elegíveis (Regime + Folha)) * 100
   const totalApuradoStats = useMemo(() => {
     let totalItems = 0;
@@ -968,6 +1005,8 @@ export const Apuracao: React.FC = () => {
           const obNorm = (ob || '').trim().toUpperCase();
           if (obNorm === 'PRO LAB / INSS' || obNorm === 'PRO-LAB / INSS' || obNorm === 'PRO LAB/INSS') {
             val = inputValues[`${client.id}::PRO-LAB. / FOPAG::${currentMonthCompetencia}`] || inputValues[`${client.id}::GUIA INSS::${currentMonthCompetencia}`];
+          } else if (obNorm === 'IMPORTAR / REINF' || obNorm === 'IMPORTAR DOMINIO') {
+            val = inputValues[`${client.id}::IMPORTAR / REINF::${currentMonthCompetencia}`] || inputValues[`${client.id}::IMPORTAR DOMINIO::${currentMonthCompetencia}`];
           }
         }
         if (val !== undefined && (val || '').trim().toUpperCase() === 'OK') {
@@ -976,8 +1015,8 @@ export const Apuracao: React.FC = () => {
         }
       });
 
-      // 2. Apurações adicionais de Folha de Pagamento para clientes do Lucro Presumido com folha
-      if (activeTab === 'Lucro Presumido' && hasClientFolha(client)) {
+      // 2. Apurações adicionais de Folha de Pagamento para clientes com folha (Lucro Presumido e Simples Nacional)
+      if ((activeTab === 'Lucro Presumido' || activeTab === 'Simples Nacional') && hasClientFolha(client)) {
         const applicableFolha = FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => isObligationEnabled(client, ob));
         applicableFolha.forEach((ob) => {
           totalItems++;
