@@ -1098,10 +1098,10 @@ export const Apuracao: React.FC = () => {
   }, [activeScopedClients, getClientCurrentMonthSummary, validations, currentMonthCompetencia]);
 
   // Abrir Modal de Drilldown para uma apuração
-  const handleOpenDrilldown = (obrigacao: string, comp: string, isNeedsReview?: boolean) => {
+  const handleOpenDrilldown = (obrigacao: string, comp: string, _isNeedsReview?: boolean) => {
     setSelectedObligation(obrigacao);
     setSelectedCompForDrilldown(comp);
-    setDrilldownInitialShowPending(Boolean(isNeedsReview));
+    setDrilldownInitialShowPending(false);
     setDrilldownModalOpen(true);
   };
 

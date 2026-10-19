@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   X,
   Search,
@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   ShieldCheck,
   Filter,
+  MessageSquare,
 } from 'lucide-react';
 import { RawCnpjCopyButton } from './RawCnpjCopyButton';
 import { useToast } from '../contexts/ToastContext';
@@ -51,7 +52,7 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   validations = {},
   onStatusChange,
   isObligationEnabled,
-  initialShowPendingOnly = false,
+  initialShowPendingOnly: _initialShowPendingOnly = false,
   onRefreshData,
 }) => {
   const { toast } = useToast();
@@ -59,16 +60,31 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   const isAdmin = authIsAdmin || profile?.role === 'admin' || role === 'admin';
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterNeedsReviewOnly, setFilterNeedsReviewOnly] = useState(initialShowPendingOnly);
+  const [filterNeedsReviewOnly, setFilterNeedsReviewOnly] = useState(false);
   const [filterApuradosOnly, setFilterApuradosOnly] = useState(false);
   const [sortField, setSortField] = useState<SortField>('razao_social');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+  // Reseta o filtro de pendências ao abrir ou trocar de apuração/competência
+  useEffect(() => {
+    setFilterNeedsReviewOnly(false);
+  }, [isOpen, obrigacaoName, competencia]);
 
   // Estados para Modal de Apontamento de Pendência do ADM
   const [pendingModalOpen, setPendingModalOpen] = useState(false);
   const [pendingClientTarget, setPendingClientTarget] = useState<Client | null>(null);
   const [pendingReason, setPendingReason] = useState('');
   const [pendingSubmitting, setPendingSubmitting] = useState(false);
+
+  // Estado para Modal de Visualização de Detalhes da Pendência apontada pelo ADM
+  const [viewNoteModal, setViewNoteModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    subtitle?: string;
+    notes: string;
+    adminName?: string;
+    adminDate?: string;
+  } | null>(null);
 
   // Buffer local para edições parciais no input sem gravar valores incompletos imediatamente no banco
   const [localInputBuffer, setLocalInputBuffer] = useState<Record<string, string>>({});
@@ -543,13 +559,14 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
             <button
               type="button"
               onClick={() => setFilterNeedsReviewOnly((prev) => !prev)}
-              className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-colors cursor-pointer border ${
+              className={`px-3 py-1 rounded-lg font-bold text-xs transition-colors cursor-pointer border flex items-center space-x-1.5 shadow-xs ${
                 filterNeedsReviewOnly
-                  ? 'bg-rose-600 text-white border-rose-700'
-                  : 'bg-white text-rose-700 border-rose-300 hover:bg-rose-100'
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-700'
+                  : 'bg-white hover:bg-rose-50 text-rose-700 border-rose-300'
               }`}
             >
-              {filterNeedsReviewOnly ? 'Exibir Todos os Clientes' : 'Filtrar Clientes com Pendência'}
+              <Filter className="w-3.5 h-3.5" />
+              <span>{filterNeedsReviewOnly ? 'Exibir Todos os Clientes' : 'Filtrar Pendências'}</span>
             </button>
           </div>
         )}
@@ -743,8 +760,9 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                   const displayVal = localInputBuffer[key] !== undefined ? localInputBuffer[key] : val;
                   const isOk = (displayVal || '').trim().toUpperCase() === 'OK';
                   const isReviewFlagged = checkClientNeedsReview(client);
-
                   const isClientVal = checkClientValidated(client);
+                  const clientValKey = buildValidationKey(client.id, competencia);
+                  const clientVal = validations[clientValKey];
 
                   return (
                     <tr
@@ -766,7 +784,7 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
 
                       {/* Razão Social */}
                       <td className="py-1 px-3">
-                        <div className="flex items-center space-x-1.5">
+                        <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
                           <span className="font-semibold text-stone-900 leading-tight text-xs">
                             {client.razao_social}
                           </span>
@@ -782,16 +800,64 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                             </span>
                           ) : null}
                           {isReviewFlagged && (
-                            <span className="inline-flex items-center space-x-0.5 text-[9px] font-bold bg-rose-100 text-rose-800 border border-rose-300 px-1.5 py-0.2 rounded-full">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setViewNoteModal({
+                                  isOpen: true,
+                                  title: `Pendência Apontada: ${obrigacaoName}`,
+                                  subtitle: `${client.razao_social} • Competência: ${competencia.toUpperCase()}`,
+                                  notes: clientVal?.review_notes || 'Favor revisar a apuração deste cliente.',
+                                  adminName: clientVal?.reviewed_by_name || 'Gestor ADM',
+                                  adminDate: clientVal?.reviewed_at || undefined,
+                                });
+                              }}
+                              title={
+                                clientVal?.review_notes
+                                  ? `Motivo ADM: ${clientVal.review_notes} (por ${clientVal.reviewed_by_name || 'ADM'})`
+                                  : 'Clique para ver o motivo da pendência apontada pelo ADM'
+                              }
+                              className="inline-flex items-center space-x-1 text-[9px] font-bold bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 px-1.5 py-0.2 rounded-full cursor-pointer transition-colors shadow-2xs"
+                            >
                               <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
                               <span>Pendência Apontada</span>
-                            </span>
+                              <MessageSquare className="w-2.5 h-2.5 text-rose-600" />
+                            </button>
                           )}
                         </div>
                         {client.puro_ou_hibrido && (
                           <span className="text-[8px] text-stone-500 bg-stone-100 px-1 rounded inline-block mt-0.5">
                             {client.puro_ou_hibrido}
                           </span>
+                        )}
+
+                        {/* Motivo do ADM em destaque abaixo do nome do cliente */}
+                        {isReviewFlagged && clientVal?.review_notes && (
+                          <div
+                            onClick={() => {
+                              setViewNoteModal({
+                                isOpen: true,
+                                title: `Pendência: ${obrigacaoName}`,
+                                subtitle: `${client.razao_social} • Competência: ${competencia.toUpperCase()}`,
+                                notes: clientVal?.review_notes || '',
+                                adminName: clientVal?.reviewed_by_name || 'Gestor ADM',
+                                adminDate: clientVal?.reviewed_at || undefined,
+                              });
+                            }}
+                            className="mt-1 bg-rose-50/90 hover:bg-rose-100/90 border border-rose-200/90 rounded-md p-1 px-2 text-[10px] text-rose-900 flex items-start space-x-1.5 cursor-pointer transition-colors max-w-md group"
+                            title="Clique para ler o motivo completo da pendência"
+                          >
+                            <MessageSquare className="w-3 h-3 text-rose-600 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                            <div className="flex-1 min-w-0">
+                              <span className="font-bold text-rose-950">Motivo ADM: </span>
+                              <span className="italic line-clamp-1">{clientVal.review_notes}</span>
+                              {clientVal.reviewed_by_name && (
+                                <span className="text-[9px] text-rose-700 font-normal ml-1">
+                                  — {clientVal.reviewed_by_name}
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         )}
                       </td>
 
@@ -917,8 +983,15 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
 
         {/* Rodapé (compacto) */}
         <div className="p-2.5 px-5 bg-stone-50 border-t border-stone-200/70 flex items-center justify-between text-[11px] text-stone-500 rounded-b-2xl">
-          <div>
-            Exibindo <strong>{filteredClients.length}</strong> de <strong>{total}</strong> clientes.
+          <div className="flex items-center space-x-2">
+            <span>
+              Exibindo <strong>{filteredClients.length}</strong> de <strong>{total}</strong> clientes.
+            </span>
+            {filterNeedsReviewOnly && (
+              <span className="text-rose-700 font-semibold bg-rose-100/80 border border-rose-300 px-2 py-0.5 rounded-full text-[10px]">
+                Filtro de pendências ativo ({clientsWithReview.length})
+              </span>
+            )}
           </div>
           <button
             type="button"
@@ -1030,6 +1103,66 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
               >
                 <AlertTriangle className="w-3.5 h-3.5" />
                 <span>{pendingSubmitting ? 'Registrando...' : 'Confirmar Pendência'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE VISUALIZAÇÃO DO MOTIVO DA PENDÊNCIA (ADM) */}
+      {viewNoteModal && viewNoteModal.isOpen && (
+        <div className="fixed inset-0 z-70 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-rose-200 animate-in zoom-in-95 duration-150 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 border border-rose-200 flex items-center justify-center shrink-0">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-stone-900">
+                    {viewNoteModal.title}
+                  </h3>
+                  {viewNoteModal.subtitle && (
+                    <p className="text-xs text-stone-500">
+                      {viewNoteModal.subtitle}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewNoteModal(null)}
+                className="p-1 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-rose-50/60 rounded-xl p-3.5 border border-rose-200 text-xs text-rose-950 space-y-2">
+              <p className="font-semibold text-rose-900 flex items-center space-x-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                <span>Observação registrada pelo Gestor ADM:</span>
+              </p>
+              <div className="bg-white p-3 rounded-lg border border-rose-200 text-xs text-stone-800 font-normal whitespace-pre-wrap leading-relaxed shadow-2xs">
+                {viewNoteModal.notes || 'Nenhuma observação por escrito foi inserida.'}
+              </div>
+              {viewNoteModal.adminName && (
+                <div className="flex items-center justify-between text-[11px] text-stone-500 pt-1">
+                  <span>Apontado por: <strong className="text-stone-700">{viewNoteModal.adminName}</strong></span>
+                  {viewNoteModal.adminDate && (
+                    <span>em {new Date(viewNoteModal.adminDate).toLocaleString('pt-BR')}</span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end pt-2 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => setViewNoteModal(null)}
+                className="px-4 py-2 text-xs font-semibold text-stone-700 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors cursor-pointer"
+              >
+                Fechar
               </button>
             </div>
           </div>

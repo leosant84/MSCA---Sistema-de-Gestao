@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Send,
+  MessageSquare,
 } from 'lucide-react';
 import { RawCnpjCopyButton } from './RawCnpjCopyButton';
 import { useToast } from '../contexts/ToastContext';
@@ -149,6 +150,16 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   const [pendingObligationTarget, setPendingObligationTarget] = useState<string | null>(null);
   const [pendingReason, setPendingReason] = useState('');
   const [pendingSubmitting, setPendingSubmitting] = useState(false);
+
+  // Estado para Modal de Visualização de Detalhes da Pendência apontada pelo ADM
+  const [viewNoteModal, setViewNoteModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    subtitle?: string;
+    notes: string;
+    adminName?: string;
+    adminDate?: string;
+  } | null>(null);
 
   // Buffer local para edições parciais no input sem gravar valores incompletos imediatamente no banco
   const [localInputBuffer, setLocalInputBuffer] = useState<Record<string, string>>({});
@@ -349,6 +360,38 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
       return false;
     }
     return currentValidation.status === 'APPROVED';
+  };
+
+  // Verifica se uma obrigação específica tem apontamento de pendência pelo ADM
+  const checkObligationNeedsReview = (obrigacao: string) => {
+    if (isObligationValidated(obrigacao)) return false;
+    if (!currentValidation || currentValidation.status !== 'NEEDS_REVIEW') return false;
+    if (currentValidation.pending_obligations && currentValidation.pending_obligations.length > 0) {
+      if (currentValidation.pending_obligations.includes(obrigacao)) return true;
+      const obNorm = (obrigacao || '').trim().toUpperCase();
+      if (obNorm === 'PRO LAB / INSS') {
+        return (
+          currentValidation.pending_obligations.includes('GUIA INSS') ||
+          currentValidation.pending_obligations.includes('PRO-LAB. / FOPAG')
+        );
+      }
+      if (obNorm === 'PARC. ATIVO' || obNorm === 'PARCELAMENTO' || obNorm === 'PARC.') {
+        return (
+          currentValidation.pending_obligations.includes('PARCELAMENTO') ||
+          currentValidation.pending_obligations.includes('PARC.') ||
+          currentValidation.pending_obligations.includes('PARCELAM. ATIVO') ||
+          currentValidation.pending_obligations.includes('PARC. ATIVO')
+        );
+      }
+      if (obNorm === 'GERAR OS DAS' || obNorm === 'GERAR O DAS') {
+        return (
+          currentValidation.pending_obligations.includes('GERAR OS DAS') ||
+          currentValidation.pending_obligations.includes('GERAR O DAS')
+        );
+      }
+      return false;
+    }
+    return true;
   };
 
   // Contagem de obrigações validadas pelo ADM
@@ -798,6 +841,48 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
           </div>
         </div>
 
+        {/* Banner de Apontamento de Pendência do ADM com Motivo */}
+        {isNeedsReview && (
+          <div className="bg-rose-50 border-b border-rose-200 px-6 py-2.5 flex items-start justify-between gap-4 text-xs text-rose-900">
+            <div className="flex items-start space-x-2.5">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-rose-800">
+                  Apontamento de Pendência pelo Administrador ({selectedComp.toUpperCase()}):
+                </p>
+                <p className="mt-0.5 text-stone-700 italic">
+                  &ldquo;{currentValidation?.review_notes || 'Favor revisar as etapas pendentes desta apuração.'}&rdquo;
+                </p>
+                {currentValidation?.reviewed_by_name && (
+                  <p className="text-[10px] text-stone-500 mt-0.5">
+                    Registrado por <strong>{currentValidation.reviewed_by_name}</strong>
+                    {currentValidation.reviewed_at && ` em ${new Date(currentValidation.reviewed_at).toLocaleDateString('pt-BR')}`}
+                  </p>
+                )}
+              </div>
+            </div>
+            {currentValidation?.review_notes && (
+              <button
+                type="button"
+                onClick={() => {
+                  setViewNoteModal({
+                    isOpen: true,
+                    title: 'Apontamento de Pendência do Administrador',
+                    subtitle: `${client.razao_social} • Competência: ${selectedComp.toUpperCase()}`,
+                    notes: currentValidation.review_notes || '',
+                    adminName: currentValidation.reviewed_by_name || 'Gestor ADM',
+                    adminDate: currentValidation.reviewed_at || undefined,
+                  });
+                }}
+                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-800 border border-rose-300 font-semibold text-xs transition-colors cursor-pointer shrink-0 shadow-2xs"
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-rose-600" />
+                <span>Ver Motivo Completo</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* 2. TABELA DE OBRIGAÇÕES COM STATUS DA VALIDAÇÃO E CHECKBOX ADM */}
         <div className="flex-1 overflow-y-auto min-h-[260px]">
           <table className="w-full text-left border-collapse">
@@ -828,9 +913,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                   const displayVal = localInputBuffer[key] !== undefined ? localInputBuffer[key] : val;
                   const isOk = (displayVal || '').trim().toUpperCase() === 'OK';
                   const isItemValidated = isObligationValidated(obrigacao);
-                  const isReviewFlagged =
-                    !isItemValidated &&
-                    Boolean(currentValidation?.pending_obligations?.includes(obrigacao));
+                  const isReviewFlagged = checkObligationNeedsReview(obrigacao);
 
                   return (
                     <tr
@@ -850,7 +933,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
 
                       {/* Nome da Obrigação */}
                       <td className="py-1.5 px-4 font-semibold text-stone-900">
-                        <div className="flex items-center space-x-1.5">
+                        <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
                           <span>{obrigacao}</span>
                           {FOLHA_PAGAMENTO_OBLIGATIONS.includes(obrigacao) && (
                             <span className="text-[9px] bg-amber-100 text-amber-900 font-bold px-1.5 py-0.2 rounded border border-amber-300">
@@ -858,11 +941,57 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                             </span>
                           )}
                           {isReviewFlagged && (
-                            <span className="text-[9px] bg-rose-100 text-rose-800 font-bold px-1.5 py-0.2 rounded border border-rose-300">
-                              Revisar
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setViewNoteModal({
+                                  isOpen: true,
+                                  title: `Pendência: ${obrigacao}`,
+                                  subtitle: `${client.razao_social} • Competência: ${selectedComp.toUpperCase()}`,
+                                  notes: currentValidation?.review_notes || 'Favor revisar as etapas desta obrigação.',
+                                  adminName: currentValidation?.reviewed_by_name || 'Gestor ADM',
+                                  adminDate: currentValidation?.reviewed_at || undefined,
+                                });
+                              }}
+                              title={currentValidation?.review_notes ? `Motivo ADM: ${currentValidation.review_notes}` : 'Ver motivo da pendência'}
+                              className="inline-flex items-center space-x-1 text-[9px] bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold px-1.5 py-0.2 rounded border border-rose-300 cursor-pointer transition-colors shadow-2xs"
+                            >
+                              <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                              <span>Revisar</span>
+                              <MessageSquare className="w-2.5 h-2.5 text-rose-600" />
+                            </button>
                           )}
                         </div>
+
+                        {/* Motivo do ADM em destaque abaixo da obrigação */}
+                        {isReviewFlagged && currentValidation?.review_notes && (
+                          <div
+                            onClick={() => {
+                              setViewNoteModal({
+                                isOpen: true,
+                                title: `Pendência: ${obrigacao}`,
+                                subtitle: `${client.razao_social} • Competência: ${selectedComp.toUpperCase()}`,
+                                notes: currentValidation.review_notes || '',
+                                adminName: currentValidation.reviewed_by_name || 'Gestor ADM',
+                                adminDate: currentValidation.reviewed_at || undefined,
+                              });
+                            }}
+                            className="mt-1 bg-rose-50/90 hover:bg-rose-100/90 border border-rose-200/90 rounded-md p-1 px-2 text-[10px] text-rose-900 flex items-start space-x-1.5 cursor-pointer transition-colors max-w-xl group"
+                            title="Clique para ler o motivo completo da pendência"
+                          >
+                            <MessageSquare className="w-3 h-3 text-rose-600 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                            <div className="flex-1 min-w-0">
+                              <span className="font-bold text-rose-950">Motivo ADM: </span>
+                              <span className="italic line-clamp-2">{currentValidation.review_notes}</span>
+                              {currentValidation.reviewed_by_name && (
+                                <span className="text-[9px] text-rose-700 font-normal block mt-0.5">
+                                  — {currentValidation.reviewed_by_name}
+                                  {currentValidation.reviewed_at ? ` em ${new Date(currentValidation.reviewed_at).toLocaleDateString('pt-BR')}` : ''}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </td>
 
                       {/* Competência Atual */}
@@ -926,10 +1055,25 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                               <span>Validado ADM</span>
                             </span>
                           ) : isReviewFlagged ? (
-                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setViewNoteModal({
+                                  isOpen: true,
+                                  title: `Pendência: ${obrigacao}`,
+                                  subtitle: `${client.razao_social} • Competência: ${selectedComp.toUpperCase()}`,
+                                  notes: currentValidation?.review_notes || 'Favor revisar as etapas desta obrigação.',
+                                  adminName: currentValidation?.reviewed_by_name || 'Gestor ADM',
+                                  adminDate: currentValidation?.reviewed_at || undefined,
+                                });
+                              }}
+                              title={currentValidation?.review_notes ? `Motivo ADM: ${currentValidation.review_notes}` : 'Clique para ver o motivo da pendência'}
+                              className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 cursor-pointer transition-colors shadow-2xs"
+                            >
                               <AlertTriangle className="w-3 h-3 text-rose-600" />
                               <span>Pendente Revisão</span>
-                            </span>
+                              <MessageSquare className="w-2.5 h-2.5 text-rose-600" />
+                            </button>
                           ) : isOk ? (
                             <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-300">
                               <Clock className="w-2.5 h-2.5 text-slate-400" />
@@ -1065,6 +1209,66 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
               >
                 <AlertTriangle className="w-3.5 h-3.5" />
                 <span>{pendingSubmitting ? 'Registrando...' : 'Confirmar Pendência'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE VISUALIZAÇÃO DO MOTIVO DA PENDÊNCIA (ADM) */}
+      {viewNoteModal && viewNoteModal.isOpen && (
+        <div className="fixed inset-0 z-70 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-rose-200 animate-in zoom-in-95 duration-150 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 border border-rose-200 flex items-center justify-center shrink-0">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-stone-900">
+                    {viewNoteModal.title}
+                  </h3>
+                  {viewNoteModal.subtitle && (
+                    <p className="text-xs text-stone-500">
+                      {viewNoteModal.subtitle}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewNoteModal(null)}
+                className="p-1 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-rose-50/60 rounded-xl p-3.5 border border-rose-200 text-xs text-rose-950 space-y-2">
+              <p className="font-semibold text-rose-900 flex items-center space-x-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                <span>Observação registrada pelo Gestor ADM:</span>
+              </p>
+              <div className="bg-white p-3 rounded-lg border border-rose-200 text-xs text-stone-800 font-normal whitespace-pre-wrap leading-relaxed shadow-2xs">
+                {viewNoteModal.notes || 'Nenhuma observação por escrito foi inserida.'}
+              </div>
+              {viewNoteModal.adminName && (
+                <div className="flex items-center justify-between text-[11px] text-stone-500 pt-1">
+                  <span>Apontado por: <strong className="text-stone-700">{viewNoteModal.adminName}</strong></span>
+                  {viewNoteModal.adminDate && (
+                    <span>em {new Date(viewNoteModal.adminDate).toLocaleString('pt-BR')}</span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end pt-2 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => setViewNoteModal(null)}
+                className="px-4 py-2 text-xs font-semibold text-stone-700 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors cursor-pointer"
+              >
+                Fechar
               </button>
             </div>
           </div>
