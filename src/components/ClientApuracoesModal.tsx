@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   X,
   Building,
@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Send,
   MessageSquare,
+  Edit3,
 } from 'lucide-react';
 import { RawCnpjCopyButton } from './RawCnpjCopyButton';
 import { useToast } from '../contexts/ToastContext';
@@ -97,6 +98,7 @@ interface ClientApuracoesModalProps {
   onSelectClient?: (client: Client) => void;
   defaultCompetencia?: string;
   isAdmin?: boolean;
+  onEditClient?: (client: Client) => void;
 }
 
 export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
@@ -117,6 +119,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   onSelectClient,
   defaultCompetencia,
   isAdmin: propIsAdmin,
+  onEditClient,
 }) => {
   const { toast } = useToast();
   const { profile, user, role, isAdmin: authIsAdmin } = useAuth();
@@ -213,10 +216,8 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   }, [client.regime_tributario, regime]);
 
   // Obrigações a exibir e validar no modal:
-  // - Para Administrador (ADM): estritamente as 3 apurações informadas (PRO LAB / INSS, GERAR OS DAS, PARCELAMENTO).
-  // - Para Usuário Comum: mantém a visualização integral de todas as apurações vigentes sem alterações.
+  // Inclui todas as obrigações potenciais do regime e folha ativas
   const baseObligations = useMemo(() => {
-    // 1. Universo de obrigações potenciais para o regime do cliente
     let allPotential: string[] = [];
 
     if (effectiveRegime === 'Simples Nacional') {
@@ -235,47 +236,17 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
       allPotential = obligations.length > 0 ? obligations : FOLHA_PAGAMENTO_OBLIGATIONS;
     }
 
-    allPotential = Array.from(new Set(allPotential));
+    return Array.from(new Set(allPotential));
+  }, [effectiveRegime, obligations, client]);
 
-    // Para o Administrador:
-    if (isAdmin) {
-      if (effectiveRegime === 'Simples Nacional') {
-        // No Simples Nacional: estritamente as 3 apurações informadas (PRO LAB / INSS, GERAR OS DAS, PARCELAMENTO)
-        // E se o cliente possuir Folha de Pagamento, replica as regras do perfil (obrigações da folha elegíveis para validação)
-        const simplesAdm = allPotential.filter((ob) => isSimplesAdmDeliverable(ob));
-        if (hasClientFolha(client)) {
-          const folhaAdm = allPotential.filter((ob) => FOLHA_PAGAMENTO_OBLIGATIONS.includes(ob) && !isOperationalObligation(ob));
-          return Array.from(new Set([...simplesAdm, ...folhaAdm]));
-        }
-        return simplesAdm;
-      }
-
-      if (effectiveRegime === 'Lucro Presumido') {
-        // No Lucro Presumido: o Adm precisa validar todas as apurações (ocultando apenas etapas operacionais internas)
-        return allPotential.filter((ob) => !isOperationalObligation(ob));
-      }
-
-      // Folha de Pagamento
-      return allPotential.filter((ob) => !isOperationalObligation(ob));
-    }
-
-    return allPotential;
-  }, [isAdmin, effectiveRegime, obligations, client]);
-
-  // Obrigações ativas no perfil do cliente
+  // Obrigações ativas no perfil do cliente (cadastradas / habilitadas)
   const clientObligations = useMemo(() => {
     return baseObligations.filter((ob) => isObligationEnabled(client, ob));
   }, [baseObligations, client, isObligationEnabled]);
 
-  // Filtro Rígido de Exibição para o Perfil ADM / Validador
-  // - No Simples Nacional: estritamente as 3 apurações informadas (PRO LAB / INSS, GERAR OS DAS, PARCELAMENTO) + Folha (se houver)
-  // - No Lucro Presumido: o Adm valida todas as apurações do cliente (ocultando etapas operacionais)
-  // - Para Usuário Comum: mantém a visualização integral sem filtros
-  const displayedObligations = useMemo(() => {
-    return clientObligations.filter((obrigacao) => {
-      // Usuário comum (colaborador): visualização integral de todas as apurações vigentes
-      if (!isAdmin) return true;
-
+  // Auxiliar: checa se a obrigação faz parte do escopo de homologação do perfil ADM
+  const isObligationForAdm = useCallback(
+    (obrigacao: string) => {
       if (effectiveRegime === 'Simples Nacional') {
         if (isSimplesAdmDeliverable(obrigacao)) return true;
         if (hasClientFolha(client) && FOLHA_PAGAMENTO_OBLIGATIONS.includes(obrigacao) && !isOperationalObligation(obrigacao)) {
@@ -283,14 +254,22 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
         }
         return false;
       }
-
-      if (effectiveRegime === 'Lucro Presumido') {
-        return !isOperationalObligation(obrigacao);
-      }
-
       return !isOperationalObligation(obrigacao);
-    });
-  }, [clientObligations, isAdmin, effectiveRegime, client]);
+    },
+    [effectiveRegime, client]
+  );
+
+  // Filtro de Visualização no Modal:
+  // 'ALL' (padrão): exibe todas as apurações habilitadas do cliente (garantindo que se o total for 2/4 ou 6/8, todas apareçam)
+  // 'ADM_ONLY': exibe apenas as obrigações que exigem homologação do Administrador
+  const [viewScopeFilter, setViewScopeFilter] = useState<'ALL' | 'ADM_ONLY'>('ALL');
+
+  const displayedObligations = useMemo(() => {
+    if (viewScopeFilter === 'ADM_ONLY') {
+      return clientObligations.filter((ob) => isObligationForAdm(ob));
+    }
+    return clientObligations;
+  }, [clientObligations, viewScopeFilter, isObligationForAdm]);
 
   // Subtotais de Regime e Folha para clientes com Folha consolidada
   const regimeObligations = useMemo(() => {
@@ -404,12 +383,17 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     return true;
   };
 
+  // Obrigações que dependem da validação do ADM
+  const admObligations = useMemo(() => {
+    return clientObligations.filter((ob) => isObligationForAdm(ob));
+  }, [clientObligations, isObligationForAdm]);
+
   // Contagem de obrigações validadas pelo ADM
-  const validatedObligationsCount = displayedObligations.filter((ob) => isObligationValidated(ob)).length;
+  const validatedObligationsCount = admObligations.filter((ob) => isObligationValidated(ob)).length;
   const isAllObligationsValidated =
-    displayedObligations.length > 0 && validatedObligationsCount === displayedObligations.length;
+    admObligations.length > 0 && validatedObligationsCount === admObligations.length;
   const isPartiallyValidated =
-    validatedObligationsCount > 0 && validatedObligationsCount < displayedObligations.length;
+    validatedObligationsCount > 0 && validatedObligationsCount < admObligations.length;
 
   // Estatísticas no ano inteiro (todas as competências x obrigações)
   let totalInYear = 0;
@@ -545,7 +529,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
       competencia: selectedComp,
       regime,
       obrigacao,
-      allClientObligations: displayedObligations,
+      allClientObligations: admObligations,
       validated: true,
       adminId: user?.id,
       adminName: profile?.full_name || 'Gestor ADM',
@@ -580,7 +564,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
         competencia: selectedComp,
         regime,
         obrigacao: pendingObligationTarget,
-        allClientObligations: displayedObligations,
+        allClientObligations: admObligations,
         validated: false,
         adminId: user?.id,
         adminName: profile?.full_name || 'Gestor ADM',
@@ -642,9 +626,15 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
             <div className="mt-1">
               <h2 className="text-base sm:text-lg font-bold text-stone-900 flex items-center space-x-2">
                 <Building className="w-4 h-4 text-[#C5A059] shrink-0" />
-                <span className="truncate" title={client.razao_social}>
-                  {client.razao_social}
-                </span>
+                <button
+                  type="button"
+                  onClick={() => onEditClient?.(client)}
+                  className="truncate text-left hover:text-[#C5A059] hover:underline cursor-pointer flex items-center space-x-1.5 group"
+                  title={`Clique para editar os dados cadastrais e obrigações de ${client.razao_social}`}
+                >
+                  <span className="truncate">{client.razao_social}</span>
+                  <Edit3 className="w-3.5 h-3.5 text-stone-400 group-hover:text-[#C5A059] shrink-0 transition-colors" />
+                </button>
               </h2>
             </div>
 
@@ -813,6 +803,35 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
 
           {/* Botões de Ação em Lote e Ação de Envio ao Cliente */}
           <div className="flex items-center flex-wrap gap-2 shrink-0">
+            {isAdmin && (
+              <div className="inline-flex items-center bg-stone-100 p-0.5 rounded-xl border border-stone-200/80 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setViewScopeFilter('ALL')}
+                  className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    viewScopeFilter === 'ALL'
+                      ? 'bg-white text-stone-900 shadow-2xs'
+                      : 'text-stone-500 hover:text-stone-800'
+                  }`}
+                  title="Exibir todas as apurações habilitadas para este cliente"
+                >
+                  Todas ({clientObligations.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewScopeFilter('ADM_ONLY')}
+                  className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    viewScopeFilter === 'ADM_ONLY'
+                      ? 'bg-white text-stone-900 shadow-2xs'
+                      : 'text-stone-500 hover:text-stone-800'
+                  }`}
+                  title="Filtrar apenas as obrigações que exigem homologação do Administrador"
+                >
+                  Entregas ADM ({admObligations.length})
+                </button>
+              </div>
+            )}
+
             {isAdmin && (
               <button
                 type="button"
@@ -1063,37 +1082,43 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                             <span className="text-[10px] text-stone-400">Não apurado</span>
                           )}
 
-                          {/* Botões Aprovado e Pendente para perfil Admin (Item 7) */}
+                          {/* Botões Aprovado e Pendente para perfil Admin */}
                           {isAdmin ? (
-                            <div className="inline-flex items-center space-x-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleApproveObligation(obrigacao)}
-                                className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
-                                  isItemValidated
-                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-emerald-200'
-                                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 hover:border-emerald-300'
-                                }`}
-                                title={`Aprovar apuração de ${obrigacao}`}
-                              >
-                                <ShieldCheck className="w-3.5 h-3.5" />
-                                <span>Aprovado</span>
-                              </button>
+                            isObligationForAdm(obrigacao) ? (
+                              <div className="inline-flex items-center space-x-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveObligation(obrigacao)}
+                                  className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
+                                    isItemValidated
+                                      ? 'bg-emerald-600 text-white border-emerald-700 shadow-emerald-200'
+                                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 hover:border-emerald-300'
+                                  }`}
+                                  title={`Aprovar apuração de ${obrigacao}`}
+                                >
+                                  <ShieldCheck className="w-3.5 h-3.5" />
+                                  <span>Aprovado</span>
+                                </button>
 
-                              <button
-                                type="button"
-                                onClick={() => handleOpenPendingModal(obrigacao)}
-                                className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
-                                  isReviewFlagged
-                                    ? 'bg-rose-600 text-white border-rose-700 shadow-rose-200'
-                                    : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 hover:border-rose-300'
-                                }`}
-                                title={`Apontar pendência e notificar analista sobre ${obrigacao}`}
-                              >
-                                <AlertTriangle className="w-3.5 h-3.5" />
-                                <span>Pendente</span>
-                              </button>
-                            </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPendingModal(obrigacao)}
+                                  className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
+                                    isReviewFlagged
+                                      ? 'bg-rose-600 text-white border-rose-700 shadow-rose-200'
+                                      : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 hover:border-rose-300'
+                                  }`}
+                                  title={`Apontar pendência e notificar analista sobre ${obrigacao}`}
+                                >
+                                  <AlertTriangle className="w-3.5 h-3.5" />
+                                  <span>Pendente</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-stone-400 font-medium italic">
+                                Rotina Operacional
+                              </span>
+                            )
                           ) : (
                             <span className="text-[10px] text-stone-400 italic">Validação do Administrador</span>
                           )}

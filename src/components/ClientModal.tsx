@@ -551,7 +551,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[80] overflow-y-auto bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
         {/* Cabeçalho do Modal */}
         <div className="p-5 border-b border-gray-200 flex items-center justify-between bg-[#1E2022] text-white">

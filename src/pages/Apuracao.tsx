@@ -14,6 +14,7 @@ import {
   Clock,
   AlertTriangle,
   Send,
+  Edit3,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -29,6 +30,7 @@ import {
 import { APURACAO_CLIENT_IDS } from '../constants/apuracaoScope';
 import { ApuracaoDrilldownModal } from '../components/ApuracaoDrilldownModal';
 import { ClientApuracoesModal } from '../components/ClientApuracoesModal';
+import { ClientModal } from '../components/ClientModal';
 import { notificationService } from '../services/notificationService';
 import { apuracaoValidationService, buildValidationKey } from '../services/apuracaoValidationService';
 import type { FiscalRegimeType } from '../constants/fiscalObligations';
@@ -98,6 +100,10 @@ export const Apuracao: React.FC = () => {
   const [selectedClientIdFilter, setSelectedClientIdFilter] = useState<string>('');
   const [clientApuracoesModalOpen, setClientApuracoesModalOpen] = useState(false);
   const [clientForApuracoesModal, setClientForApuracoesModal] = useState<Client | null>(null);
+
+  // Modal de Edição dos Dados Cadastrais do Cliente (Item 2)
+  const [isClientEditModalOpen, setIsClientEditModalOpen] = useState(false);
+  const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
 
   // Lista de Anos disponíveis
   const availableYears = useMemo(() => {
@@ -244,6 +250,31 @@ export const Apuracao: React.FC = () => {
       setLoading(false);
     }
   }, [selectedYear, searchParams, toast]);
+
+  // Abre diretamente o modal de alteração de dados cadastrais do cliente (Item 2)
+  const handleOpenEditClient = useCallback((c: Client) => {
+    setClientToEdit(c);
+    setIsClientEditModalOpen(true);
+  }, []);
+
+  // Ao salvar edição cadastral, recarrega os dados e sincroniza estado local
+  const handleClientEditSuccess = useCallback(async () => {
+    setIsClientEditModalOpen(false);
+    await fetchApuracaoData();
+    if (clientToEdit) {
+      const { data: updatedClient } = await supabase
+        .from('clients')
+        .select('*, client_credentials (*)')
+        .eq('id', clientToEdit.id)
+        .single();
+      if (updatedClient) {
+        if (clientForApuracoesModal?.id === updatedClient.id) {
+          setClientForApuracoesModal(updatedClient as Client);
+        }
+      }
+    }
+    toast('Cadastro do cliente atualizado com sucesso!', 'success');
+  }, [fetchApuracaoData, clientToEdit, clientForApuracoesModal?.id, toast]);
 
   // Se a rota/URL mudar os parâmetros enquanto o componente já estiver montado
   useEffect(() => {
@@ -746,6 +777,56 @@ export const Apuracao: React.FC = () => {
     return tabClients.find((c) => c.id === selectedClientIdFilter) || null;
   }, [tabClients, selectedClientIdFilter]);
 
+  // Lista de obrigações da tabela principal (quando um cliente está filtrado, exibe todas as suas obrigações ativas, incluindo Folha se houver)
+  const tableObligations = useMemo(() => {
+    if (currentFilteredClient) {
+      const regObs = (FISCAL_OBLIGATIONS[activeTab] || []).filter((ob) => isObligationEnabled(currentFilteredClient, ob));
+      if (hasClientFolha(currentFilteredClient)) {
+        const folhaObs = FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => isObligationEnabled(currentFilteredClient, ob));
+        return Array.from(new Set([...regObs, ...folhaObs]));
+      }
+      return regObs;
+    }
+    return FISCAL_OBLIGATIONS[activeTab] || [];
+  }, [activeTab, currentFilteredClient, isObligationEnabled]);
+
+  // Lista detalhada das obrigações pendentes do cliente filtrado no mês corrente
+  const clientPendingObligationsInMonth = useMemo(() => {
+    if (!currentFilteredClient) return [];
+    const comp = currentMonthCompetencia;
+    const pending: string[] = [];
+
+    // 1. Regime
+    const regObs = (FISCAL_OBLIGATIONS[activeTab] || []).filter((ob) => isObligationEnabled(currentFilteredClient, ob));
+    regObs.forEach((ob) => {
+      let val = inputValues[`${currentFilteredClient.id}::${ob}::${comp}`];
+      if (val === undefined) {
+        const obNorm = (ob || '').trim().toUpperCase();
+        if (obNorm === 'PRO LAB / INSS' || obNorm === 'PRO-LAB / INSS' || obNorm === 'PRO LAB/INSS') {
+          val = inputValues[`${currentFilteredClient.id}::PRO-LAB. / FOPAG::${comp}`] || inputValues[`${currentFilteredClient.id}::GUIA INSS::${comp}`];
+        } else if (obNorm === 'IMPORTAR / REINF' || obNorm === 'IMPORTAR DOMINIO') {
+          val = inputValues[`${currentFilteredClient.id}::IMPORTAR / REINF::${comp}`] || inputValues[`${currentFilteredClient.id}::IMPORTAR DOMINIO::${comp}`];
+        }
+      }
+      if ((val || '').trim().toUpperCase() !== 'OK') {
+        pending.push(ob);
+      }
+    });
+
+    // 2. Folha
+    if ((activeTab === 'Lucro Presumido' || activeTab === 'Simples Nacional') && hasClientFolha(currentFilteredClient)) {
+      const folhaObs = FOLHA_PAGAMENTO_OBLIGATIONS.filter((ob) => isObligationEnabled(currentFilteredClient, ob));
+      folhaObs.forEach((ob) => {
+        const val = inputValues[`${currentFilteredClient.id}::${ob}::${comp}`];
+        if ((val || '').trim().toUpperCase() !== 'OK') {
+          pending.push(`${ob} (Folha)`);
+        }
+      });
+    }
+
+    return pending;
+  }, [currentFilteredClient, currentMonthCompetencia, activeTab, isObligationEnabled, inputValues]);
+
   // Calcula a porcentagem de conclusão de uma Obrigação em uma Competência específica
   const getObligationMonthStats = useCallback(
     (obrigacao: string, competencia: string) => {
@@ -1219,9 +1300,23 @@ export const Apuracao: React.FC = () => {
             </div>
             <div className="text-[11px] text-stone-400 font-medium mt-1.5 flex flex-wrap items-center justify-between gap-1">
               <span>
-                {currentFilteredClient
-                  ? `Cliente: ${currentFilteredClient.razao_social} • ${totalApuradoStats.okItems} de ${totalApuradoStats.totalItems} apurados`
-                  : `${activeTab} • ${totalApuradoStats.okItems} de ${totalApuradoStats.totalItems} apurações no mês`}
+                {currentFilteredClient ? (
+                  <span className="inline-flex items-center space-x-1.5">
+                    <span className="text-stone-500 font-semibold">Cliente:</span>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditClient(currentFilteredClient)}
+                      className="font-bold text-stone-700 hover:text-[#C5A059] hover:underline cursor-pointer inline-flex items-center space-x-1 group"
+                      title={`Clique para editar os dados cadastrais e obrigações de ${currentFilteredClient.razao_social}`}
+                    >
+                      <span className="max-w-[220px] truncate">{currentFilteredClient.razao_social}</span>
+                      <Edit3 className="w-3 h-3 text-stone-400 group-hover:text-[#C5A059] shrink-0 transition-colors" />
+                    </button>
+                    <span>• {totalApuradoStats.okItems} de {totalApuradoStats.totalItems} apurados</span>
+                  </span>
+                ) : (
+                  `${activeTab} • ${totalApuradoStats.okItems} de ${totalApuradoStats.totalItems} apurações no mês`
+                )}
               </span>
               {totalApuradoStats.hasFolha && (
                 <div className="inline-flex items-center space-x-1.5 text-[10px] text-stone-400 font-normal">
@@ -1235,6 +1330,29 @@ export const Apuracao: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Listagem discreta das apurações pendentes do cliente */}
+            {currentFilteredClient && clientPendingObligationsInMonth.length > 0 && (
+              <div className="mt-2.5 pt-2 border-t border-stone-100 flex flex-wrap items-center gap-1.5 text-[10px]">
+                <span className="font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                  Faltam {clientPendingObligationsInMonth.length} {clientPendingObligationsInMonth.length === 1 ? 'apuração' : 'apurações'}:
+                </span>
+                {clientPendingObligationsInMonth.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => {
+                      setClientForApuracoesModal(currentFilteredClient);
+                      setClientApuracoesModalOpen(true);
+                    }}
+                    className="bg-stone-50 hover:bg-amber-50 hover:text-amber-900 hover:border-amber-300 text-stone-600 px-1.5 py-0.5 rounded border border-stone-200 font-medium transition-colors cursor-pointer"
+                    title={`Clique para abrir e preencher: ${p}`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="w-12 h-12 rounded-2xl bg-amber-50 text-[#C5A059] flex items-center justify-center border border-amber-200/60 shadow-2xs shrink-0">
             <TrendingUp className="w-6 h-6" />
@@ -1259,9 +1377,23 @@ export const Apuracao: React.FC = () => {
               />
             </div>
             <div className="text-[11px] text-stone-400 font-medium mt-1.5">
-              {currentFilteredClient
-                ? `Cliente: ${currentFilteredClient.razao_social} • ${totalValidadoStats.validatedItems} de ${totalValidadoStats.totalItems} entregas homologadas`
-                : `${totalValidadoStats.validatedItems} de ${totalValidadoStats.totalItems} entregas homologadas pelo ADM`}
+              {currentFilteredClient ? (
+                <span className="inline-flex items-center space-x-1.5">
+                  <span className="text-stone-500 font-semibold">Cliente:</span>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditClient(currentFilteredClient)}
+                    className="font-bold text-stone-700 hover:text-emerald-700 hover:underline cursor-pointer inline-flex items-center space-x-1 group"
+                    title={`Clique para editar os dados cadastrais de ${currentFilteredClient.razao_social}`}
+                  >
+                    <span className="max-w-[220px] truncate">{currentFilteredClient.razao_social}</span>
+                    <Edit3 className="w-3 h-3 text-stone-400 group-hover:text-emerald-600 shrink-0 transition-colors" />
+                  </button>
+                  <span>• {totalValidadoStats.validatedItems} de {totalValidadoStats.totalItems} entregas homologadas</span>
+                </span>
+              ) : (
+                `${totalValidadoStats.validatedItems} de ${totalValidadoStats.totalItems} entregas homologadas pelo ADM`
+              )}
             </div>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200 shadow-2xs shrink-0">
@@ -1383,6 +1515,17 @@ export const Apuracao: React.FC = () => {
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
+
+            {selectedClientIdFilter && currentFilteredClient && (
+              <button
+                type="button"
+                onClick={() => handleOpenEditClient(currentFilteredClient)}
+                className="text-stone-400 hover:text-[#C5A059] p-0.5 rounded cursor-pointer transition-colors ml-0.5"
+                title={`Editar cadastro de ${currentFilteredClient.razao_social}`}
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
           {/* Botão de Ver todas as apurações do cliente selecionado */}
@@ -1457,14 +1600,14 @@ export const Apuracao: React.FC = () => {
                     </div>
                   </td>
                 </tr>
-              ) : currentObligations.length === 0 ? (
+              ) : tableObligations.length === 0 ? (
                 <tr>
                   <td colSpan={13} className="py-12 text-center text-stone-400">
                     Nenhuma apuração cadastrada para este regime.
                   </td>
                 </tr>
               ) : (
-                currentObligations.map((obrigacao) => (
+                tableObligations.map((obrigacao) => (
                   <tr key={obrigacao} className="hover:bg-amber-50/20 transition-colors">
                     {/* Nome da Apuração Clicável para Drilldown de Clientes */}
                     <td className="py-3 px-4 sticky left-0 z-10 bg-white group-hover:bg-amber-50/20 shadow-[1px_0_0_0_#E5E7EB] w-[240px] min-w-[240px] max-w-[260px]">
@@ -1474,9 +1617,16 @@ export const Apuracao: React.FC = () => {
                         className="text-left font-bold text-stone-900 hover:text-[#C5A059] transition-colors cursor-pointer group flex items-center justify-between w-full"
                         title={`Clique para abrir a lista de clientes para: ${obrigacao}`}
                       >
-                        <span className="truncate group-hover:underline underline-offset-2">
-                          {obrigacao}
-                        </span>
+                        <div className="flex items-center space-x-1.5 truncate">
+                          <span className="truncate group-hover:underline underline-offset-2">
+                            {obrigacao}
+                          </span>
+                          {FOLHA_PAGAMENTO_OBLIGATIONS.includes(obrigacao) && (
+                            <span className="text-[9px] bg-amber-100 text-amber-900 font-bold px-1.5 py-0.2 rounded border border-amber-300 shrink-0">
+                              FOPAG
+                            </span>
+                          )}
+                        </div>
                         <ChevronRight className="w-4 h-4 text-stone-300 group-hover:text-[#C5A059] group-hover:translate-x-0.5 transition-all shrink-0 ml-1" />
                       </button>
                     </td>
@@ -1642,6 +1792,21 @@ export const Apuracao: React.FC = () => {
           onRefreshData={fetchApuracaoData}
           defaultCompetencia={currentMonthCompetencia}
           isAdmin={isAdmin}
+          onEditClient={(c) => handleOpenEditClient(c)}
+        />
+      )}
+
+      {/* 7. MODAL DE EDIÇÃO DOS DADOS CADASTRAIS DO CLIENTE (ATALHO RÁPIDO - ITEM 2) */}
+      {isClientEditModalOpen && clientToEdit && (
+        <ClientModal
+          key={clientToEdit.id}
+          isOpen={isClientEditModalOpen}
+          onClose={() => {
+            setIsClientEditModalOpen(false);
+            setClientToEdit(null);
+          }}
+          onSuccess={handleClientEditSuccess}
+          clientToEdit={clientToEdit}
         />
       )}
     </div>
