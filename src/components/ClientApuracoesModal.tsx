@@ -312,7 +312,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   const currentValidationKey = buildValidationKey(client.id, selectedComp);
   const currentValidation = validations[currentValidationKey];
   const isNeedsReview = currentValidation?.status === 'NEEDS_REVIEW';
-  const isEnviadoCliente = Boolean(currentValidation?.enviado_cliente);
+  const isEnviadoCliente = Boolean(currentValidation?.enviado_cliente || (currentValidation as any)?.status === 'ENVIADO');
 
   // Verifica se uma obrigação específica está validada pelo ADM
   // Estritamente vinculada à existência da apuração ativa: se a apuração foi desfeita, não é validada

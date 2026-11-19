@@ -135,7 +135,7 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   // Auxiliar para checar se apuração do cliente foi marcada como enviada
   const checkClientEnviado = (c: Client) => {
     const k = buildValidationKey(c.id, competencia);
-    return Boolean(validations[k]?.enviado_cliente);
+    return Boolean(validations[k]?.enviado_cliente || (validations[k] as any)?.status === 'ENVIADO');
   };
 
   // Auxiliar para checar se cliente possui pendência apontada na obrigação/competência
@@ -789,21 +789,27 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                   const isOk = (displayVal || '').trim().toUpperCase() === 'OK';
                   const isReviewFlagged = checkClientNeedsReview(client);
                   const isClientVal = checkClientValidated(client);
+                  const isClientEnviado = checkClientEnviado(client);
+                  const isValidadoEEnviado = isClientVal && isClientEnviado;
+                  const isRowGray = isValidadoEEnviado || isClientEnviado;
                   const clientValKey = buildValidationKey(client.id, competencia);
                   const clientVal = validations[clientValKey];
 
                   return (
                     <tr
                       key={client.id}
-                      className={`hover:bg-amber-50/20 transition-colors ${
-                        isReviewFlagged
-                          ? 'bg-rose-50/40 border-l-4 border-l-rose-500'
+                      className={`transition-colors ${
+                        isRowGray
+                          ? 'grayscale opacity-90 hover:bg-stone-50/80 bg-stone-50/50'
+                          : isReviewFlagged
+                          ? 'bg-rose-50/40 border-l-4 border-l-rose-500 hover:bg-amber-50/20'
                           : isClientVal
-                          ? 'bg-emerald-50/25'
+                          ? 'bg-emerald-50/25 hover:bg-amber-50/20'
                           : isOk
-                          ? 'bg-emerald-50/10'
-                          : ''
+                          ? 'bg-emerald-50/10 hover:bg-amber-50/20'
+                          : 'hover:bg-amber-50/20'
                       }`}
+                      style={isRowGray ? { filter: 'grayscale(100%)', opacity: 0.92 } : undefined}
                     >
                       {/* Domínio */}
                       <td className="py-1 px-3 text-center font-mono font-bold text-stone-800 text-[10px]">
@@ -813,12 +819,12 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                       {/* Razão Social */}
                       <td className="py-1 px-3">
                         <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
-                          <span className="font-semibold text-stone-900 leading-tight text-xs">
+                          <span className={`font-semibold leading-tight text-xs ${isRowGray ? 'text-stone-700' : 'text-stone-900'}`}>
                             {client.razao_social}
                           </span>
-                          {isClientVal && checkClientEnviado(client) ? (
-                            <span className="inline-flex items-center space-x-0.5 text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded-full">
-                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                          {isValidadoEEnviado ? (
+                            <span className="inline-flex items-center space-x-0.5 text-[9px] font-bold bg-stone-100 text-stone-600 border border-stone-300 px-1.5 py-0.2 rounded-full">
+                              <CheckCircle2 className="w-2.5 h-2.5 text-stone-500" />
                               <span>Validado & Enviado</span>
                             </span>
                           ) : isClientVal ? (
@@ -845,11 +851,15 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                                   ? `Motivo ADM: ${clientVal.review_notes} (por ${clientVal.reviewed_by_name || 'ADM'})`
                                   : 'Clique para ver o motivo da pendência apontada pelo ADM'
                               }
-                              className="inline-flex items-center space-x-1 text-[9px] font-bold bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 px-1.5 py-0.2 rounded-full cursor-pointer transition-colors shadow-2xs"
+                              className={`inline-flex items-center space-x-1 text-[9px] font-bold px-1.5 py-0.2 rounded-full cursor-pointer transition-colors shadow-2xs border ${
+                                isRowGray
+                                  ? 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300'
+                                  : 'bg-rose-100 hover:bg-rose-200 text-rose-800 border-rose-300'
+                              }`}
                             >
-                              <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                              <AlertTriangle className={`w-2.5 h-2.5 ${isRowGray ? 'text-stone-600' : 'text-rose-600'}`} />
                               <span>Pendência Apontada</span>
-                              <MessageSquare className="w-2.5 h-2.5 text-rose-600" />
+                              <MessageSquare className={`w-2.5 h-2.5 ${isRowGray ? 'text-stone-600' : 'text-rose-600'}`} />
                             </button>
                           )}
                         </div>
@@ -894,7 +904,9 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                               }}
                               placeholder="OK"
                               className={`w-14 px-2 py-0.5 text-center text-xs font-mono font-bold rounded border uppercase transition-colors focus:outline-none focus:ring-1 ${
-                                isOk
+                                isRowGray
+                                  ? 'bg-stone-50 border-stone-300 text-stone-600 focus:ring-stone-400'
+                                  : isOk
                                   ? 'bg-emerald-50 border-emerald-400 text-emerald-800 focus:ring-emerald-500'
                                   : 'bg-white border-stone-300 text-stone-700 placeholder-stone-300 focus:border-[#C5A059] focus:ring-[#C5A059]'
                               }`}
@@ -915,7 +927,11 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                               }
                             }}
                             className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer border ${
-                              isOk
+                              isRowGray
+                                ? isOk
+                                  ? 'bg-stone-500 hover:bg-stone-600 text-white border-stone-500'
+                                  : 'bg-stone-50 hover:bg-stone-100 text-stone-500 hover:text-stone-700 border-stone-200'
+                                : isOk
                                 ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600'
                                 : 'bg-stone-50 hover:bg-amber-50 text-stone-500 hover:text-stone-800 border-stone-200'
                             }`}
@@ -945,7 +961,11 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                               type="button"
                               onClick={() => handleApproveClientObligation(client)}
                               className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
-                                isClientVal
+                                isRowGray
+                                  ? isClientVal
+                                    ? 'bg-stone-500 text-white border-stone-600'
+                                    : 'bg-stone-100 hover:bg-stone-200 text-stone-600 border-stone-300'
+                                  : isClientVal
                                   ? 'bg-emerald-600 text-white border-emerald-700 shadow-emerald-200'
                                   : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 hover:border-emerald-300'
                               }`}
@@ -960,7 +980,11 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                               type="button"
                               onClick={() => handleOpenPendingModal(client)}
                               className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
-                                isReviewFlagged
+                                isRowGray
+                                  ? isReviewFlagged
+                                    ? 'bg-stone-500 text-white border-stone-600'
+                                    : 'bg-stone-50 hover:bg-stone-100 text-stone-500 border-stone-200'
+                                  : isReviewFlagged
                                   ? 'bg-rose-600 text-white border-rose-700 shadow-rose-200'
                                   : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 hover:border-rose-300'
                               }`}
