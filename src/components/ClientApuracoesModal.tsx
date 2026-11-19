@@ -913,7 +913,12 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
         )}
 
         {/* 2. TABELA DE OBRIGAÇÕES COM STATUS DA VALIDAÇÃO E CHECKBOX ADM */}
-        <div className="flex-1 overflow-y-auto min-h-[260px]">
+        <div
+          className={`flex-1 overflow-y-auto min-h-[260px] transition-all duration-200 ${
+            isEnviadoCliente ? 'grayscale opacity-90' : ''
+          }`}
+          style={isEnviadoCliente ? { filter: 'grayscale(100%)', opacity: 0.92 } : undefined}
+        >
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-10 bg-stone-100 shadow-xs">
               <tr className="border-b border-stone-200 text-[10px] font-bold text-stone-600 uppercase tracking-wider select-none">
@@ -947,13 +952,29 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                   return (
                     <tr
                       key={obrigacao}
-                      className={`hover:bg-amber-50/20 transition-colors ${
-                        isItemValidated
+                      className={`transition-colors ${
+                        isEnviadoCliente
+                          ? 'hover:bg-stone-50/80'
+                          : 'hover:bg-amber-50/20'
+                      } ${
+                        isEnviadoCliente
+                          ? isItemValidated
+                            ? 'bg-stone-50/50'
+                            : isOk
+                            ? 'bg-stone-50/30'
+                            : ''
+                          : isItemValidated
                           ? 'bg-emerald-50/20'
                           : isOk
                           ? 'bg-slate-50/40'
                           : ''
-                      } ${isReviewFlagged ? 'bg-rose-50/30' : ''}`}
+                      } ${
+                        isReviewFlagged
+                          ? isEnviadoCliente
+                            ? 'bg-stone-100/40'
+                            : 'bg-rose-50/30'
+                          : ''
+                      }`}
                     >
                       {/* Índice */}
                       <td className="py-1.5 px-4 text-center font-mono text-[10px] text-stone-400">
@@ -961,11 +982,17 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                       </td>
 
                       {/* Nome da Obrigação */}
-                      <td className="py-1.5 px-4 font-semibold text-stone-900">
+                      <td className={`py-1.5 px-4 font-semibold ${isEnviadoCliente ? 'text-stone-700' : 'text-stone-900'}`}>
                         <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
                           <span>{obrigacao}</span>
                           {FOLHA_PAGAMENTO_OBLIGATIONS.includes(obrigacao) && (
-                            <span className="text-[9px] bg-amber-100 text-amber-900 font-bold px-1.5 py-0.2 rounded border border-amber-300">
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
+                                isEnviadoCliente
+                                  ? 'bg-stone-100 text-stone-600 border-stone-300'
+                                  : 'bg-amber-100 text-amber-900 border-amber-300'
+                              }`}
+                            >
                               FOPAG
                             </span>
                           )}
@@ -983,11 +1010,15 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                                 });
                               }}
                               title={currentValidation?.review_notes ? `Motivo ADM: ${currentValidation.review_notes}` : 'Ver motivo da pendência'}
-                              className="inline-flex items-center space-x-1 text-[9px] bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold px-1.5 py-0.2 rounded border border-rose-300 cursor-pointer transition-colors shadow-2xs"
+                              className={`inline-flex items-center space-x-1 text-[9px] font-bold px-1.5 py-0.2 rounded border cursor-pointer transition-colors shadow-2xs ${
+                                isEnviadoCliente
+                                  ? 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300'
+                                  : 'bg-rose-100 hover:bg-rose-200 text-rose-800 border-rose-300'
+                              }`}
                             >
-                              <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                              <AlertTriangle className={`w-2.5 h-2.5 ${isEnviadoCliente ? 'text-stone-600' : 'text-rose-600'}`} />
                               <span>Revisar</span>
-                              <MessageSquare className="w-2.5 h-2.5 text-rose-600" />
+                              <MessageSquare className={`w-2.5 h-2.5 ${isEnviadoCliente ? 'text-stone-600' : 'text-rose-600'}`} />
                             </button>
                           )}
                         </div>
@@ -1013,7 +1044,9 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                             }}
                             placeholder="OK"
                             className={`w-14 px-2 py-0.5 text-center text-xs font-mono font-bold rounded border uppercase transition-colors focus:outline-none focus:ring-1 ${
-                              isOk
+                              isEnviadoCliente
+                                ? 'bg-stone-50 border-stone-300 text-stone-600 focus:ring-stone-400'
+                                : isOk
                                 ? 'bg-emerald-50 border-emerald-400 text-emerald-800 focus:ring-emerald-500'
                                 : 'bg-white border-stone-300 text-stone-700 placeholder-stone-300 focus:border-[#C5A059] focus:ring-[#C5A059]'
                             }`}
@@ -1024,7 +1057,11 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                             type="button"
                             onClick={() => handleToggleStatus(obrigacao)}
                             className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer border ${
-                              isOk
+                              isEnviadoCliente
+                                ? isOk
+                                  ? 'bg-stone-500 hover:bg-stone-600 text-white border-stone-500'
+                                  : 'bg-stone-50 hover:bg-stone-100 text-stone-500 hover:text-stone-700 border-stone-200'
+                                : isOk
                                 ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600'
                                 : 'bg-stone-50 hover:bg-amber-50 text-stone-500 hover:text-stone-800 border-stone-200'
                             }`}
@@ -1049,8 +1086,14 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                       <td className="py-1.5 px-4 text-right whitespace-nowrap">
                         <div className="inline-flex items-center justify-end space-x-2">
                           {isItemValidated ? (
-                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                              <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                            <span
+                              className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                isEnviadoCliente
+                                  ? 'bg-stone-100 text-stone-600 border-stone-300'
+                                  : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                              }`}
+                            >
+                              <ShieldCheck className={`w-3 h-3 ${isEnviadoCliente ? 'text-stone-500' : 'text-emerald-600'}`} />
                               <span>Validado ADM</span>
                             </span>
                           ) : isReviewFlagged ? (
@@ -1067,11 +1110,15 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                                 });
                               }}
                               title={currentValidation?.review_notes ? `Motivo ADM: ${currentValidation.review_notes}` : 'Clique para ver o motivo da pendência'}
-                              className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 cursor-pointer transition-colors shadow-2xs"
+                              className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold border cursor-pointer transition-colors shadow-2xs ${
+                                isEnviadoCliente
+                                  ? 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300'
+                                  : 'bg-rose-100 hover:bg-rose-200 text-rose-800 border-rose-300'
+                              }`}
                             >
-                              <AlertTriangle className="w-3 h-3 text-rose-600" />
+                              <AlertTriangle className={`w-3 h-3 ${isEnviadoCliente ? 'text-stone-600' : 'text-rose-600'}`} />
                               <span>Pendente Revisão</span>
-                              <MessageSquare className="w-2.5 h-2.5 text-rose-600" />
+                              <MessageSquare className={`w-2.5 h-2.5 ${isEnviadoCliente ? 'text-stone-600' : 'text-rose-600'}`} />
                             </button>
                           ) : isOk ? (
                             <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-300">
@@ -1090,7 +1137,11 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                                   type="button"
                                   onClick={() => handleApproveObligation(obrigacao)}
                                   className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
-                                    isItemValidated
+                                    isEnviadoCliente
+                                      ? isItemValidated
+                                        ? 'bg-stone-500 text-white border-stone-600'
+                                        : 'bg-stone-100 hover:bg-stone-200 text-stone-600 border-stone-300'
+                                      : isItemValidated
                                       ? 'bg-emerald-600 text-white border-emerald-700 shadow-emerald-200'
                                       : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 hover:border-emerald-300'
                                   }`}
@@ -1104,7 +1155,11 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                                   type="button"
                                   onClick={() => handleOpenPendingModal(obrigacao)}
                                   className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
-                                    isReviewFlagged
+                                    isEnviadoCliente
+                                      ? isReviewFlagged
+                                        ? 'bg-stone-500 text-white border-stone-600'
+                                        : 'bg-stone-50 hover:bg-stone-100 text-stone-500 border-stone-200'
+                                      : isReviewFlagged
                                       ? 'bg-rose-600 text-white border-rose-700 shadow-rose-200'
                                       : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 hover:border-rose-300'
                                   }`}
