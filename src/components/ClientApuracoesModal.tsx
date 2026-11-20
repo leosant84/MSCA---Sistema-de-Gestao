@@ -9,12 +9,15 @@ import {
   Check,
   ShieldCheck,
   AlertTriangle,
+  AlertCircle,
   ChevronLeft,
   ChevronRight,
   Send,
   MessageSquare,
   Edit3,
 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { isEntryOverdue } from '../utils/competencia';
 import { RawCnpjCopyButton } from './RawCnpjCopyButton';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -147,6 +150,47 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
       setSelectedComp(defaultCompetencia);
     }
   }, [defaultCompetencia, client?.id]);
+
+  // Indicador de Inadimplência do Cliente (Exclusivo Perfil ADM)
+  const [overdueAmount, setOverdueAmount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isAdmin || !client?.id) {
+      setOverdueAmount(null);
+      return;
+    }
+
+    let isMounted = true;
+    const fetchClientOverdue = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('financial_entries')
+          .select('id, valor, status, competencia, observacao')
+          .eq('client_id', client.id)
+          .in('status', ['À RECEBER', 'PROTESTADO']);
+
+        if (error) throw error;
+        if (isMounted) {
+          if (!data || data.length === 0) {
+            setOverdueAmount(0);
+          } else {
+            const overdueEntries = data.filter((e) => isEntryOverdue(e));
+            const total = overdueEntries.reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
+            setOverdueAmount(total);
+          }
+        }
+      } catch (err) {
+        console.warn('Erro ao carregar inadimplência do cliente:', err);
+        if (isMounted) setOverdueAmount(0);
+      }
+    };
+
+    fetchClientOverdue();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [client?.id, isAdmin]);
 
   // Estado para Modal de Confirmação de Pendência
   const [pendingModalOpen, setPendingModalOpen] = useState(false);
@@ -702,6 +746,27 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
               >
                 Ano {year}: {percentInYear}% concluído ({okCountInYear}/{totalInYear})
               </span>
+
+              {/* Indicador de Inadimplência do Cliente (Exclusivo Perfil ADM) */}
+              {isAdmin && overdueAmount !== null && (
+                overdueAmount > 0 ? (
+                  <div
+                    title={`Cliente com pendência financeira de ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(overdueAmount)} em aberto`}
+                    className="inline-flex items-center space-x-1 text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.2 rounded-full border border-rose-200 shadow-2xs"
+                  >
+                    <AlertCircle className="w-2.5 h-2.5 text-rose-600 shrink-0" />
+                    <span>Inadimplente: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(overdueAmount)}</span>
+                  </div>
+                ) : (
+                  <div
+                    title="Cliente sem pendências financeiras em aberto"
+                    className="inline-flex items-center space-x-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.2 rounded-full border border-emerald-200 shadow-2xs"
+                  >
+                    <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                    <span>Em dia</span>
+                  </div>
+                )
+              )}
 
               {(regime === 'Lucro Presumido' || regime === 'Simples Nacional') && hasClientFolha(client) && folhaObligations.length > 0 && (
                 <div className="inline-flex items-center space-x-1 text-[10px] text-stone-500 bg-stone-50 border border-stone-200/80 px-2 py-0.2 rounded-md">
