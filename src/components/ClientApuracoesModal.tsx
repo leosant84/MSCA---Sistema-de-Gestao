@@ -312,7 +312,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   const currentValidationKey = buildValidationKey(client.id, selectedComp);
   const currentValidation = validations[currentValidationKey];
   const isNeedsReview = currentValidation?.status === 'NEEDS_REVIEW';
-  const isEnviadoCliente = Boolean(currentValidation?.enviado_cliente || (currentValidation as any)?.status === 'ENVIADO');
+  const isEnviadoCliente = Boolean(currentValidation?.enviado_cliente === true);
 
   // Verifica se uma obrigação específica está validada pelo ADM
   // Estritamente vinculada à existência da apuração ativa: se a apuração foi desfeita, não é validada
@@ -394,6 +394,25 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
     admObligations.length > 0 && validatedObligationsCount === admObligations.length;
   const isPartiallyValidated =
     validatedObligationsCount > 0 && validatedObligationsCount < admObligations.length;
+
+  // Condição estrita: Uma competência só é considerada 100% Validada pelo ADM se:
+  // 1. Todas as apurações do cliente no mês estiverem preenchidas como OK (100% concluído, sem itens pendentes);
+  // 2. Todas as obrigações que exigem validação do ADM estiverem aprovadas;
+  // 3. Não houver nenhum apontamento de pendência ativo (NEEDS_REVIEW).
+  const isCompetencia100Validada =
+    isMonth100 &&
+    isAllObligationsValidated &&
+    !isNeedsReview &&
+    (currentValidation?.pending_obligations?.length ?? 0) === 0;
+
+  // Condição estrita para "Validado & Enviado":
+  // Deve estar 100% validada E a ação de envio ao cliente deve ter sido efetivamente concluída e salva no banco (enviado_cliente === true)
+  const isValidadoEEnviadoCompetencia = isCompetencia100Validada && isEnviadoCliente;
+
+  // Modo cinza da tabela e botões do modal:
+  // Só fica em tons de cinza se a competência estiver REALMENTE validada e enviada!
+  // Se estiver pendente de validação ou não tiver sido enviada ao cliente, permanece totalmente colorida!
+  const isModalGrayMode = isValidadoEEnviadoCompetencia;
 
   // Estatísticas no ano inteiro (todas as competências x obrigações)
   let totalInYear = 0;
@@ -490,6 +509,10 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
       toast('Apenas gestores administradores podem alterar o status de envio ao cliente.', 'info');
       return;
     }
+    if (!isCompetencia100Validada && !isEnviadoCliente) {
+      toast('Para marcar como enviado, a competência deve estar 100% apurada e com todas as etapas validadas pelo ADM.', 'info');
+      return;
+    }
     const nextEnviado = !isEnviadoCliente;
     try {
       await apuracaoValidationService.setEnviadoCliente({
@@ -501,7 +524,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
         adminName: profile?.full_name || 'Gestor ADM',
       });
       if (nextEnviado) {
-        toast(`Apuração de ${selectedComp.toUpperCase()} marcada como Enviada ao Cliente!`, 'success');
+        toast(`Apuração de ${selectedComp.toUpperCase()} validada e enviada ao cliente!`, 'success');
       } else {
         toast(`Marcação de envio ao cliente removida para ${selectedComp.toUpperCase()}.`, 'info');
       }
@@ -723,8 +746,8 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                 {yearCompetencias.map((comp) => {
                   const mLabel = comp.split('/')[0].toUpperCase();
                   const compValKey = buildValidationKey(client.id, comp);
-                  const isCompValid = validations[compValKey]?.status === 'APPROVED';
-                  const isCompEnviado = Boolean(validations[compValKey]?.enviado_cliente);
+                  const valRecord = validations[compValKey];
+                  const isCompEnviado = Boolean(valRecord?.enviado_cliente === true);
 
                   const okCountInComp = displayedObligations.filter((ob) => {
                     const key = `${client.id}::${ob}::${comp}`;
@@ -732,11 +755,15 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                     return (val || '').trim().toUpperCase() === 'OK';
                   }).length;
                   const is100InComp = displayedObligations.length > 0 && okCountInComp === displayedObligations.length;
+                  const isCompFullyValidated =
+                    is100InComp &&
+                    valRecord?.status === 'APPROVED' &&
+                    (!valRecord?.pending_obligations || valRecord.pending_obligations.length === 0);
 
                   let suffix = '';
-                  if (isCompValid && isCompEnviado) {
+                  if (isCompFullyValidated && isCompEnviado) {
                     suffix = ' ✓ (Validado & Enviado)';
-                  } else if (isCompValid) {
+                  } else if (isCompFullyValidated) {
                     suffix = ' ✉ (Validado - Pendente Envio)';
                   } else if (is100InComp) {
                     suffix = ' (100% Apurado)';
@@ -755,23 +782,25 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
             <div className="hidden sm:flex items-center space-x-1.5">
               <span
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center space-x-1 border ${
-                  isAllObligationsValidated && isEnviadoCliente
+                  isValidadoEEnviadoCompetencia
                     ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                    : isAllObligationsValidated
+                    : isCompetencia100Validada
                     ? 'bg-blue-50 text-blue-800 border-blue-300'
                     : isPartiallyValidated
                     ? 'bg-blue-100 text-blue-800 border-blue-300'
+                    : isNeedsReview
+                    ? 'bg-rose-100 text-rose-800 border-rose-300'
                     : isMonth100
                     ? 'bg-slate-100 text-slate-700 border-slate-300'
                     : 'bg-amber-100 text-amber-900 border-amber-300'
                 }`}
               >
-                {isAllObligationsValidated && isEnviadoCliente ? (
+                {isValidadoEEnviadoCompetencia ? (
                   <>
                     <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                     <span>100% Validado & Enviado</span>
                   </>
-                ) : isAllObligationsValidated ? (
+                ) : isCompetencia100Validada ? (
                   <>
                     <Send className="w-3 h-3 text-blue-600" />
                     <span>Validado ADM (Pendente Envio)</span>
@@ -779,7 +808,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                 ) : isPartiallyValidated ? (
                   <>
                     <ShieldCheck className="w-3 h-3 text-blue-600" />
-                    <span>Validação Parcial ({validatedObligationsCount}/{displayedObligations.length})</span>
+                    <span>Validação Parcial ({validatedObligationsCount}/{admObligations.length})</span>
                   </>
                 ) : isNeedsReview ? (
                   <>
@@ -837,14 +866,20 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                 type="button"
                 onClick={handleToggleEnviadoCliente}
                 className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-2xs border ${
-                  isEnviadoCliente
+                  isValidadoEEnviadoCompetencia
                     ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 shadow-emerald-200'
                     : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300'
                 }`}
-                title={isEnviadoCliente ? 'Clique para desmarcar envio ao cliente' : 'Marcar apuração como enviada ao cliente'}
+                title={
+                  isValidadoEEnviadoCompetencia
+                    ? 'Clique para desmarcar envio ao cliente'
+                    : isCompetencia100Validada
+                    ? 'Marcar apuração como enviada ao cliente'
+                    : 'A apuração ainda possui pendências de preenchimento ou validação'
+                }
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>{isEnviadoCliente ? 'Enviado ao Cliente ✓' : 'Marcar como Enviado'}</span>
+                <span>{isValidadoEEnviadoCompetencia ? 'Enviado ao Cliente ✓' : 'Marcar como Enviado'}</span>
               </button>
             )}
 
@@ -915,9 +950,9 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
         {/* 2. TABELA DE OBRIGAÇÕES COM STATUS DA VALIDAÇÃO E CHECKBOX ADM */}
         <div
           className={`flex-1 overflow-y-auto min-h-[260px] transition-all duration-200 ${
-            isEnviadoCliente ? 'grayscale opacity-90' : ''
+            isModalGrayMode ? 'grayscale opacity-90' : ''
           }`}
-          style={isEnviadoCliente ? { filter: 'grayscale(100%)', opacity: 0.92 } : undefined}
+          style={isModalGrayMode ? { filter: 'grayscale(100%)', opacity: 0.92 } : undefined}
         >
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-10 bg-stone-100 shadow-xs">
@@ -953,11 +988,11 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                     <tr
                       key={obrigacao}
                       className={`transition-colors ${
-                        isEnviadoCliente
+                        isModalGrayMode
                           ? 'hover:bg-stone-50/80'
                           : 'hover:bg-amber-50/20'
                       } ${
-                        isEnviadoCliente
+                        isModalGrayMode
                           ? isItemValidated
                             ? 'bg-stone-50/50'
                             : isOk
@@ -970,7 +1005,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                           : ''
                       } ${
                         isReviewFlagged
-                          ? isEnviadoCliente
+                          ? isModalGrayMode
                             ? 'bg-stone-100/40'
                             : 'bg-rose-50/30'
                           : ''
@@ -982,13 +1017,13 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                       </td>
 
                       {/* Nome da Obrigação */}
-                      <td className={`py-1.5 px-4 font-semibold ${isEnviadoCliente ? 'text-stone-700' : 'text-stone-900'}`}>
+                      <td className={`py-1.5 px-4 font-semibold ${isModalGrayMode ? 'text-stone-700' : 'text-stone-900'}`}>
                         <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
                           <span>{obrigacao}</span>
                           {FOLHA_PAGAMENTO_OBLIGATIONS.includes(obrigacao) && (
                             <span
                               className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
-                                isEnviadoCliente
+                                isModalGrayMode
                                   ? 'bg-stone-100 text-stone-600 border-stone-300'
                                   : 'bg-amber-100 text-amber-900 border-amber-300'
                               }`}
@@ -1011,14 +1046,14 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                               }}
                               title={currentValidation?.review_notes ? `Motivo ADM: ${currentValidation.review_notes}` : 'Ver motivo da pendência'}
                               className={`inline-flex items-center space-x-1 text-[9px] font-bold px-1.5 py-0.2 rounded border cursor-pointer transition-colors shadow-2xs ${
-                                isEnviadoCliente
+                                isModalGrayMode
                                   ? 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300'
                                   : 'bg-rose-100 hover:bg-rose-200 text-rose-800 border-rose-300'
                               }`}
                             >
-                              <AlertTriangle className={`w-2.5 h-2.5 ${isEnviadoCliente ? 'text-stone-600' : 'text-rose-600'}`} />
+                              <AlertTriangle className={`w-2.5 h-2.5 ${isModalGrayMode ? 'text-stone-600' : 'text-rose-600'}`} />
                               <span>Revisar</span>
-                              <MessageSquare className={`w-2.5 h-2.5 ${isEnviadoCliente ? 'text-stone-600' : 'text-rose-600'}`} />
+                              <MessageSquare className={`w-2.5 h-2.5 ${isModalGrayMode ? 'text-stone-600' : 'text-rose-600'}`} />
                             </button>
                           )}
                         </div>
@@ -1044,7 +1079,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                             }}
                             placeholder="OK"
                             className={`w-14 px-2 py-0.5 text-center text-xs font-mono font-bold rounded border uppercase transition-colors focus:outline-none focus:ring-1 ${
-                              isEnviadoCliente
+                              isModalGrayMode
                                 ? 'bg-stone-50 border-stone-300 text-stone-600 focus:ring-stone-400'
                                 : isOk
                                 ? 'bg-emerald-50 border-emerald-400 text-emerald-800 focus:ring-emerald-500'
@@ -1057,7 +1092,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                             type="button"
                             onClick={() => handleToggleStatus(obrigacao)}
                             className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer border ${
-                              isEnviadoCliente
+                              isModalGrayMode
                                 ? isOk
                                   ? 'bg-stone-500 hover:bg-stone-600 text-white border-stone-500'
                                   : 'bg-stone-50 hover:bg-stone-100 text-stone-500 hover:text-stone-700 border-stone-200'
@@ -1088,12 +1123,12 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                           {isItemValidated ? (
                             <span
                               className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                isEnviadoCliente
+                                isModalGrayMode
                                   ? 'bg-stone-100 text-stone-600 border-stone-300'
                                   : 'bg-emerald-100 text-emerald-800 border-emerald-300'
                               }`}
                             >
-                              <ShieldCheck className={`w-3 h-3 ${isEnviadoCliente ? 'text-stone-500' : 'text-emerald-600'}`} />
+                              <ShieldCheck className={`w-3 h-3 ${isModalGrayMode ? 'text-stone-500' : 'text-emerald-600'}`} />
                               <span>Validado ADM</span>
                             </span>
                           ) : isReviewFlagged ? (
@@ -1111,14 +1146,14 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                               }}
                               title={currentValidation?.review_notes ? `Motivo ADM: ${currentValidation.review_notes}` : 'Clique para ver o motivo da pendência'}
                               className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold border cursor-pointer transition-colors shadow-2xs ${
-                                isEnviadoCliente
+                                isModalGrayMode
                                   ? 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300'
                                   : 'bg-rose-100 hover:bg-rose-200 text-rose-800 border-rose-300'
                               }`}
                             >
-                              <AlertTriangle className={`w-3 h-3 ${isEnviadoCliente ? 'text-stone-600' : 'text-rose-600'}`} />
+                              <AlertTriangle className={`w-3 h-3 ${isModalGrayMode ? 'text-stone-600' : 'text-rose-600'}`} />
                               <span>Pendente Revisão</span>
-                              <MessageSquare className={`w-2.5 h-2.5 ${isEnviadoCliente ? 'text-stone-600' : 'text-rose-600'}`} />
+                              <MessageSquare className={`w-2.5 h-2.5 ${isModalGrayMode ? 'text-stone-600' : 'text-rose-600'}`} />
                             </button>
                           ) : isOk ? (
                             <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-300">
@@ -1137,7 +1172,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                                   type="button"
                                   onClick={() => handleApproveObligation(obrigacao)}
                                   className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
-                                    isEnviadoCliente
+                                    isModalGrayMode
                                       ? isItemValidated
                                         ? 'bg-stone-500 text-white border-stone-600'
                                         : 'bg-stone-100 hover:bg-stone-200 text-stone-600 border-stone-300'
@@ -1155,7 +1190,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                                   type="button"
                                   onClick={() => handleOpenPendingModal(obrigacao)}
                                   className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
-                                    isEnviadoCliente
+                                    isModalGrayMode
                                       ? isReviewFlagged
                                         ? 'bg-stone-500 text-white border-stone-600'
                                         : 'bg-stone-50 hover:bg-stone-100 text-stone-500 border-stone-200'
@@ -1192,8 +1227,8 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
           <div>
             Competência <strong>{selectedComp.toUpperCase()}</strong>: <strong>{percentInMonth}%</strong> concluído ({okCountInMonth}/{totalInMonth} apurações).
             {validatedObligationsCount > 0 && (
-              <span className={`ml-1 font-bold ${isAllObligationsValidated ? (isEnviadoCliente ? 'text-emerald-700' : 'text-blue-700') : 'text-blue-700'}`}>
-                • {isAllObligationsValidated ? (isEnviadoCliente ? '100% Homologado e Enviado ao Cliente' : '100% Homologado (Pendente de Envio)') : `${validatedObligationsCount}/${clientObligations.length} validadas pelo ADM`}
+              <span className={`ml-1 font-bold ${isValidadoEEnviadoCompetencia ? 'text-emerald-700' : isCompetencia100Validada ? 'text-blue-700' : 'text-stone-500'}`}>
+                • {isValidadoEEnviadoCompetencia ? '100% Homologado e Enviado ao Cliente' : isCompetencia100Validada ? '100% Homologado (Pendente de Envio)' : `${validatedObligationsCount}/${admObligations.length} validadas pelo ADM`}
               </span>
             )}
           </div>

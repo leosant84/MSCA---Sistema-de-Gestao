@@ -135,7 +135,7 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
   // Auxiliar para checar se apuração do cliente foi marcada como enviada
   const checkClientEnviado = (c: Client) => {
     const k = buildValidationKey(c.id, competencia);
-    return Boolean(validations[k]?.enviado_cliente || (validations[k] as any)?.status === 'ENVIADO');
+    return Boolean(validations[k]?.enviado_cliente === true);
   };
 
   // Auxiliar para checar se cliente possui pendência apontada na obrigação/competência
@@ -791,7 +791,7 @@ export const ApuracaoDrilldownModal: React.FC<ApuracaoDrilldownModalProps> = ({
                   const isClientVal = checkClientValidated(client);
                   const isClientEnviado = checkClientEnviado(client);
                   const isValidadoEEnviado = isClientVal && isClientEnviado;
-                  const isRowGray = isValidadoEEnviado || isClientEnviado;
+                  const isRowGray = isValidadoEEnviado;
                   const clientValKey = buildValidationKey(client.id, competencia);
                   const clientVal = validations[clientValKey];
 

@@ -178,19 +178,20 @@ export const Apuracao: React.FC = () => {
         if (r.obrigacao === '__VALIDACAO_ADM__') {
           try {
             const parsed = JSON.parse(r.valor || '{}');
+            const isSentExplicit = parsed.enviado_cliente === true || parsed.enviado_cliente === 'true';
             const item: ClientApuracaoValidation = {
               id: r.id,
               client_id: r.client_id,
               competencia: r.competencia,
               regime: r.regime,
-              status: parsed.status || (r.status === 'ENVIADO' ? 'APPROVED' : (r.status as any)) || 'PENDING',
+              status: parsed.status || (r.status as any) || 'PENDING',
               reviewed_by: parsed.reviewed_by || (r as any).updated_by || null,
               reviewed_by_name: parsed.reviewed_by_name || 'Gestor ADM',
               reviewed_at: parsed.reviewed_at || r.updated_at,
               review_notes: parsed.review_notes || null,
               pending_obligations: parsed.pending_obligations || [],
               validated_obligations: parsed.validated_obligations || null,
-              enviado_cliente: parsed.enviado_cliente !== undefined ? parsed.enviado_cliente : (r.status === 'ENVIADO'),
+              enviado_cliente: isSentExplicit,
               enviado_em: parsed.enviado_em || null,
               enviado_por: parsed.enviado_por || null,
               enviado_por_nome: parsed.enviado_por_nome || null,
@@ -910,7 +911,7 @@ export const Apuracao: React.FC = () => {
     (competencia: string, obrigacao?: string) => {
       const isClientEnviado = (c: Client) => {
         const k = buildValidationKey(c.id, competencia);
-        return Boolean(validations[k]?.enviado_cliente);
+        return Boolean(validations[k]?.enviado_cliente === true);
       };
 
       if (currentFilteredClient) {
@@ -1210,7 +1211,7 @@ export const Apuracao: React.FC = () => {
 
     const sentCount = eligible.filter((client) => {
       const vKey = buildValidationKey(client.id, currentMonthCompetencia);
-      return Boolean(validations[vKey]?.enviado_cliente);
+      return Boolean(validations[vKey]?.enviado_cliente === true);
     }).length;
 
     const percent = Math.round((sentCount / totalEligible) * 100);

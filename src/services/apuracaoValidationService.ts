@@ -122,19 +122,20 @@ export const apuracaoValidationService = {
         data.forEach((r: { id: string; client_id: string; competencia: string; regime: string; valor: string; status?: string; updated_by?: string | null; created_at?: string; updated_at?: string }) => {
           try {
             const parsed = JSON.parse(r.valor || '{}');
+            const isSentExplicit = parsed.enviado_cliente === true || parsed.enviado_cliente === 'true';
             const item: ClientApuracaoValidation = {
               id: r.id,
               client_id: r.client_id,
               competencia: r.competencia,
               regime: r.regime,
-              status: parsed.status || r.status || 'PENDING',
+              status: parsed.status || (r.status as any) || 'PENDING',
               reviewed_by: parsed.reviewed_by || r.updated_by || null,
               reviewed_by_name: parsed.reviewed_by_name || 'Gestor ADM',
               reviewed_at: parsed.reviewed_at || r.updated_at,
               review_notes: parsed.review_notes || null,
               pending_obligations: parsed.pending_obligations || [],
               validated_obligations: parsed.validated_obligations || null,
-              enviado_cliente: parsed.enviado_cliente !== undefined ? parsed.enviado_cliente : (r.status === 'ENVIADO'),
+              enviado_cliente: isSentExplicit,
               enviado_em: parsed.enviado_em || null,
               enviado_por: parsed.enviado_por || null,
               enviado_por_nome: parsed.enviado_por_nome || null,
@@ -244,7 +245,7 @@ export const apuracaoValidationService = {
       client_id: params.clientId,
       competencia: params.competencia,
       regime: params.regime,
-      status: existing?.status || 'APPROVED',
+      status: existing?.status || 'PENDING',
       reviewed_by: existing?.reviewed_by || params.adminId || null,
       reviewed_by_name: existing?.reviewed_by_name || params.adminName || 'Gestor ADM',
       reviewed_at: existing?.reviewed_at || now,
