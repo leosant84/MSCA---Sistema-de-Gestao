@@ -247,6 +247,9 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
   // Auxiliar: checa se a obrigação faz parte do escopo de homologação do perfil ADM
   const isObligationForAdm = useCallback(
     (obrigacao: string) => {
+      if (effectiveRegime === 'Lucro Presumido') {
+        return true;
+      }
       if (effectiveRegime === 'Simples Nacional') {
         if (isSimplesAdmDeliverable(obrigacao)) return true;
         if (hasClientFolha(client) && FOLHA_PAGAMENTO_OBLIGATIONS.includes(obrigacao) && !isOperationalObligation(obrigacao)) {
@@ -390,28 +393,47 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
 
   // Contagem de obrigações validadas pelo ADM
   const validatedObligationsCount = admObligations.filter((ob) => isObligationValidated(ob)).length;
-  const isAllObligationsValidated =
+  const isAllAdmObligationsValidated =
     admObligations.length > 0 && validatedObligationsCount === admObligations.length;
   const isPartiallyValidated =
     validatedObligationsCount > 0 && validatedObligationsCount < admObligations.length;
 
-  // Condição estrita: Uma competência só é considerada 100% Validada pelo ADM se:
-  // 1. Todas as apurações do cliente no mês estiverem preenchidas como OK (100% concluído, sem itens pendentes);
-  // 2. Todas as obrigações que exigem validação do ADM estiverem aprovadas;
-  // 3. Não houver nenhum apontamento de pendência ativo (NEEDS_REVIEW).
+  // Checa se há qualquer apuração pendente de validação pelo ADM (itens em "Aguardando ADM")
+  const hasItemsAguardandoAdm = clientObligations.some((ob) => {
+    const key = `${client.id}::${ob}::${selectedComp}`;
+    const val = inputValues[key];
+    const isOk = (val || '').trim().toUpperCase() === 'OK';
+    return isOk && isObligationForAdm(ob) && !isObligationValidated(ob);
+  });
+
+  // Todas as apurações do cliente na competência estão apuradas (OK)?
+  const allClientTotal = clientObligations.length;
+  const allClientOkCount = clientObligations.filter((ob) => {
+    const key = `${client.id}::${ob}::${selectedComp}`;
+    const val = inputValues[key];
+    return (val || '').trim().toUpperCase() === 'OK';
+  }).length;
+  const isAllClientObligationsOk = allClientTotal > 0 && allClientOkCount === allClientTotal;
+
+  // Condição estrita: Uma competência ou resumo de cliente não pode ficar em estado cinza nem exibir
+  // 100% Validado & Enviado / 100% Homologado e Enviado ao Cliente enquanto existirem apurações
+  // pendentes de validação pelo ADM (como itens em Aguardando ADM) ou etapas não concluídas.
   const isCompetencia100Validada =
-    isMonth100 &&
-    isAllObligationsValidated &&
+    isAllClientObligationsOk &&
+    isAllAdmObligationsValidated &&
+    !hasItemsAguardandoAdm &&
     !isNeedsReview &&
     (currentValidation?.pending_obligations?.length ?? 0) === 0;
 
-  // Condição estrita para "Validado & Enviado":
-  // Deve estar 100% validada E a ação de envio ao cliente deve ter sido efetivamente concluída e salva no banco (enviado_cliente === true)
+  // Condição estrita para "Validado & Enviado" / "100% Homologado e Enviado ao Cliente":
+  // O estado cinza / homologado só deve ser assumido quando TODAS as apurações exigidas daquela competência
+  // estiverem validadas pelo ADM (Aprovado / Validado ADM) e enviadas ao cliente (Enviado ao Cliente).
   const isValidadoEEnviadoCompetencia = isCompetencia100Validada && isEnviadoCliente;
 
   // Modo cinza da tabela e botões do modal:
-  // Só fica em tons de cinza se a competência estiver REALMENTE validada e enviada!
-  // Se estiver pendente de validação ou não tiver sido enviada ao cliente, permanece totalmente colorida!
+  // Só assume tons de cinza quando estiver REALMENTE validada e enviada!
+  // Enquanto houver pendência de validação pelo ADM (como itens em Aguardando ADM) ou não enviada,
+  // permanece totalmente colorida!
   const isModalGrayMode = isValidadoEEnviadoCompetencia;
 
   // Estatísticas no ano inteiro (todas as competências x obrigações)
@@ -749,23 +771,34 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                   const valRecord = validations[compValKey];
                   const isCompEnviado = Boolean(valRecord?.enviado_cliente === true);
 
-                  const okCountInComp = displayedObligations.filter((ob) => {
+                  const allClientOkInComp = clientObligations.every((ob) => {
                     const key = `${client.id}::${ob}::${comp}`;
                     const val = inputValues[key];
                     return (val || '').trim().toUpperCase() === 'OK';
-                  }).length;
-                  const is100InComp = displayedObligations.length > 0 && okCountInComp === displayedObligations.length;
-                  const isCompFullyValidated =
-                    is100InComp &&
-                    valRecord?.status === 'APPROVED' &&
-                    (!valRecord?.pending_obligations || valRecord.pending_obligations.length === 0);
+                  });
+
+                  // Checa se todas as obrigações do ADM estão validadas nessa competência
+                  const allAdmValidInComp =
+                    admObligations.length > 0 &&
+                    admObligations.every((ob) => {
+                      const key = `${client.id}::${ob}::${comp}`;
+                      const isOk = (inputValues[key] || '').trim().toUpperCase() === 'OK';
+                      if (!isOk || !valRecord) return false;
+                      if (valRecord.validated_obligations && Array.isArray(valRecord.validated_obligations)) {
+                        return valRecord.validated_obligations.includes(ob);
+                      }
+                      return valRecord.status === 'APPROVED';
+                    });
+
+                  const hasCompReview = valRecord?.status === 'NEEDS_REVIEW' || (valRecord?.pending_obligations?.length ?? 0) > 0;
+                  const isCompFullyValidated = allClientOkInComp && allAdmValidInComp && !hasCompReview;
 
                   let suffix = '';
                   if (isCompFullyValidated && isCompEnviado) {
                     suffix = ' ✓ (Validado & Enviado)';
                   } else if (isCompFullyValidated) {
                     suffix = ' ✉ (Validado - Pendente Envio)';
-                  } else if (is100InComp) {
+                  } else if (allClientOkInComp) {
                     suffix = ' (100% Apurado)';
                   }
 
@@ -786,10 +819,12 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                     ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                     : isCompetencia100Validada
                     ? 'bg-blue-50 text-blue-800 border-blue-300'
-                    : isPartiallyValidated
-                    ? 'bg-blue-100 text-blue-800 border-blue-300'
                     : isNeedsReview
                     ? 'bg-rose-100 text-rose-800 border-rose-300'
+                    : isPartiallyValidated
+                    ? 'bg-blue-100 text-blue-800 border-blue-300'
+                    : hasItemsAguardandoAdm
+                    ? 'bg-slate-100 text-slate-700 border-slate-300'
                     : isMonth100
                     ? 'bg-slate-100 text-slate-700 border-slate-300'
                     : 'bg-amber-100 text-amber-900 border-amber-300'
@@ -805,15 +840,20 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                     <Send className="w-3 h-3 text-blue-600" />
                     <span>Validado ADM (Pendente Envio)</span>
                   </>
+                ) : isNeedsReview ? (
+                  <>
+                    <AlertTriangle className="w-3 h-3 text-rose-600" />
+                    <span>Revisão Apontada</span>
+                  </>
                 ) : isPartiallyValidated ? (
                   <>
                     <ShieldCheck className="w-3 h-3 text-blue-600" />
                     <span>Validação Parcial ({validatedObligationsCount}/{admObligations.length})</span>
                   </>
-                ) : isNeedsReview ? (
+                ) : hasItemsAguardandoAdm ? (
                   <>
-                    <AlertTriangle className="w-3 h-3 text-rose-600" />
-                    <span>Revisão Apontada</span>
+                    <Clock className="w-3 h-3 text-slate-500" />
+                    <span>Aguardando Validação ADM</span>
                   </>
                 ) : isMonth100 ? (
                   <>
@@ -1156,10 +1196,17 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
                               <MessageSquare className={`w-2.5 h-2.5 ${isModalGrayMode ? 'text-stone-600' : 'text-rose-600'}`} />
                             </button>
                           ) : isOk ? (
-                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-300">
-                              <Clock className="w-2.5 h-2.5 text-slate-400" />
-                              <span>Aguardando ADM</span>
-                            </span>
+                            isObligationForAdm(obrigacao) ? (
+                              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-300">
+                                <Clock className="w-2.5 h-2.5 text-slate-400" />
+                                <span>Aguardando ADM</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <Check className="w-2.5 h-2.5 text-emerald-600" />
+                                <span>Concluído</span>
+                              </span>
+                            )
                           ) : (
                             <span className="text-[10px] text-stone-400">Não apurado</span>
                           )}
@@ -1228,7 +1275,7 @@ export const ClientApuracoesModal: React.FC<ClientApuracoesModalProps> = ({
             Competência <strong>{selectedComp.toUpperCase()}</strong>: <strong>{percentInMonth}%</strong> concluído ({okCountInMonth}/{totalInMonth} apurações).
             {validatedObligationsCount > 0 && (
               <span className={`ml-1 font-bold ${isValidadoEEnviadoCompetencia ? 'text-emerald-700' : isCompetencia100Validada ? 'text-blue-700' : 'text-stone-500'}`}>
-                • {isValidadoEEnviadoCompetencia ? '100% Homologado e Enviado ao Cliente' : isCompetencia100Validada ? '100% Homologado (Pendente de Envio)' : `${validatedObligationsCount}/${admObligations.length} validadas pelo ADM`}
+                • {isValidadoEEnviadoCompetencia ? '100% Homologado e Enviado ao Cliente' : isCompetencia100Validada ? '100% Homologado (Pendente de Envio)' : `${validatedObligationsCount}/${admObligations.length} validadas pelo ADM (Aguardando ADM)`}
               </span>
             )}
           </div>
